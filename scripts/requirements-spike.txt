@@ -1,0 +1,3 @@
+pyTigerGraph>=1.6
+sentence-transformers>=3.0
+python-dotenv>=1.0
