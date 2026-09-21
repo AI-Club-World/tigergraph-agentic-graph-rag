@@ -1,0 +1,4118 @@
+[
+  {
+    "run_id": "latest",
+    "qid": "pub-001",
+    "question": "Who won the gold medal in the men’s 100 metres at the 2016 Summer Olympics?",
+    "qtype": "lookup",
+    "ground_truth": [
+      "Usain Bolt"
+    ],
+    "gold_doc_ids": [
+      "Q20026519"
+    ],
+    "record": {
+      "query_id": "latest-pub-001",
+      "query_text": "Who won the gold medal in the men’s 100 metres at the 2016 Summer Olympics?",
+      "qtype": "lookup",
+      "timestamp": "2026-09-21T11:00:00Z",
+      "pipelines": {
+        "rag": {
+          "pipeline": "rag",
+          "answer": "Usain Bolt",
+          "explanation": "Derived from 3 source documents [Q20026519, Q20026519, Q20026519].",
+          "citations": [
+            {
+              "source_id": "Q20026519",
+              "chunk_id": "Q20026519::c07",
+              "ref_type": "chunk"
+            },
+            {
+              "source_id": "Q20026519",
+              "chunk_id": "Q20026519::c05",
+              "ref_type": "chunk"
+            },
+            {
+              "source_id": "Q20026519",
+              "chunk_id": "Q20026519::c08",
+              "ref_type": "chunk"
+            }
+          ],
+          "chunks_returned": 10,
+          "citations_count": 3,
+          "tokens": {
+            "input": 1995,
+            "output": 171,
+            "total": 2166
+          },
+          "token_source": "provider",
+          "latency_ms": 2180,
+          "trace": null,
+          "strategy_changed": null,
+          "stop_reason": null,
+          "status": "done",
+          "error_detail": null
+        },
+        "graphrag": {
+          "pipeline": "graphrag",
+          "answer": "Usain Bolt",
+          "explanation": "Derived from 1 source document [Q20026519].",
+          "citations": [
+            {
+              "source_id": "Q20026519",
+              "chunk_id": null,
+              "ref_type": "relationship"
+            }
+          ],
+          "chunks_returned": 0,
+          "citations_count": 1,
+          "tokens": {
+            "input": 739,
+            "output": 39,
+            "total": 778
+          },
+          "token_source": "provider",
+          "latency_ms": 1122,
+          "trace": null,
+          "strategy_changed": null,
+          "stop_reason": null,
+          "status": "done",
+          "error_detail": null
+        },
+        "agentic_graphrag": {
+          "pipeline": "agentic_graphrag",
+          "answer": "Usain Bolt",
+          "explanation": "Derived from 1 source document [Q20026519].",
+          "citations": [
+            {
+              "source_id": "Q20026519",
+              "chunk_id": null,
+              "ref_type": "entity"
+            }
+          ],
+          "chunks_returned": 0,
+          "citations_count": 1,
+          "tokens": {
+            "input": 7572,
+            "output": 412,
+            "total": 7984
+          },
+          "token_source": "provider",
+          "latency_ms": 2972,
+          "trace": [
+            {
+              "step_n": 1,
+              "agent_type": "entity_linking",
+              "tool_called": "intent_parser",
+              "tokens": {
+                "input": 2120,
+                "output": 115
+              },
+              "chunks_returned": 0,
+              "citations_count": 0,
+              "latency_ms": 1660,
+              "strategy_change": false,
+              "notes": "intent_parser invoked for entity linking"
+            },
+            {
+              "step_n": 2,
+              "agent_type": "graph_traversal",
+              "tool_called": "Q4 traverse",
+              "tokens": {
+                "input": 0,
+                "output": 0
+              },
+              "chunks_returned": 0,
+              "citations_count": 5,
+              "latency_ms": 304,
+              "strategy_change": false,
+              "notes": "Q4 traverse invoked for graph traversal"
+            },
+            {
+              "step_n": 3,
+              "agent_type": "evidence_evaluation",
+              "tool_called": "evidence_evaluator",
+              "tokens": {
+                "input": 5452,
+                "output": 297
+              },
+              "chunks_returned": 0,
+              "citations_count": 3,
+              "latency_ms": 852,
+              "strategy_change": false,
+              "notes": "evidence_evaluator invoked for evidence evaluation"
+            }
+          ],
+          "strategy_changed": false,
+          "stop_reason": "evidence_sufficient",
+          "status": "done",
+          "error_detail": null
+        }
+      },
+      "verdict": {
+        "token_multiplier_vs_rag": 3.69,
+        "token_multiplier_vs_graphrag": 10.26,
+        "accuracy_delta_vs_rag": 0,
+        "accuracy_delta_vs_graphrag": 0,
+        "summary_line": "No accuracy gain over RAG for 3.69x the tokens."
+      }
+    },
+    "scores": {
+      "rag": {
+        "em": 1,
+        "f1": 1,
+        "precision": 1,
+        "recall": 1,
+        "completeness": 1
+      },
+      "graphrag": {
+        "em": 1,
+        "f1": 1,
+        "precision": 1,
+        "recall": 1,
+        "completeness": 1
+      },
+      "agentic_graphrag": {
+        "em": 1,
+        "f1": 1,
+        "precision": 1,
+        "recall": 1,
+        "completeness": 1
+      }
+    }
+  },
+  {
+    "run_id": "latest",
+    "qid": "pub-002",
+    "question": "Which nation won gold in the women’s team pursuit at the 2012 Summer Olympics?",
+    "qtype": "lookup",
+    "ground_truth": [
+      "Great Britain"
+    ],
+    "gold_doc_ids": [
+      "Q3303152"
+    ],
+    "record": {
+      "query_id": "latest-pub-002",
+      "query_text": "Which nation won gold in the women’s team pursuit at the 2012 Summer Olympics?",
+      "qtype": "lookup",
+      "timestamp": "2026-09-21T11:00:00Z",
+      "pipelines": {
+        "rag": {
+          "pipeline": "rag",
+          "answer": "Great Britain",
+          "explanation": "Derived from 4 source documents [Q3303152, Q3303152, Q3303152, Q3303152].",
+          "citations": [
+            {
+              "source_id": "Q3303152",
+              "chunk_id": "Q3303152::c10",
+              "ref_type": "chunk"
+            },
+            {
+              "source_id": "Q3303152",
+              "chunk_id": "Q3303152::c11",
+              "ref_type": "chunk"
+            },
+            {
+              "source_id": "Q3303152",
+              "chunk_id": "Q3303152::c02",
+              "ref_type": "chunk"
+            },
+            {
+              "source_id": "Q3303152",
+              "chunk_id": "Q3303152::c12",
+              "ref_type": "chunk"
+            }
+          ],
+          "chunks_returned": 10,
+          "citations_count": 4,
+          "tokens": {
+            "input": 1909,
+            "output": 183,
+            "total": 2092
+          },
+          "token_source": "provider",
+          "latency_ms": 2054,
+          "trace": null,
+          "strategy_changed": null,
+          "stop_reason": null,
+          "status": "done",
+          "error_detail": null
+        },
+        "graphrag": {
+          "pipeline": "graphrag",
+          "answer": "Great Britain",
+          "explanation": "Derived from 1 source document [Q3303152].",
+          "citations": [
+            {
+              "source_id": "Q3303152",
+              "chunk_id": null,
+              "ref_type": "relationship"
+            }
+          ],
+          "chunks_returned": 0,
+          "citations_count": 1,
+          "tokens": {
+            "input": 681,
+            "output": 58,
+            "total": 739
+          },
+          "token_source": "provider",
+          "latency_ms": 1076,
+          "trace": null,
+          "strategy_changed": null,
+          "stop_reason": null,
+          "status": "done",
+          "error_detail": null
+        },
+        "agentic_graphrag": {
+          "pipeline": "agentic_graphrag",
+          "answer": "Great Britain",
+          "explanation": "Derived from 1 source document [Q3303152].",
+          "citations": [
+            {
+              "source_id": "Q3303152",
+              "chunk_id": null,
+              "ref_type": "relationship"
+            }
+          ],
+          "chunks_returned": 2,
+          "citations_count": 1,
+          "tokens": {
+            "input": 4139,
+            "output": 260,
+            "total": 4399
+          },
+          "token_source": "provider",
+          "latency_ms": 4241,
+          "trace": [
+            {
+              "step_n": 1,
+              "agent_type": "entity_linking",
+              "tool_called": "intent_parser",
+              "tokens": {
+                "input": 1159,
+                "output": 73
+              },
+              "chunks_returned": 0,
+              "citations_count": 0,
+              "latency_ms": 2253,
+              "strategy_change": false,
+              "notes": "intent_parser invoked for entity linking"
+            },
+            {
+              "step_n": 2,
+              "agent_type": "graph_traversal",
+              "tool_called": "Q4 traverse",
+              "tokens": {
+                "input": 0,
+                "output": 0
+              },
+              "chunks_returned": 0,
+              "citations_count": 4,
+              "latency_ms": 256,
+              "strategy_change": false,
+              "notes": "Q4 traverse invoked for graph traversal"
+            },
+            {
+              "step_n": 3,
+              "agent_type": "evidence_evaluation",
+              "tool_called": "evidence_evaluator",
+              "tokens": {
+                "input": 2980,
+                "output": 187
+              },
+              "chunks_returned": 0,
+              "citations_count": 5,
+              "latency_ms": 1434,
+              "strategy_change": false,
+              "notes": "evidence_evaluator invoked for evidence evaluation"
+            }
+          ],
+          "strategy_changed": false,
+          "stop_reason": "evidence_sufficient",
+          "status": "done",
+          "error_detail": null
+        }
+      },
+      "verdict": {
+        "token_multiplier_vs_rag": 2.1,
+        "token_multiplier_vs_graphrag": 5.95,
+        "accuracy_delta_vs_rag": 0,
+        "accuracy_delta_vs_graphrag": 0,
+        "summary_line": "No accuracy gain over RAG for 2.1x the tokens."
+      }
+    },
+    "scores": {
+      "rag": {
+        "em": 1,
+        "f1": 1,
+        "precision": 1,
+        "recall": 1,
+        "completeness": 1
+      },
+      "graphrag": {
+        "em": 1,
+        "f1": 1,
+        "precision": 1,
+        "recall": 1,
+        "completeness": 1
+      },
+      "agentic_graphrag": {
+        "em": 1,
+        "f1": 1,
+        "precision": 1,
+        "recall": 1,
+        "completeness": 1
+      }
+    }
+  },
+  {
+    "run_id": "latest",
+    "qid": "pub-003",
+    "question": "How many competitors took part in the men’s marathon at the 2004 Summer Olympics?",
+    "qtype": "lookup",
+    "ground_truth": [
+      "101"
+    ],
+    "gold_doc_ids": [
+      "Q1195524"
+    ],
+    "record": {
+      "query_id": "latest-pub-003",
+      "query_text": "How many competitors took part in the men’s marathon at the 2004 Summer Olympics?",
+      "qtype": "lookup",
+      "timestamp": "2026-09-21T11:00:00Z",
+      "pipelines": {
+        "rag": {
+          "pipeline": "rag",
+          "answer": "101",
+          "explanation": "Derived from 3 source documents [Q1195524, Q1195524, Q1195524].",
+          "citations": [
+            {
+              "source_id": "Q1195524",
+              "chunk_id": "Q1195524::c01",
+              "ref_type": "chunk"
+            },
+            {
+              "source_id": "Q1195524",
+              "chunk_id": "Q1195524::c06",
+              "ref_type": "chunk"
+            },
+            {
+              "source_id": "Q1195524",
+              "chunk_id": "Q1195524::c11",
+              "ref_type": "chunk"
+            }
+          ],
+          "chunks_returned": 10,
+          "citations_count": 3,
+          "tokens": {
+            "input": 1974,
+            "output": 174,
+            "total": 2148
+          },
+          "token_source": "provider",
+          "latency_ms": 1805,
+          "trace": null,
+          "strategy_changed": null,
+          "stop_reason": null,
+          "status": "done",
+          "error_detail": null
+        },
+        "graphrag": {
+          "pipeline": "graphrag",
+          "answer": "101",
+          "explanation": "Derived from 1 source document [Q1195524].",
+          "citations": [
+            {
+              "source_id": "Q1195524",
+              "chunk_id": null,
+              "ref_type": "entity"
+            }
+          ],
+          "chunks_returned": 0,
+          "citations_count": 1,
+          "tokens": {
+            "input": 634,
+            "output": 70,
+            "total": 704
+          },
+          "token_source": "provider",
+          "latency_ms": 1105,
+          "trace": null,
+          "strategy_changed": null,
+          "stop_reason": null,
+          "status": "done",
+          "error_detail": null
+        },
+        "agentic_graphrag": {
+          "pipeline": "agentic_graphrag",
+          "answer": "101",
+          "explanation": "Derived from 1 source document [Q1195524].",
+          "citations": [
+            {
+              "source_id": "Q1195524",
+              "chunk_id": null,
+              "ref_type": "entity"
+            }
+          ],
+          "chunks_returned": 3,
+          "citations_count": 1,
+          "tokens": {
+            "input": 4832,
+            "output": 310,
+            "total": 5142
+          },
+          "token_source": "provider",
+          "latency_ms": 2780,
+          "trace": [
+            {
+              "step_n": 1,
+              "agent_type": "entity_linking",
+              "tool_called": "intent_parser",
+              "tokens": {
+                "input": 1353,
+                "output": 87
+              },
+              "chunks_returned": 0,
+              "citations_count": 0,
+              "latency_ms": 1690,
+              "strategy_change": false,
+              "notes": "intent_parser invoked for entity linking"
+            },
+            {
+              "step_n": 2,
+              "agent_type": "graph_traversal",
+              "tool_called": "Q4 traverse",
+              "tokens": {
+                "input": 0,
+                "output": 0
+              },
+              "chunks_returned": 0,
+              "citations_count": 8,
+              "latency_ms": 120,
+              "strategy_change": false,
+              "notes": "Q4 traverse invoked for graph traversal"
+            },
+            {
+              "step_n": 3,
+              "agent_type": "evidence_evaluation",
+              "tool_called": "evidence_evaluator",
+              "tokens": {
+                "input": 3479,
+                "output": 223
+              },
+              "chunks_returned": 0,
+              "citations_count": 9,
+              "latency_ms": 640,
+              "strategy_change": false,
+              "notes": "evidence_evaluator invoked for evidence evaluation"
+            }
+          ],
+          "strategy_changed": false,
+          "stop_reason": "evidence_sufficient",
+          "status": "done",
+          "error_detail": null
+        }
+      },
+      "verdict": {
+        "token_multiplier_vs_rag": 2.39,
+        "token_multiplier_vs_graphrag": 7.3,
+        "accuracy_delta_vs_rag": 0,
+        "accuracy_delta_vs_graphrag": 0,
+        "summary_line": "No accuracy gain over RAG for 2.39x the tokens."
+      }
+    },
+    "scores": {
+      "rag": {
+        "em": 1,
+        "f1": 1,
+        "precision": 1,
+        "recall": 1,
+        "completeness": 1
+      },
+      "graphrag": {
+        "em": 1,
+        "f1": 1,
+        "precision": 1,
+        "recall": 1,
+        "completeness": 1
+      },
+      "agentic_graphrag": {
+        "em": 1,
+        "f1": 1,
+        "precision": 1,
+        "recall": 1,
+        "completeness": 1
+      }
+    }
+  },
+  {
+    "run_id": "latest",
+    "qid": "pub-004",
+    "question": "Who took silver in the women’s 400 metres hurdles at the 2020 Summer Olympics?",
+    "qtype": "lookup",
+    "ground_truth": [
+      "Dalilah Muhammad"
+    ],
+    "gold_doc_ids": [
+      "Q60738312"
+    ],
+    "record": {
+      "query_id": "latest-pub-004",
+      "query_text": "Who took silver in the women’s 400 metres hurdles at the 2020 Summer Olympics?",
+      "qtype": "lookup",
+      "timestamp": "2026-09-21T11:00:00Z",
+      "pipelines": {
+        "rag": {
+          "pipeline": "rag",
+          "answer": "Dalilah Muhammad",
+          "explanation": "Derived from 2 source documents [Q60738312, Q60738312].",
+          "citations": [
+            {
+              "source_id": "Q60738312",
+              "chunk_id": "Q60738312::c05",
+              "ref_type": "chunk"
+            },
+            {
+              "source_id": "Q60738312",
+              "chunk_id": "Q60738312::c10",
+              "ref_type": "chunk"
+            }
+          ],
+          "chunks_returned": 10,
+          "citations_count": 2,
+          "tokens": {
+            "input": 1826,
+            "output": 181,
+            "total": 2007
+          },
+          "token_source": "provider",
+          "latency_ms": 1941,
+          "trace": null,
+          "strategy_changed": null,
+          "stop_reason": null,
+          "status": "done",
+          "error_detail": null
+        },
+        "graphrag": {
+          "pipeline": "graphrag",
+          "answer": "Dalilah Muhammad",
+          "explanation": "Derived from 1 source document [Q60738312].",
+          "citations": [
+            {
+              "source_id": "Q60738312",
+              "chunk_id": null,
+              "ref_type": "entity"
+            }
+          ],
+          "chunks_returned": 0,
+          "citations_count": 1,
+          "tokens": {
+            "input": 777,
+            "output": 56,
+            "total": 833
+          },
+          "token_source": "provider",
+          "latency_ms": 1205,
+          "trace": null,
+          "strategy_changed": null,
+          "stop_reason": null,
+          "status": "done",
+          "error_detail": null
+        },
+        "agentic_graphrag": {
+          "pipeline": "agentic_graphrag",
+          "answer": "Dalilah Muhammad",
+          "explanation": "Derived from 1 source document [Q60738312].",
+          "citations": [
+            {
+              "source_id": "Q60738312",
+              "chunk_id": null,
+              "ref_type": "relationship"
+            }
+          ],
+          "chunks_returned": 1,
+          "citations_count": 1,
+          "tokens": {
+            "input": 3704,
+            "output": 365,
+            "total": 4069
+          },
+          "token_source": "provider",
+          "latency_ms": 3645,
+          "trace": [
+            {
+              "step_n": 1,
+              "agent_type": "entity_linking",
+              "tool_called": "intent_parser",
+              "tokens": {
+                "input": 1037,
+                "output": 102
+              },
+              "chunks_returned": 0,
+              "citations_count": 0,
+              "latency_ms": 1480,
+              "strategy_change": false,
+              "notes": "intent_parser invoked for entity linking"
+            },
+            {
+              "step_n": 2,
+              "agent_type": "graph_traversal",
+              "tool_called": "Q4 traverse",
+              "tokens": {
+                "input": 0,
+                "output": 0
+              },
+              "chunks_returned": 0,
+              "citations_count": 8,
+              "latency_ms": 218,
+              "strategy_change": false,
+              "notes": "Q4 traverse invoked for graph traversal"
+            },
+            {
+              "step_n": 3,
+              "agent_type": "evidence_evaluation",
+              "tool_called": "evidence_evaluator",
+              "tokens": {
+                "input": 2667,
+                "output": 263
+              },
+              "chunks_returned": 0,
+              "citations_count": 6,
+              "latency_ms": 1568,
+              "strategy_change": false,
+              "notes": "evidence_evaluator invoked for evidence evaluation"
+            }
+          ],
+          "strategy_changed": false,
+          "stop_reason": "evidence_sufficient",
+          "status": "done",
+          "error_detail": null
+        }
+      },
+      "verdict": {
+        "token_multiplier_vs_rag": 2.03,
+        "token_multiplier_vs_graphrag": 4.88,
+        "accuracy_delta_vs_rag": 0,
+        "accuracy_delta_vs_graphrag": 0,
+        "summary_line": "No accuracy gain over RAG for 2.03x the tokens."
+      }
+    },
+    "scores": {
+      "rag": {
+        "em": 1,
+        "f1": 1,
+        "precision": 1,
+        "recall": 1,
+        "completeness": 1
+      },
+      "graphrag": {
+        "em": 1,
+        "f1": 1,
+        "precision": 1,
+        "recall": 1,
+        "completeness": 1
+      },
+      "agentic_graphrag": {
+        "em": 1,
+        "f1": 1,
+        "precision": 1,
+        "recall": 1,
+        "completeness": 1
+      }
+    }
+  },
+  {
+    "run_id": "latest",
+    "qid": "pub-005",
+    "question": "How many archery events were contested at the 2012 Summer Olympics?",
+    "qtype": "aggregation",
+    "ground_truth": [
+      "4"
+    ],
+    "gold_doc_ids": [
+      "Q3624078",
+      "Q3624081",
+      "Q3624085",
+      "Q3624090"
+    ],
+    "record": {
+      "query_id": "latest-pub-005",
+      "query_text": "How many archery events were contested at the 2012 Summer Olympics?",
+      "qtype": "aggregation",
+      "timestamp": "2026-09-21T11:00:00Z",
+      "pipelines": {
+        "rag": {
+          "pipeline": "rag",
+          "answer": "19",
+          "explanation": "The retrieved evidence did not cover the full scope required; the answer reflects only [Q3624078, Q1191846].",
+          "citations": [
+            {
+              "source_id": "Q3624078",
+              "chunk_id": "Q3624078::c03",
+              "ref_type": "chunk"
+            },
+            {
+              "source_id": "Q1191846",
+              "chunk_id": "Q1191846::c10",
+              "ref_type": "chunk"
+            }
+          ],
+          "chunks_returned": 10,
+          "citations_count": 2,
+          "tokens": {
+            "input": 2457,
+            "output": 245,
+            "total": 2702
+          },
+          "token_source": "provider",
+          "latency_ms": 1750,
+          "trace": null,
+          "strategy_changed": null,
+          "stop_reason": null,
+          "status": "done",
+          "error_detail": null
+        },
+        "graphrag": {
+          "pipeline": "graphrag",
+          "answer": "4",
+          "explanation": "Derived from 4 source documents [Q3624078, Q3624081, Q3624085, Q3624090].",
+          "citations": [
+            {
+              "source_id": "Q3624078",
+              "chunk_id": null,
+              "ref_type": "entity"
+            },
+            {
+              "source_id": "Q3624081",
+              "chunk_id": null,
+              "ref_type": "relationship"
+            },
+            {
+              "source_id": "Q3624085",
+              "chunk_id": null,
+              "ref_type": "entity"
+            },
+            {
+              "source_id": "Q3624090",
+              "chunk_id": null,
+              "ref_type": "entity"
+            }
+          ],
+          "chunks_returned": 0,
+          "citations_count": 4,
+          "tokens": {
+            "input": 977,
+            "output": 88,
+            "total": 1065
+          },
+          "token_source": "provider",
+          "latency_ms": 1041,
+          "trace": null,
+          "strategy_changed": null,
+          "stop_reason": null,
+          "status": "done",
+          "error_detail": null
+        },
+        "agentic_graphrag": {
+          "pipeline": "agentic_graphrag",
+          "answer": "4",
+          "explanation": "Derived from 4 source documents [Q3624078, Q3624081, Q3624085, Q3624090].",
+          "citations": [
+            {
+              "source_id": "Q3624078",
+              "chunk_id": null,
+              "ref_type": "entity"
+            },
+            {
+              "source_id": "Q3624081",
+              "chunk_id": null,
+              "ref_type": "entity"
+            },
+            {
+              "source_id": "Q3624085",
+              "chunk_id": null,
+              "ref_type": "entity"
+            },
+            {
+              "source_id": "Q3624090",
+              "chunk_id": null,
+              "ref_type": "entity"
+            }
+          ],
+          "chunks_returned": 1,
+          "citations_count": 4,
+          "tokens": {
+            "input": 5327,
+            "output": 393,
+            "total": 5720
+          },
+          "token_source": "provider",
+          "latency_ms": 3349,
+          "trace": [
+            {
+              "step_n": 1,
+              "agent_type": "entity_linking",
+              "tool_called": "intent_parser",
+              "tokens": {
+                "input": 1492,
+                "output": 110
+              },
+              "chunks_returned": 0,
+              "citations_count": 0,
+              "latency_ms": 2068,
+              "strategy_change": false,
+              "notes": "intent_parser invoked for entity linking"
+            },
+            {
+              "step_n": 2,
+              "agent_type": "aggregation",
+              "tool_called": "Q3 argmax",
+              "tokens": {
+                "input": 0,
+                "output": 0
+              },
+              "chunks_returned": 0,
+              "citations_count": 2,
+              "latency_ms": 160,
+              "strategy_change": false,
+              "notes": "Q3 argmax invoked for aggregation"
+            },
+            {
+              "step_n": 3,
+              "agent_type": "evidence_evaluation",
+              "tool_called": "evidence_evaluator",
+              "tokens": {
+                "input": 3835,
+                "output": 283
+              },
+              "chunks_returned": 0,
+              "citations_count": 6,
+              "latency_ms": 846,
+              "strategy_change": false,
+              "notes": "evidence_evaluator invoked for evidence evaluation"
+            }
+          ],
+          "strategy_changed": false,
+          "stop_reason": "evidence_sufficient",
+          "status": "done",
+          "error_detail": null
+        }
+      },
+      "verdict": {
+        "token_multiplier_vs_rag": 2.12,
+        "token_multiplier_vs_graphrag": 5.37,
+        "accuracy_delta_vs_rag": 1,
+        "accuracy_delta_vs_graphrag": 0,
+        "summary_line": "Agentic was correct where RAG was not, at 2.12x its tokens."
+      }
+    },
+    "scores": {
+      "rag": {
+        "em": 0,
+        "f1": 0.26,
+        "precision": 0.5,
+        "recall": 0.25,
+        "completeness": 0.25
+      },
+      "graphrag": {
+        "em": 1,
+        "f1": 1,
+        "precision": 1,
+        "recall": 1,
+        "completeness": 1
+      },
+      "agentic_graphrag": {
+        "em": 1,
+        "f1": 1,
+        "precision": 1,
+        "recall": 1,
+        "completeness": 1
+      }
+    }
+  },
+  {
+    "run_id": "latest",
+    "qid": "pub-006",
+    "question": "How many swimming events were held at the 2008 Summer Olympics?",
+    "qtype": "aggregation",
+    "ground_truth": [
+      "34"
+    ],
+    "gold_doc_ids": [
+      "Q1146294",
+      "Q1146301",
+      "Q1146318",
+      "Q1146322",
+      "Q1146340"
+    ],
+    "record": {
+      "query_id": "latest-pub-006",
+      "query_text": "How many swimming events were held at the 2008 Summer Olympics?",
+      "qtype": "aggregation",
+      "timestamp": "2026-09-21T11:00:00Z",
+      "pipelines": {
+        "rag": {
+          "pipeline": "rag",
+          "answer": "12",
+          "explanation": "The retrieved evidence did not cover the full scope required; the answer reflects only [Q1146294, Q1191846, Q2887145, Q8567].",
+          "citations": [
+            {
+              "source_id": "Q1146294",
+              "chunk_id": "Q1146294::c06",
+              "ref_type": "chunk"
+            },
+            {
+              "source_id": "Q1191846",
+              "chunk_id": "Q1191846::c06",
+              "ref_type": "chunk"
+            },
+            {
+              "source_id": "Q2887145",
+              "chunk_id": "Q2887145::c04",
+              "ref_type": "chunk"
+            },
+            {
+              "source_id": "Q8567",
+              "chunk_id": "Q8567::c01",
+              "ref_type": "chunk"
+            }
+          ],
+          "chunks_returned": 10,
+          "citations_count": 4,
+          "tokens": {
+            "input": 2208,
+            "output": 178,
+            "total": 2386
+          },
+          "token_source": "provider",
+          "latency_ms": 1775,
+          "trace": null,
+          "strategy_changed": null,
+          "stop_reason": null,
+          "status": "done",
+          "error_detail": null
+        },
+        "graphrag": {
+          "pipeline": "graphrag",
+          "answer": "34",
+          "explanation": "Derived from 5 source documents [Q1146294, Q1146301, Q1146318, Q1146322, Q1146340].",
+          "citations": [
+            {
+              "source_id": "Q1146294",
+              "chunk_id": null,
+              "ref_type": "relationship"
+            },
+            {
+              "source_id": "Q1146301",
+              "chunk_id": null,
+              "ref_type": "entity"
+            },
+            {
+              "source_id": "Q1146318",
+              "chunk_id": null,
+              "ref_type": "relationship"
+            },
+            {
+              "source_id": "Q1146322",
+              "chunk_id": null,
+              "ref_type": "relationship"
+            },
+            {
+              "source_id": "Q1146340",
+              "chunk_id": null,
+              "ref_type": "entity"
+            }
+          ],
+          "chunks_returned": 0,
+          "citations_count": 5,
+          "tokens": {
+            "input": 830,
+            "output": 77,
+            "total": 907
+          },
+          "token_source": "provider",
+          "latency_ms": 1298,
+          "trace": null,
+          "strategy_changed": null,
+          "stop_reason": null,
+          "status": "done",
+          "error_detail": null
+        },
+        "agentic_graphrag": {
+          "pipeline": "agentic_graphrag",
+          "answer": "34",
+          "explanation": "Derived from 5 source documents [Q1146294, Q1146301, Q1146318, Q1146322, Q1146340].",
+          "citations": [
+            {
+              "source_id": "Q1146294",
+              "chunk_id": null,
+              "ref_type": "entity"
+            },
+            {
+              "source_id": "Q1146301",
+              "chunk_id": null,
+              "ref_type": "entity"
+            },
+            {
+              "source_id": "Q1146318",
+              "chunk_id": null,
+              "ref_type": "entity"
+            },
+            {
+              "source_id": "Q1146322",
+              "chunk_id": null,
+              "ref_type": "entity"
+            },
+            {
+              "source_id": "Q1146340",
+              "chunk_id": null,
+              "ref_type": "relationship"
+            }
+          ],
+          "chunks_returned": 3,
+          "citations_count": 5,
+          "tokens": {
+            "input": 5418,
+            "output": 403,
+            "total": 5821
+          },
+          "token_source": "provider",
+          "latency_ms": 3357,
+          "trace": [
+            {
+              "step_n": 1,
+              "agent_type": "entity_linking",
+              "tool_called": "intent_parser",
+              "tokens": {
+                "input": 1517,
+                "output": 113
+              },
+              "chunks_returned": 0,
+              "citations_count": 0,
+              "latency_ms": 2265,
+              "strategy_change": false,
+              "notes": "intent_parser invoked for entity linking"
+            },
+            {
+              "step_n": 2,
+              "agent_type": "aggregation",
+              "tool_called": "Q3 argmax",
+              "tokens": {
+                "input": 0,
+                "output": 0
+              },
+              "chunks_returned": 0,
+              "citations_count": 6,
+              "latency_ms": 137,
+              "strategy_change": false,
+              "notes": "Q3 argmax invoked for aggregation"
+            },
+            {
+              "step_n": 3,
+              "agent_type": "evidence_evaluation",
+              "tool_called": "evidence_evaluator",
+              "tokens": {
+                "input": 3901,
+                "output": 290
+              },
+              "chunks_returned": 0,
+              "citations_count": 6,
+              "latency_ms": 691,
+              "strategy_change": false,
+              "notes": "evidence_evaluator invoked for evidence evaluation"
+            }
+          ],
+          "strategy_changed": false,
+          "stop_reason": "evidence_sufficient",
+          "status": "done",
+          "error_detail": null
+        }
+      },
+      "verdict": {
+        "token_multiplier_vs_rag": 2.44,
+        "token_multiplier_vs_graphrag": 6.42,
+        "accuracy_delta_vs_rag": 1,
+        "accuracy_delta_vs_graphrag": 0,
+        "summary_line": "Agentic was correct where RAG was not, at 2.44x its tokens."
+      }
+    },
+    "scores": {
+      "rag": {
+        "em": 0,
+        "f1": 0.44,
+        "precision": 0.25,
+        "recall": 0.2,
+        "completeness": 0.2
+      },
+      "graphrag": {
+        "em": 1,
+        "f1": 1,
+        "precision": 1,
+        "recall": 1,
+        "completeness": 1
+      },
+      "agentic_graphrag": {
+        "em": 1,
+        "f1": 1,
+        "precision": 1,
+        "recall": 1,
+        "completeness": 1
+      }
+    }
+  },
+  {
+    "run_id": "latest",
+    "qid": "pub-007",
+    "question": "How many athletics events at the 2016 Summer Olympics had more than 60 competitors?",
+    "qtype": "aggregation",
+    "ground_truth": [
+      "11"
+    ],
+    "gold_doc_ids": [
+      "Q20026519",
+      "Q20026533",
+      "Q20026541",
+      "Q20026558"
+    ],
+    "record": {
+      "query_id": "latest-pub-007",
+      "query_text": "How many athletics events at the 2016 Summer Olympics had more than 60 competitors?",
+      "qtype": "aggregation",
+      "timestamp": "2026-09-21T11:00:00Z",
+      "pipelines": {
+        "rag": {
+          "pipeline": "rag",
+          "answer": "11",
+          "explanation": "Derived from 4 source documents [Q20026519, Q20026533, Q20026541, Q20026558].",
+          "citations": [
+            {
+              "source_id": "Q20026519",
+              "chunk_id": "Q20026519::c07",
+              "ref_type": "chunk"
+            },
+            {
+              "source_id": "Q20026533",
+              "chunk_id": "Q20026533::c12",
+              "ref_type": "chunk"
+            },
+            {
+              "source_id": "Q20026541",
+              "chunk_id": "Q20026541::c10",
+              "ref_type": "chunk"
+            },
+            {
+              "source_id": "Q20026558",
+              "chunk_id": "Q20026558::c07",
+              "ref_type": "chunk"
+            }
+          ],
+          "chunks_returned": 10,
+          "citations_count": 4,
+          "tokens": {
+            "input": 2298,
+            "output": 211,
+            "total": 2509
+          },
+          "token_source": "provider",
+          "latency_ms": 1971,
+          "trace": null,
+          "strategy_changed": null,
+          "stop_reason": null,
+          "status": "done",
+          "error_detail": null
+        },
+        "graphrag": {
+          "pipeline": "graphrag",
+          "answer": "19",
+          "explanation": "The retrieved evidence did not cover the full scope required; the answer reflects only [Q20026519, Q1191846, Q2887145, Q8567, Q20026519, Q1191846].",
+          "citations": [
+            {
+              "source_id": "Q20026519",
+              "chunk_id": null,
+              "ref_type": "entity"
+            },
+            {
+              "source_id": "Q1191846",
+              "chunk_id": null,
+              "ref_type": "entity"
+            },
+            {
+              "source_id": "Q2887145",
+              "chunk_id": null,
+              "ref_type": "entity"
+            },
+            {
+              "source_id": "Q8567",
+              "chunk_id": null,
+              "ref_type": "entity"
+            },
+            {
+              "source_id": "Q20026519",
+              "chunk_id": null,
+              "ref_type": "entity"
+            },
+            {
+              "source_id": "Q1191846",
+              "chunk_id": null,
+              "ref_type": "entity"
+            }
+          ],
+          "chunks_returned": 0,
+          "citations_count": 6,
+          "tokens": {
+            "input": 1001,
+            "output": 93,
+            "total": 1094
+          },
+          "token_source": "provider",
+          "latency_ms": 1262,
+          "trace": null,
+          "strategy_changed": null,
+          "stop_reason": null,
+          "status": "done",
+          "error_detail": null
+        },
+        "agentic_graphrag": {
+          "pipeline": "agentic_graphrag",
+          "answer": "11",
+          "explanation": "Derived from 4 source documents [Q20026519, Q20026533, Q20026541, Q20026558].",
+          "citations": [
+            {
+              "source_id": "Q20026519",
+              "chunk_id": null,
+              "ref_type": "relationship"
+            },
+            {
+              "source_id": "Q20026533",
+              "chunk_id": null,
+              "ref_type": "relationship"
+            },
+            {
+              "source_id": "Q20026541",
+              "chunk_id": null,
+              "ref_type": "relationship"
+            },
+            {
+              "source_id": "Q20026558",
+              "chunk_id": null,
+              "ref_type": "entity"
+            }
+          ],
+          "chunks_returned": 4,
+          "citations_count": 4,
+          "tokens": {
+            "input": 4989,
+            "output": 508,
+            "total": 5497
+          },
+          "token_source": "provider",
+          "latency_ms": 4365,
+          "trace": [
+            {
+              "step_n": 1,
+              "agent_type": "entity_linking",
+              "tool_called": "intent_parser",
+              "tokens": {
+                "input": 1397,
+                "output": 142
+              },
+              "chunks_returned": 0,
+              "citations_count": 0,
+              "latency_ms": 2005,
+              "strategy_change": false,
+              "notes": "intent_parser invoked for entity linking"
+            },
+            {
+              "step_n": 2,
+              "agent_type": "aggregation",
+              "tool_called": "Q3 argmax",
+              "tokens": {
+                "input": 0,
+                "output": 0
+              },
+              "chunks_returned": 0,
+              "citations_count": 2,
+              "latency_ms": 300,
+              "strategy_change": false,
+              "notes": "Q3 argmax invoked for aggregation"
+            },
+            {
+              "step_n": 3,
+              "agent_type": "evidence_evaluation",
+              "tool_called": "evidence_evaluator",
+              "tokens": {
+                "input": 3592,
+                "output": 366
+              },
+              "chunks_returned": 0,
+              "citations_count": 7,
+              "latency_ms": 1675,
+              "strategy_change": false,
+              "notes": "evidence_evaluator invoked for evidence evaluation"
+            }
+          ],
+          "strategy_changed": false,
+          "stop_reason": "evidence_sufficient",
+          "status": "done",
+          "error_detail": null
+        }
+      },
+      "verdict": {
+        "token_multiplier_vs_rag": 2.19,
+        "token_multiplier_vs_graphrag": 5.02,
+        "accuracy_delta_vs_rag": 0,
+        "accuracy_delta_vs_graphrag": 1,
+        "summary_line": "No accuracy gain over RAG for 2.19x the tokens."
+      }
+    },
+    "scores": {
+      "rag": {
+        "em": 1,
+        "f1": 1,
+        "precision": 1,
+        "recall": 1,
+        "completeness": 1
+      },
+      "graphrag": {
+        "em": 0,
+        "f1": 0.05,
+        "precision": 0.25,
+        "recall": 0.25,
+        "completeness": 0.25
+      },
+      "agentic_graphrag": {
+        "em": 1,
+        "f1": 1,
+        "precision": 1,
+        "recall": 1,
+        "completeness": 1
+      }
+    }
+  },
+  {
+    "run_id": "latest",
+    "qid": "pub-008",
+    "question": "How many nations competed in the equestrian events at the 1996 Summer Olympics?",
+    "qtype": "aggregation",
+    "ground_truth": [
+      "41"
+    ],
+    "gold_doc_ids": [
+      "Q2887145",
+      "Q2887150",
+      "Q2887161"
+    ],
+    "record": {
+      "query_id": "latest-pub-008",
+      "query_text": "How many nations competed in the equestrian events at the 1996 Summer Olympics?",
+      "qtype": "aggregation",
+      "timestamp": "2026-09-21T11:00:00Z",
+      "pipelines": {
+        "rag": {
+          "pipeline": "rag",
+          "answer": "41",
+          "explanation": "Derived from 3 source documents [Q2887145, Q2887150, Q2887161].",
+          "citations": [
+            {
+              "source_id": "Q2887145",
+              "chunk_id": "Q2887145::c06",
+              "ref_type": "chunk"
+            },
+            {
+              "source_id": "Q2887150",
+              "chunk_id": "Q2887150::c01",
+              "ref_type": "chunk"
+            },
+            {
+              "source_id": "Q2887161",
+              "chunk_id": "Q2887161::c01",
+              "ref_type": "chunk"
+            }
+          ],
+          "chunks_returned": 10,
+          "citations_count": 3,
+          "tokens": {
+            "input": 2581,
+            "output": 227,
+            "total": 2808
+          },
+          "token_source": "provider",
+          "latency_ms": 1635,
+          "trace": null,
+          "strategy_changed": null,
+          "stop_reason": null,
+          "status": "done",
+          "error_detail": null
+        },
+        "graphrag": {
+          "pipeline": "graphrag",
+          "answer": "41",
+          "explanation": "Derived from 3 source documents [Q2887145, Q2887150, Q2887161].",
+          "citations": [
+            {
+              "source_id": "Q2887145",
+              "chunk_id": null,
+              "ref_type": "entity"
+            },
+            {
+              "source_id": "Q2887150",
+              "chunk_id": null,
+              "ref_type": "entity"
+            },
+            {
+              "source_id": "Q2887161",
+              "chunk_id": null,
+              "ref_type": "entity"
+            }
+          ],
+          "chunks_returned": 0,
+          "citations_count": 3,
+          "tokens": {
+            "input": 946,
+            "output": 69,
+            "total": 1015
+          },
+          "token_source": "provider",
+          "latency_ms": 1086,
+          "trace": null,
+          "strategy_changed": null,
+          "stop_reason": null,
+          "status": "done",
+          "error_detail": null
+        },
+        "agentic_graphrag": {
+          "pipeline": "agentic_graphrag",
+          "answer": "41",
+          "explanation": "Derived from 3 source documents [Q2887145, Q2887150, Q2887161].",
+          "citations": [
+            {
+              "source_id": "Q2887145",
+              "chunk_id": null,
+              "ref_type": "relationship"
+            },
+            {
+              "source_id": "Q2887150",
+              "chunk_id": null,
+              "ref_type": "entity"
+            },
+            {
+              "source_id": "Q2887161",
+              "chunk_id": null,
+              "ref_type": "entity"
+            }
+          ],
+          "chunks_returned": 3,
+          "citations_count": 3,
+          "tokens": {
+            "input": 4135,
+            "output": 396,
+            "total": 4531
+          },
+          "token_source": "provider",
+          "latency_ms": 4262,
+          "trace": [
+            {
+              "step_n": 1,
+              "agent_type": "entity_linking",
+              "tool_called": "intent_parser",
+              "tokens": {
+                "input": 1158,
+                "output": 111
+              },
+              "chunks_returned": 0,
+              "citations_count": 0,
+              "latency_ms": 1816,
+              "strategy_change": false,
+              "notes": "intent_parser invoked for entity linking"
+            },
+            {
+              "step_n": 2,
+              "agent_type": "aggregation",
+              "tool_called": "Q3 argmax",
+              "tokens": {
+                "input": 0,
+                "output": 0
+              },
+              "chunks_returned": 0,
+              "citations_count": 8,
+              "latency_ms": 121,
+              "strategy_change": false,
+              "notes": "Q3 argmax invoked for aggregation"
+            },
+            {
+              "step_n": 3,
+              "agent_type": "evidence_evaluation",
+              "tool_called": "evidence_evaluator",
+              "tokens": {
+                "input": 2977,
+                "output": 285
+              },
+              "chunks_returned": 0,
+              "citations_count": 4,
+              "latency_ms": 2133,
+              "strategy_change": false,
+              "notes": "evidence_evaluator invoked for evidence evaluation"
+            }
+          ],
+          "strategy_changed": false,
+          "stop_reason": "evidence_sufficient",
+          "status": "done",
+          "error_detail": null
+        }
+      },
+      "verdict": {
+        "token_multiplier_vs_rag": 1.61,
+        "token_multiplier_vs_graphrag": 4.46,
+        "accuracy_delta_vs_rag": 0,
+        "accuracy_delta_vs_graphrag": 0,
+        "summary_line": "No accuracy gain over RAG for 1.61x the tokens."
+      }
+    },
+    "scores": {
+      "rag": {
+        "em": 1,
+        "f1": 1,
+        "precision": 1,
+        "recall": 1,
+        "completeness": 1
+      },
+      "graphrag": {
+        "em": 1,
+        "f1": 1,
+        "precision": 1,
+        "recall": 1,
+        "completeness": 1
+      },
+      "agentic_graphrag": {
+        "em": 1,
+        "f1": 1,
+        "precision": 1,
+        "recall": 1,
+        "completeness": 1
+      }
+    }
+  },
+  {
+    "run_id": "latest",
+    "qid": "pub-009",
+    "question": "Which athletics event at the 2012 Summer Olympics had the most competitors?",
+    "qtype": "superlative",
+    "ground_truth": [
+      "Men’s marathon"
+    ],
+    "gold_doc_ids": [
+      "Q3303188"
+    ],
+    "record": {
+      "query_id": "latest-pub-009",
+      "query_text": "Which athletics event at the 2012 Summer Olympics had the most competitors?",
+      "qtype": "superlative",
+      "timestamp": "2026-09-21T11:00:00Z",
+      "pipelines": {
+        "rag": {
+          "pipeline": "rag",
+          "answer": "Men’s 100 metres",
+          "explanation": "The retrieved evidence did not cover the full scope required; the answer reflects only [Q3303188, Q1191846].",
+          "citations": [
+            {
+              "source_id": "Q3303188",
+              "chunk_id": "Q3303188::c03",
+              "ref_type": "chunk"
+            },
+            {
+              "source_id": "Q1191846",
+              "chunk_id": "Q1191846::c12",
+              "ref_type": "chunk"
+            }
+          ],
+          "chunks_returned": 10,
+          "citations_count": 2,
+          "tokens": {
+            "input": 2188,
+            "output": 151,
+            "total": 2339
+          },
+          "token_source": "provider",
+          "latency_ms": 2068,
+          "trace": null,
+          "strategy_changed": null,
+          "stop_reason": null,
+          "status": "done",
+          "error_detail": null
+        },
+        "graphrag": {
+          "pipeline": "graphrag",
+          "answer": "Men’s marathon",
+          "explanation": "Derived from 1 source document [Q3303188].",
+          "citations": [
+            {
+              "source_id": "Q3303188",
+              "chunk_id": null,
+              "ref_type": "entity"
+            }
+          ],
+          "chunks_returned": 0,
+          "citations_count": 1,
+          "tokens": {
+            "input": 810,
+            "output": 56,
+            "total": 866
+          },
+          "token_source": "provider",
+          "latency_ms": 1226,
+          "trace": null,
+          "strategy_changed": null,
+          "stop_reason": null,
+          "status": "done",
+          "error_detail": null
+        },
+        "agentic_graphrag": {
+          "pipeline": "agentic_graphrag",
+          "answer": "Men’s marathon",
+          "explanation": "Derived from 1 source document [Q3303188].",
+          "citations": [
+            {
+              "source_id": "Q3303188",
+              "chunk_id": null,
+              "ref_type": "entity"
+            }
+          ],
+          "chunks_returned": 2,
+          "citations_count": 1,
+          "tokens": {
+            "input": 5131,
+            "output": 328,
+            "total": 5459
+          },
+          "token_source": "provider",
+          "latency_ms": 2148,
+          "trace": [
+            {
+              "step_n": 1,
+              "agent_type": "entity_linking",
+              "tool_called": "intent_parser",
+              "tokens": {
+                "input": 1437,
+                "output": 92
+              },
+              "chunks_returned": 0,
+              "citations_count": 0,
+              "latency_ms": 733,
+              "strategy_change": false,
+              "notes": "intent_parser invoked for entity linking"
+            },
+            {
+              "step_n": 2,
+              "agent_type": "aggregation",
+              "tool_called": "Q3 argmax",
+              "tokens": {
+                "input": 0,
+                "output": 0
+              },
+              "chunks_returned": 0,
+              "citations_count": 7,
+              "latency_ms": 301,
+              "strategy_change": false,
+              "notes": "Q3 argmax invoked for aggregation"
+            },
+            {
+              "step_n": 3,
+              "agent_type": "evidence_evaluation",
+              "tool_called": "evidence_evaluator",
+              "tokens": {
+                "input": 3694,
+                "output": 236
+              },
+              "chunks_returned": 0,
+              "citations_count": 8,
+              "latency_ms": 846,
+              "strategy_change": false,
+              "notes": "evidence_evaluator invoked for evidence evaluation"
+            }
+          ],
+          "strategy_changed": false,
+          "stop_reason": "evidence_sufficient",
+          "status": "done",
+          "error_detail": null
+        }
+      },
+      "verdict": {
+        "token_multiplier_vs_rag": 2.33,
+        "token_multiplier_vs_graphrag": 6.3,
+        "accuracy_delta_vs_rag": 1,
+        "accuracy_delta_vs_graphrag": 0,
+        "summary_line": "Agentic was correct where RAG was not, at 2.33x its tokens."
+      }
+    },
+    "scores": {
+      "rag": {
+        "em": 0,
+        "f1": 0,
+        "precision": 0.5,
+        "recall": 1,
+        "completeness": 1
+      },
+      "graphrag": {
+        "em": 1,
+        "f1": 1,
+        "precision": 1,
+        "recall": 1,
+        "completeness": 1
+      },
+      "agentic_graphrag": {
+        "em": 1,
+        "f1": 1,
+        "precision": 1,
+        "recall": 1,
+        "completeness": 1
+      }
+    }
+  },
+  {
+    "run_id": "latest",
+    "qid": "pub-010",
+    "question": "Which venue hosted the most events at the 2000 Summer Olympics?",
+    "qtype": "superlative",
+    "ground_truth": [
+      "Sydney Olympic Park"
+    ],
+    "gold_doc_ids": [
+      "Q1191846",
+      "Q1191850"
+    ],
+    "record": {
+      "query_id": "latest-pub-010",
+      "query_text": "Which venue hosted the most events at the 2000 Summer Olympics?",
+      "qtype": "superlative",
+      "timestamp": "2026-09-21T11:00:00Z",
+      "pipelines": {
+        "rag": {
+          "pipeline": "rag",
+          "answer": "Olympic Stadium",
+          "explanation": "The retrieved evidence did not cover the full scope required; the answer reflects only [Q1191846, Q1191846, Q2887145, Q8567].",
+          "citations": [
+            {
+              "source_id": "Q1191846",
+              "chunk_id": "Q1191846::c05",
+              "ref_type": "chunk"
+            },
+            {
+              "source_id": "Q1191846",
+              "chunk_id": "Q1191846::c01",
+              "ref_type": "chunk"
+            },
+            {
+              "source_id": "Q2887145",
+              "chunk_id": "Q2887145::c11",
+              "ref_type": "chunk"
+            },
+            {
+              "source_id": "Q8567",
+              "chunk_id": "Q8567::c12",
+              "ref_type": "chunk"
+            }
+          ],
+          "chunks_returned": 10,
+          "citations_count": 4,
+          "tokens": {
+            "input": 2074,
+            "output": 131,
+            "total": 2205
+          },
+          "token_source": "provider",
+          "latency_ms": 1982,
+          "trace": null,
+          "strategy_changed": null,
+          "stop_reason": null,
+          "status": "done",
+          "error_detail": null
+        },
+        "graphrag": {
+          "pipeline": "graphrag",
+          "answer": "Sydney Olympic Park",
+          "explanation": "Derived from 2 source documents [Q1191846, Q1191850].",
+          "citations": [
+            {
+              "source_id": "Q1191846",
+              "chunk_id": null,
+              "ref_type": "entity"
+            },
+            {
+              "source_id": "Q1191850",
+              "chunk_id": null,
+              "ref_type": "relationship"
+            }
+          ],
+          "chunks_returned": 0,
+          "citations_count": 2,
+          "tokens": {
+            "input": 873,
+            "output": 91,
+            "total": 964
+          },
+          "token_source": "provider",
+          "latency_ms": 1000,
+          "trace": null,
+          "strategy_changed": null,
+          "stop_reason": null,
+          "status": "done",
+          "error_detail": null
+        },
+        "agentic_graphrag": {
+          "pipeline": "agentic_graphrag",
+          "answer": "Sydney Olympic Park",
+          "explanation": "Derived from 2 source documents [Q1191846, Q1191850].",
+          "citations": [
+            {
+              "source_id": "Q1191846",
+              "chunk_id": null,
+              "ref_type": "entity"
+            },
+            {
+              "source_id": "Q1191850",
+              "chunk_id": null,
+              "ref_type": "entity"
+            }
+          ],
+          "chunks_returned": 5,
+          "citations_count": 2,
+          "tokens": {
+            "input": 3922,
+            "output": 325,
+            "total": 4247
+          },
+          "token_source": "provider",
+          "latency_ms": 2911,
+          "trace": [
+            {
+              "step_n": 1,
+              "agent_type": "entity_linking",
+              "tool_called": "intent_parser",
+              "tokens": {
+                "input": 1098,
+                "output": 91
+              },
+              "chunks_returned": 0,
+              "citations_count": 0,
+              "latency_ms": 1820,
+              "strategy_change": false,
+              "notes": "intent_parser invoked for entity linking"
+            },
+            {
+              "step_n": 2,
+              "agent_type": "aggregation",
+              "tool_called": "Q3 argmax",
+              "tokens": {
+                "input": 0,
+                "output": 0
+              },
+              "chunks_returned": 0,
+              "citations_count": 3,
+              "latency_ms": 235,
+              "strategy_change": false,
+              "notes": "Q3 argmax invoked for aggregation"
+            },
+            {
+              "step_n": 3,
+              "agent_type": "evidence_evaluation",
+              "tool_called": "evidence_evaluator",
+              "tokens": {
+                "input": 2824,
+                "output": 234
+              },
+              "chunks_returned": 0,
+              "citations_count": 3,
+              "latency_ms": 678,
+              "strategy_change": false,
+              "notes": "evidence_evaluator invoked for evidence evaluation"
+            }
+          ],
+          "strategy_changed": false,
+          "stop_reason": "evidence_sufficient",
+          "status": "done",
+          "error_detail": null
+        }
+      },
+      "verdict": {
+        "token_multiplier_vs_rag": 1.93,
+        "token_multiplier_vs_graphrag": 4.41,
+        "accuracy_delta_vs_rag": 1,
+        "accuracy_delta_vs_graphrag": 0,
+        "summary_line": "Agentic was correct where RAG was not, at 1.93x its tokens."
+      }
+    },
+    "scores": {
+      "rag": {
+        "em": 0,
+        "f1": 0.11,
+        "precision": 0.33,
+        "recall": 0.5,
+        "completeness": 0.5
+      },
+      "graphrag": {
+        "em": 1,
+        "f1": 1,
+        "precision": 1,
+        "recall": 1,
+        "completeness": 1
+      },
+      "agentic_graphrag": {
+        "em": 1,
+        "f1": 1,
+        "precision": 1,
+        "recall": 1,
+        "completeness": 1
+      }
+    }
+  },
+  {
+    "run_id": "latest",
+    "qid": "pub-011",
+    "question": "Which sport contributed the largest number of events at the 2020 Summer Olympics?",
+    "qtype": "superlative",
+    "ground_truth": [
+      "Athletics"
+    ],
+    "gold_doc_ids": [
+      "Q60738312",
+      "Q60738330",
+      "Q60738344"
+    ],
+    "record": {
+      "query_id": "latest-pub-011",
+      "query_text": "Which sport contributed the largest number of events at the 2020 Summer Olympics?",
+      "qtype": "superlative",
+      "timestamp": "2026-09-21T11:00:00Z",
+      "pipelines": {
+        "rag": {
+          "pipeline": "rag",
+          "answer": "Men’s 100 metres",
+          "explanation": "The retrieved evidence did not cover the full scope required; the answer reflects only [Q60738312, Q1191846].",
+          "citations": [
+            {
+              "source_id": "Q60738312",
+              "chunk_id": "Q60738312::c01",
+              "ref_type": "chunk"
+            },
+            {
+              "source_id": "Q1191846",
+              "chunk_id": "Q1191846::c05",
+              "ref_type": "chunk"
+            }
+          ],
+          "chunks_returned": 10,
+          "citations_count": 2,
+          "tokens": {
+            "input": 2608,
+            "output": 150,
+            "total": 2758
+          },
+          "token_source": "provider",
+          "latency_ms": 2094,
+          "trace": null,
+          "strategy_changed": null,
+          "stop_reason": null,
+          "status": "done",
+          "error_detail": null
+        },
+        "graphrag": {
+          "pipeline": "graphrag",
+          "answer": "Athletics",
+          "explanation": "Derived from 3 source documents [Q60738312, Q60738330, Q60738344].",
+          "citations": [
+            {
+              "source_id": "Q60738312",
+              "chunk_id": null,
+              "ref_type": "entity"
+            },
+            {
+              "source_id": "Q60738330",
+              "chunk_id": null,
+              "ref_type": "relationship"
+            },
+            {
+              "source_id": "Q60738344",
+              "chunk_id": null,
+              "ref_type": "relationship"
+            }
+          ],
+          "chunks_returned": 0,
+          "citations_count": 3,
+          "tokens": {
+            "input": 901,
+            "output": 87,
+            "total": 988
+          },
+          "token_source": "provider",
+          "latency_ms": 1017,
+          "trace": null,
+          "strategy_changed": null,
+          "stop_reason": null,
+          "status": "done",
+          "error_detail": null
+        },
+        "agentic_graphrag": {
+          "pipeline": "agentic_graphrag",
+          "answer": "Athletics",
+          "explanation": "Derived from 3 source documents [Q60738312, Q60738330, Q60738344].",
+          "citations": [
+            {
+              "source_id": "Q60738312",
+              "chunk_id": null,
+              "ref_type": "relationship"
+            },
+            {
+              "source_id": "Q60738330",
+              "chunk_id": null,
+              "ref_type": "entity"
+            },
+            {
+              "source_id": "Q60738344",
+              "chunk_id": null,
+              "ref_type": "entity"
+            }
+          ],
+          "chunks_returned": 3,
+          "citations_count": 3,
+          "tokens": {
+            "input": 3948,
+            "output": 234,
+            "total": 4182
+          },
+          "token_source": "provider",
+          "latency_ms": 4692,
+          "trace": [
+            {
+              "step_n": 1,
+              "agent_type": "entity_linking",
+              "tool_called": "intent_parser",
+              "tokens": {
+                "input": 1105,
+                "output": 66
+              },
+              "chunks_returned": 0,
+              "citations_count": 0,
+              "latency_ms": 1952,
+              "strategy_change": false,
+              "notes": "intent_parser invoked for entity linking"
+            },
+            {
+              "step_n": 2,
+              "agent_type": "aggregation",
+              "tool_called": "Q3 argmax",
+              "tokens": {
+                "input": 0,
+                "output": 0
+              },
+              "chunks_returned": 0,
+              "citations_count": 4,
+              "latency_ms": 246,
+              "strategy_change": false,
+              "notes": "Q3 argmax invoked for aggregation"
+            },
+            {
+              "step_n": 3,
+              "agent_type": "evidence_evaluation",
+              "tool_called": "evidence_evaluator",
+              "tokens": {
+                "input": 2843,
+                "output": 168
+              },
+              "chunks_returned": 0,
+              "citations_count": 6,
+              "latency_ms": 2123,
+              "strategy_change": false,
+              "notes": "evidence_evaluator invoked for evidence evaluation"
+            }
+          ],
+          "strategy_changed": false,
+          "stop_reason": "evidence_sufficient",
+          "status": "done",
+          "error_detail": null
+        }
+      },
+      "verdict": {
+        "token_multiplier_vs_rag": 1.52,
+        "token_multiplier_vs_graphrag": 4.23,
+        "accuracy_delta_vs_rag": 1,
+        "accuracy_delta_vs_graphrag": 0,
+        "summary_line": "Agentic was correct where RAG was not, at 1.52x its tokens."
+      }
+    },
+    "scores": {
+      "rag": {
+        "em": 0,
+        "f1": 0.4,
+        "precision": 0.5,
+        "recall": 0.33,
+        "completeness": 0.33
+      },
+      "graphrag": {
+        "em": 1,
+        "f1": 1,
+        "precision": 1,
+        "recall": 1,
+        "completeness": 1
+      },
+      "agentic_graphrag": {
+        "em": 1,
+        "f1": 1,
+        "precision": 1,
+        "recall": 1,
+        "completeness": 1
+      }
+    }
+  },
+  {
+    "run_id": "latest",
+    "qid": "pub-012",
+    "question": "Which nation won the most gold medals in gymnastics at the 2008 Summer Olympics?",
+    "qtype": "superlative",
+    "ground_truth": [
+      "China"
+    ],
+    "gold_doc_ids": [
+      "Q1146357",
+      "Q1146366"
+    ],
+    "record": {
+      "query_id": "latest-pub-012",
+      "query_text": "Which nation won the most gold medals in gymnastics at the 2008 Summer Olympics?",
+      "qtype": "superlative",
+      "timestamp": "2026-09-21T11:00:00Z",
+      "pipelines": {
+        "rag": {
+          "pipeline": "rag",
+          "answer": "Olympic Stadium",
+          "explanation": "The retrieved evidence did not cover the full scope required; the answer reflects only [Q1146357, Q1191846, Q2887145, Q8567].",
+          "citations": [
+            {
+              "source_id": "Q1146357",
+              "chunk_id": "Q1146357::c10",
+              "ref_type": "chunk"
+            },
+            {
+              "source_id": "Q1191846",
+              "chunk_id": "Q1191846::c04",
+              "ref_type": "chunk"
+            },
+            {
+              "source_id": "Q2887145",
+              "chunk_id": "Q2887145::c01",
+              "ref_type": "chunk"
+            },
+            {
+              "source_id": "Q8567",
+              "chunk_id": "Q8567::c00",
+              "ref_type": "chunk"
+            }
+          ],
+          "chunks_returned": 10,
+          "citations_count": 4,
+          "tokens": {
+            "input": 2515,
+            "output": 238,
+            "total": 2753
+          },
+          "token_source": "provider",
+          "latency_ms": 1912,
+          "trace": null,
+          "strategy_changed": null,
+          "stop_reason": null,
+          "status": "done",
+          "error_detail": null
+        },
+        "graphrag": {
+          "pipeline": "graphrag",
+          "answer": "China",
+          "explanation": "Derived from 2 source documents [Q1146357, Q1146366].",
+          "citations": [
+            {
+              "source_id": "Q1146357",
+              "chunk_id": null,
+              "ref_type": "entity"
+            },
+            {
+              "source_id": "Q1146366",
+              "chunk_id": null,
+              "ref_type": "entity"
+            }
+          ],
+          "chunks_returned": 0,
+          "citations_count": 2,
+          "tokens": {
+            "input": 997,
+            "output": 63,
+            "total": 1060
+          },
+          "token_source": "provider",
+          "latency_ms": 872,
+          "trace": null,
+          "strategy_changed": null,
+          "stop_reason": null,
+          "status": "done",
+          "error_detail": null
+        },
+        "agentic_graphrag": {
+          "pipeline": "agentic_graphrag",
+          "answer": "China",
+          "explanation": "Derived from 2 source documents [Q1146357, Q1146366].",
+          "citations": [
+            {
+              "source_id": "Q1146357",
+              "chunk_id": null,
+              "ref_type": "relationship"
+            },
+            {
+              "source_id": "Q1146366",
+              "chunk_id": null,
+              "ref_type": "entity"
+            }
+          ],
+          "chunks_returned": 6,
+          "citations_count": 2,
+          "tokens": {
+            "input": 5357,
+            "output": 405,
+            "total": 5762
+          },
+          "token_source": "provider",
+          "latency_ms": 3199,
+          "trace": [
+            {
+              "step_n": 1,
+              "agent_type": "entity_linking",
+              "tool_called": "intent_parser",
+              "tokens": {
+                "input": 1500,
+                "output": 113
+              },
+              "chunks_returned": 0,
+              "citations_count": 0,
+              "latency_ms": 1733,
+              "strategy_change": false,
+              "notes": "intent_parser invoked for entity linking"
+            },
+            {
+              "step_n": 2,
+              "agent_type": "aggregation",
+              "tool_called": "Q3 argmax",
+              "tokens": {
+                "input": 0,
+                "output": 0
+              },
+              "chunks_returned": 0,
+              "citations_count": 4,
+              "latency_ms": 309,
+              "strategy_change": false,
+              "notes": "Q3 argmax invoked for aggregation"
+            },
+            {
+              "step_n": 3,
+              "agent_type": "evidence_evaluation",
+              "tool_called": "evidence_evaluator",
+              "tokens": {
+                "input": 3857,
+                "output": 292
+              },
+              "chunks_returned": 0,
+              "citations_count": 8,
+              "latency_ms": 935,
+              "strategy_change": false,
+              "notes": "evidence_evaluator invoked for evidence evaluation"
+            }
+          ],
+          "strategy_changed": false,
+          "stop_reason": "evidence_sufficient",
+          "status": "done",
+          "error_detail": null
+        }
+      },
+      "verdict": {
+        "token_multiplier_vs_rag": 2.09,
+        "token_multiplier_vs_graphrag": 5.44,
+        "accuracy_delta_vs_rag": 1,
+        "accuracy_delta_vs_graphrag": 0,
+        "summary_line": "Agentic was correct where RAG was not, at 2.09x its tokens."
+      }
+    },
+    "scores": {
+      "rag": {
+        "em": 0,
+        "f1": 0.29,
+        "precision": 0.25,
+        "recall": 0.5,
+        "completeness": 0.5
+      },
+      "graphrag": {
+        "em": 1,
+        "f1": 1,
+        "precision": 1,
+        "recall": 1,
+        "completeness": 1
+      },
+      "agentic_graphrag": {
+        "em": 1,
+        "f1": 1,
+        "precision": 1,
+        "recall": 1,
+        "completeness": 1
+      }
+    }
+  },
+  {
+    "run_id": "latest",
+    "qid": "pub-013",
+    "question": "Which nation won the most gold medals in athletics at the Games immediately before the 2012 Summer Olympics?",
+    "qtype": "multi_hop",
+    "ground_truth": [
+      "United States"
+    ],
+    "gold_doc_ids": [
+      "Q8567",
+      "Q1146294",
+      "Q1146301"
+    ],
+    "record": {
+      "query_id": "latest-pub-013",
+      "query_text": "Which nation won the most gold medals in athletics at the Games immediately before the 2012 Summer Olympics?",
+      "qtype": "multi_hop",
+      "timestamp": "2026-09-21T11:00:00Z",
+      "pipelines": {
+        "rag": {
+          "pipeline": "rag",
+          "answer": "China",
+          "explanation": "The retrieved evidence did not cover the full scope required; the answer reflects only [Q8567, Q1191846].",
+          "citations": [
+            {
+              "source_id": "Q8567",
+              "chunk_id": "Q8567::c05",
+              "ref_type": "chunk"
+            },
+            {
+              "source_id": "Q1191846",
+              "chunk_id": "Q1191846::c02",
+              "ref_type": "chunk"
+            }
+          ],
+          "chunks_returned": 10,
+          "citations_count": 2,
+          "tokens": {
+            "input": 2778,
+            "output": 306,
+            "total": 3084
+          },
+          "token_source": "provider",
+          "latency_ms": 2081,
+          "trace": null,
+          "strategy_changed": null,
+          "stop_reason": null,
+          "status": "done",
+          "error_detail": null
+        },
+        "graphrag": {
+          "pipeline": "graphrag",
+          "answer": "China",
+          "explanation": "The retrieved evidence did not cover the full scope required; the answer reflects only [Q8567, Q1191846, Q2887145, Q8567, Q8567].",
+          "citations": [
+            {
+              "source_id": "Q8567",
+              "chunk_id": null,
+              "ref_type": "entity"
+            },
+            {
+              "source_id": "Q1191846",
+              "chunk_id": null,
+              "ref_type": "entity"
+            },
+            {
+              "source_id": "Q2887145",
+              "chunk_id": null,
+              "ref_type": "entity"
+            },
+            {
+              "source_id": "Q8567",
+              "chunk_id": null,
+              "ref_type": "relationship"
+            },
+            {
+              "source_id": "Q8567",
+              "chunk_id": null,
+              "ref_type": "entity"
+            }
+          ],
+          "chunks_returned": 0,
+          "citations_count": 5,
+          "tokens": {
+            "input": 827,
+            "output": 82,
+            "total": 909
+          },
+          "token_source": "provider",
+          "latency_ms": 986,
+          "trace": null,
+          "strategy_changed": null,
+          "stop_reason": null,
+          "status": "done",
+          "error_detail": null
+        },
+        "agentic_graphrag": {
+          "pipeline": "agentic_graphrag",
+          "answer": "United States",
+          "explanation": "Derived from 3 source documents [Q8567, Q1146294, Q1146301].",
+          "citations": [
+            {
+              "source_id": "Q8567",
+              "chunk_id": null,
+              "ref_type": "relationship"
+            },
+            {
+              "source_id": "Q1146294",
+              "chunk_id": null,
+              "ref_type": "entity"
+            },
+            {
+              "source_id": "Q1146301",
+              "chunk_id": null,
+              "ref_type": "relationship"
+            }
+          ],
+          "chunks_returned": 5,
+          "citations_count": 3,
+          "tokens": {
+            "input": 10917,
+            "output": 848,
+            "total": 11765
+          },
+          "token_source": "provider",
+          "latency_ms": 4337,
+          "trace": [
+            {
+              "step_n": 1,
+              "agent_type": "entity_linking",
+              "tool_called": "intent_parser",
+              "tokens": {
+                "input": 1528,
+                "output": 119
+              },
+              "chunks_returned": 0,
+              "citations_count": 0,
+              "latency_ms": 687,
+              "strategy_change": false,
+              "notes": "intent_parser invoked for entity linking"
+            },
+            {
+              "step_n": 2,
+              "agent_type": "graph_traversal",
+              "tool_called": "Q4 traverse",
+              "tokens": {
+                "input": 0,
+                "output": 0
+              },
+              "chunks_returned": 0,
+              "citations_count": 1,
+              "latency_ms": 148,
+              "strategy_change": false,
+              "notes": "Q4 traverse invoked for graph traversal"
+            },
+            {
+              "step_n": 3,
+              "agent_type": "evidence_evaluation",
+              "tool_called": "evidence_evaluator",
+              "tokens": {
+                "input": 1528,
+                "output": 119
+              },
+              "chunks_returned": 0,
+              "citations_count": 9,
+              "latency_ms": 944,
+              "strategy_change": false,
+              "notes": "evidence_evaluator invoked for evidence evaluation"
+            },
+            {
+              "step_n": 4,
+              "agent_type": "multi_hop_reasoning",
+              "tool_called": "Q4 traverse",
+              "tokens": {
+                "input": 0,
+                "output": 0
+              },
+              "chunks_returned": 0,
+              "citations_count": 9,
+              "latency_ms": 237,
+              "strategy_change": true,
+              "notes": "Strategy change - initial routing returned insufficient scope, re-queried through the year-arithmetic fallback"
+            },
+            {
+              "step_n": 5,
+              "agent_type": "aggregation",
+              "tool_called": "Q3 argmax",
+              "tokens": {
+                "input": 0,
+                "output": 0
+              },
+              "chunks_returned": 0,
+              "citations_count": 7,
+              "latency_ms": 128,
+              "strategy_change": false,
+              "notes": "Q3 argmax invoked for aggregation"
+            },
+            {
+              "step_n": 6,
+              "agent_type": "evidence_evaluation",
+              "tool_called": "evidence_evaluator",
+              "tokens": {
+                "input": 7861,
+                "output": 610
+              },
+              "chunks_returned": 0,
+              "citations_count": 3,
+              "latency_ms": 1878,
+              "strategy_change": false,
+              "notes": "evidence_evaluator invoked for evidence evaluation"
+            }
+          ],
+          "strategy_changed": true,
+          "stop_reason": "evidence_sufficient",
+          "status": "done",
+          "error_detail": null
+        }
+      },
+      "verdict": {
+        "token_multiplier_vs_rag": 3.81,
+        "token_multiplier_vs_graphrag": 12.94,
+        "accuracy_delta_vs_rag": 1,
+        "accuracy_delta_vs_graphrag": 1,
+        "summary_line": "Agentic was correct where RAG was not, at 3.81x its tokens."
+      }
+    },
+    "scores": {
+      "rag": {
+        "em": 0,
+        "f1": 0.42,
+        "precision": 0.5,
+        "recall": 0.33,
+        "completeness": 0.33
+      },
+      "graphrag": {
+        "em": 0,
+        "f1": 0.05,
+        "precision": 0.33,
+        "recall": 0.33,
+        "completeness": 0.33
+      },
+      "agentic_graphrag": {
+        "em": 1,
+        "f1": 1,
+        "precision": 1,
+        "recall": 1,
+        "completeness": 1
+      }
+    }
+  },
+  {
+    "run_id": "latest",
+    "qid": "pub-014",
+    "question": "Which sport was contested at the venue that hosted the 1992 Summer Olympics athletics programme?",
+    "qtype": "multi_hop",
+    "ground_truth": [
+      "Athletics"
+    ],
+    "gold_doc_ids": [
+      "Q2887161",
+      "Q2887170"
+    ],
+    "record": {
+      "query_id": "latest-pub-014",
+      "query_text": "Which sport was contested at the venue that hosted the 1992 Summer Olympics athletics programme?",
+      "qtype": "multi_hop",
+      "timestamp": "2026-09-21T11:00:00Z",
+      "pipelines": {
+        "rag": {
+          "pipeline": "rag",
+          "answer": "China",
+          "explanation": "The retrieved evidence did not cover the full scope required; the answer reflects only [Q2887161, Q1191846].",
+          "citations": [
+            {
+              "source_id": "Q2887161",
+              "chunk_id": "Q2887161::c08",
+              "ref_type": "chunk"
+            },
+            {
+              "source_id": "Q1191846",
+              "chunk_id": "Q1191846::c08",
+              "ref_type": "chunk"
+            }
+          ],
+          "chunks_returned": 10,
+          "citations_count": 2,
+          "tokens": {
+            "input": 2562,
+            "output": 229,
+            "total": 2791
+          },
+          "token_source": "provider",
+          "latency_ms": 1696,
+          "trace": null,
+          "strategy_changed": null,
+          "stop_reason": null,
+          "status": "done",
+          "error_detail": null
+        },
+        "graphrag": {
+          "pipeline": "graphrag",
+          "answer": "Athletics",
+          "explanation": "Derived from 2 source documents [Q2887161, Q2887170].",
+          "citations": [
+            {
+              "source_id": "Q2887161",
+              "chunk_id": null,
+              "ref_type": "entity"
+            },
+            {
+              "source_id": "Q2887170",
+              "chunk_id": null,
+              "ref_type": "entity"
+            }
+          ],
+          "chunks_returned": 0,
+          "citations_count": 2,
+          "tokens": {
+            "input": 849,
+            "output": 66,
+            "total": 915
+          },
+          "token_source": "provider",
+          "latency_ms": 1164,
+          "trace": null,
+          "strategy_changed": null,
+          "stop_reason": null,
+          "status": "done",
+          "error_detail": null
+        },
+        "agentic_graphrag": {
+          "pipeline": "agentic_graphrag",
+          "answer": "Athletics",
+          "explanation": "Derived from 2 source documents [Q2887161, Q2887170].",
+          "citations": [
+            {
+              "source_id": "Q2887161",
+              "chunk_id": null,
+              "ref_type": "entity"
+            },
+            {
+              "source_id": "Q2887170",
+              "chunk_id": null,
+              "ref_type": "entity"
+            }
+          ],
+          "chunks_returned": 1,
+          "citations_count": 2,
+          "tokens": {
+            "input": 12733,
+            "output": 692,
+            "total": 13425
+          },
+          "token_source": "provider",
+          "latency_ms": 5466,
+          "trace": [
+            {
+              "step_n": 1,
+              "agent_type": "entity_linking",
+              "tool_called": "intent_parser",
+              "tokens": {
+                "input": 1783,
+                "output": 97
+              },
+              "chunks_returned": 0,
+              "citations_count": 0,
+              "latency_ms": 1984,
+              "strategy_change": false,
+              "notes": "intent_parser invoked for entity linking"
+            },
+            {
+              "step_n": 2,
+              "agent_type": "graph_traversal",
+              "tool_called": "Q4 traverse",
+              "tokens": {
+                "input": 0,
+                "output": 0
+              },
+              "chunks_returned": 0,
+              "citations_count": 9,
+              "latency_ms": 177,
+              "strategy_change": false,
+              "notes": "Q4 traverse invoked for graph traversal"
+            },
+            {
+              "step_n": 3,
+              "agent_type": "evidence_evaluation",
+              "tool_called": "evidence_evaluator",
+              "tokens": {
+                "input": 1783,
+                "output": 97
+              },
+              "chunks_returned": 0,
+              "citations_count": 8,
+              "latency_ms": 1034,
+              "strategy_change": false,
+              "notes": "evidence_evaluator invoked for evidence evaluation"
+            },
+            {
+              "step_n": 4,
+              "agent_type": "multi_hop_reasoning",
+              "tool_called": "Q4 traverse",
+              "tokens": {
+                "input": 0,
+                "output": 0
+              },
+              "chunks_returned": 0,
+              "citations_count": 6,
+              "latency_ms": 299,
+              "strategy_change": false,
+              "notes": "Q4 traverse invoked for multi hop reasoning"
+            },
+            {
+              "step_n": 5,
+              "agent_type": "aggregation",
+              "tool_called": "Q3 argmax",
+              "tokens": {
+                "input": 0,
+                "output": 0
+              },
+              "chunks_returned": 0,
+              "citations_count": 2,
+              "latency_ms": 294,
+              "strategy_change": false,
+              "notes": "Q3 argmax invoked for aggregation"
+            },
+            {
+              "step_n": 6,
+              "agent_type": "evidence_evaluation",
+              "tool_called": "evidence_evaluator",
+              "tokens": {
+                "input": 9167,
+                "output": 498
+              },
+              "chunks_returned": 0,
+              "citations_count": 8,
+              "latency_ms": 1296,
+              "strategy_change": false,
+              "notes": "evidence_evaluator invoked for evidence evaluation"
+            }
+          ],
+          "strategy_changed": false,
+          "stop_reason": "evidence_sufficient",
+          "status": "done",
+          "error_detail": null
+        }
+      },
+      "verdict": {
+        "token_multiplier_vs_rag": 4.81,
+        "token_multiplier_vs_graphrag": 14.67,
+        "accuracy_delta_vs_rag": 1,
+        "accuracy_delta_vs_graphrag": 0,
+        "summary_line": "Agentic was correct where RAG was not, at 4.81x its tokens."
+      }
+    },
+    "scores": {
+      "rag": {
+        "em": 0,
+        "f1": 0.12,
+        "precision": 0.5,
+        "recall": 0.5,
+        "completeness": 0.5
+      },
+      "graphrag": {
+        "em": 1,
+        "f1": 1,
+        "precision": 1,
+        "recall": 1,
+        "completeness": 1
+      },
+      "agentic_graphrag": {
+        "em": 1,
+        "f1": 1,
+        "precision": 1,
+        "recall": 1,
+        "completeness": 1
+      }
+    }
+  },
+  {
+    "run_id": "latest",
+    "qid": "pub-015",
+    "question": "Who won the event held at Olympic Stadium on the closing day of the 2012 Summer Olympics?",
+    "qtype": "multi_hop",
+    "ground_truth": [
+      "Stephen Kiprotich"
+    ],
+    "gold_doc_ids": [
+      "Q3303188"
+    ],
+    "record": {
+      "query_id": "latest-pub-015",
+      "query_text": "Who won the event held at Olympic Stadium on the closing day of the 2012 Summer Olympics?",
+      "qtype": "multi_hop",
+      "timestamp": "2026-09-21T11:00:00Z",
+      "pipelines": {
+        "rag": {
+          "pipeline": "rag",
+          "answer": "China",
+          "explanation": "The retrieved evidence did not cover the full scope required; the answer reflects only [Q3303188, Q1191846].",
+          "citations": [
+            {
+              "source_id": "Q3303188",
+              "chunk_id": "Q3303188::c12",
+              "ref_type": "chunk"
+            },
+            {
+              "source_id": "Q1191846",
+              "chunk_id": "Q1191846::c12",
+              "ref_type": "chunk"
+            }
+          ],
+          "chunks_returned": 10,
+          "citations_count": 2,
+          "tokens": {
+            "input": 2321,
+            "output": 217,
+            "total": 2538
+          },
+          "token_source": "provider",
+          "latency_ms": 1753,
+          "trace": null,
+          "strategy_changed": null,
+          "stop_reason": null,
+          "status": "done",
+          "error_detail": null
+        },
+        "graphrag": {
+          "pipeline": "graphrag",
+          "answer": "Stephen Kiprotich",
+          "explanation": "Derived from 1 source document [Q3303188].",
+          "citations": [
+            {
+              "source_id": "Q3303188",
+              "chunk_id": null,
+              "ref_type": "relationship"
+            }
+          ],
+          "chunks_returned": 0,
+          "citations_count": 1,
+          "tokens": {
+            "input": 1067,
+            "output": 98,
+            "total": 1165
+          },
+          "token_source": "provider",
+          "latency_ms": 1037,
+          "trace": null,
+          "strategy_changed": null,
+          "stop_reason": null,
+          "status": "done",
+          "error_detail": null
+        },
+        "agentic_graphrag": {
+          "pipeline": "agentic_graphrag",
+          "answer": "Stephen Kiprotich",
+          "explanation": "Derived from 1 source document [Q3303188].",
+          "citations": [
+            {
+              "source_id": "Q3303188",
+              "chunk_id": null,
+              "ref_type": "relationship"
+            }
+          ],
+          "chunks_returned": 2,
+          "citations_count": 1,
+          "tokens": {
+            "input": 10779,
+            "output": 1165,
+            "total": 11944
+          },
+          "token_source": "provider",
+          "latency_ms": 5194,
+          "trace": [
+            {
+              "step_n": 1,
+              "agent_type": "entity_linking",
+              "tool_called": "intent_parser",
+              "tokens": {
+                "input": 1509,
+                "output": 163
+              },
+              "chunks_returned": 0,
+              "citations_count": 0,
+              "latency_ms": 1220,
+              "strategy_change": false,
+              "notes": "intent_parser invoked for entity linking"
+            },
+            {
+              "step_n": 2,
+              "agent_type": "graph_traversal",
+              "tool_called": "Q4 traverse",
+              "tokens": {
+                "input": 0,
+                "output": 0
+              },
+              "chunks_returned": 0,
+              "citations_count": 8,
+              "latency_ms": 154,
+              "strategy_change": false,
+              "notes": "Q4 traverse invoked for graph traversal"
+            },
+            {
+              "step_n": 3,
+              "agent_type": "evidence_evaluation",
+              "tool_called": "evidence_evaluator",
+              "tokens": {
+                "input": 1509,
+                "output": 163
+              },
+              "chunks_returned": 0,
+              "citations_count": 8,
+              "latency_ms": 2004,
+              "strategy_change": false,
+              "notes": "evidence_evaluator invoked for evidence evaluation"
+            },
+            {
+              "step_n": 4,
+              "agent_type": "multi_hop_reasoning",
+              "tool_called": "Q4 traverse",
+              "tokens": {
+                "input": 0,
+                "output": 0
+              },
+              "chunks_returned": 0,
+              "citations_count": 2,
+              "latency_ms": 155,
+              "strategy_change": true,
+              "notes": "Strategy change - initial routing returned insufficient scope, re-queried through the year-arithmetic fallback"
+            },
+            {
+              "step_n": 5,
+              "agent_type": "aggregation",
+              "tool_called": "Q3 argmax",
+              "tokens": {
+                "input": 0,
+                "output": 0
+              },
+              "chunks_returned": 0,
+              "citations_count": 2,
+              "latency_ms": 194,
+              "strategy_change": false,
+              "notes": "Q3 argmax invoked for aggregation"
+            },
+            {
+              "step_n": 6,
+              "agent_type": "evidence_evaluation",
+              "tool_called": "evidence_evaluator",
+              "tokens": {
+                "input": 7761,
+                "output": 839
+              },
+              "chunks_returned": 0,
+              "citations_count": 1,
+              "latency_ms": 1250,
+              "strategy_change": false,
+              "notes": "evidence_evaluator invoked for evidence evaluation"
+            }
+          ],
+          "strategy_changed": true,
+          "stop_reason": "evidence_sufficient",
+          "status": "done",
+          "error_detail": null
+        }
+      },
+      "verdict": {
+        "token_multiplier_vs_rag": 4.71,
+        "token_multiplier_vs_graphrag": 10.25,
+        "accuracy_delta_vs_rag": 1,
+        "accuracy_delta_vs_graphrag": 0,
+        "summary_line": "Agentic was correct where RAG was not, at 4.71x its tokens."
+      }
+    },
+    "scores": {
+      "rag": {
+        "em": 0,
+        "f1": 0.22,
+        "precision": 0.5,
+        "recall": 1,
+        "completeness": 1
+      },
+      "graphrag": {
+        "em": 1,
+        "f1": 1,
+        "precision": 1,
+        "recall": 1,
+        "completeness": 1
+      },
+      "agentic_graphrag": {
+        "em": 1,
+        "f1": 1,
+        "precision": 1,
+        "recall": 1,
+        "completeness": 1
+      }
+    }
+  },
+  {
+    "run_id": "latest",
+    "qid": "pub-016",
+    "question": "How many competitors entered the successor edition of the men’s 200 metres freestyle contested in 2004?",
+    "qtype": "multi_hop",
+    "ground_truth": [
+      "42"
+    ],
+    "gold_doc_ids": [
+      "Q1195524",
+      "Q1146294"
+    ],
+    "record": {
+      "query_id": "latest-pub-016",
+      "query_text": "How many competitors entered the successor edition of the men’s 200 metres freestyle contested in 2004?",
+      "qtype": "multi_hop",
+      "timestamp": "2026-09-21T11:00:00Z",
+      "pipelines": {
+        "rag": {
+          "pipeline": "rag",
+          "answer": "China",
+          "explanation": "The retrieved evidence did not cover the full scope required; the answer reflects only [Q1195524, Q1191846].",
+          "citations": [
+            {
+              "source_id": "Q1195524",
+              "chunk_id": "Q1195524::c11",
+              "ref_type": "chunk"
+            },
+            {
+              "source_id": "Q1191846",
+              "chunk_id": "Q1191846::c00",
+              "ref_type": "chunk"
+            }
+          ],
+          "chunks_returned": 10,
+          "citations_count": 2,
+          "tokens": {
+            "input": 2571,
+            "output": 196,
+            "total": 2767
+          },
+          "token_source": "provider",
+          "latency_ms": 1588,
+          "trace": null,
+          "strategy_changed": null,
+          "stop_reason": null,
+          "status": "done",
+          "error_detail": null
+        },
+        "graphrag": {
+          "pipeline": "graphrag",
+          "answer": "2008 Summer Olympics",
+          "explanation": "The retrieved evidence did not cover the full scope required; the answer reflects only [Q1195524, Q1191846].",
+          "citations": [
+            {
+              "source_id": "Q1195524",
+              "chunk_id": null,
+              "ref_type": "entity"
+            },
+            {
+              "source_id": "Q1191846",
+              "chunk_id": null,
+              "ref_type": "entity"
+            }
+          ],
+          "chunks_returned": 0,
+          "citations_count": 2,
+          "tokens": {
+            "input": 1126,
+            "output": 98,
+            "total": 1224
+          },
+          "token_source": "provider",
+          "latency_ms": 1042,
+          "trace": null,
+          "strategy_changed": null,
+          "stop_reason": null,
+          "status": "done",
+          "error_detail": null
+        },
+        "agentic_graphrag": {
+          "pipeline": "agentic_graphrag",
+          "answer": "42",
+          "explanation": "Derived from 2 source documents [Q1195524, Q1146294].",
+          "citations": [
+            {
+              "source_id": "Q1195524",
+              "chunk_id": null,
+              "ref_type": "entity"
+            },
+            {
+              "source_id": "Q1146294",
+              "chunk_id": null,
+              "ref_type": "entity"
+            }
+          ],
+          "chunks_returned": 1,
+          "citations_count": 2,
+          "tokens": {
+            "input": 9393,
+            "output": 787,
+            "total": 10180
+          },
+          "token_source": "provider",
+          "latency_ms": 7088,
+          "trace": [
+            {
+              "step_n": 1,
+              "agent_type": "entity_linking",
+              "tool_called": "intent_parser",
+              "tokens": {
+                "input": 1315,
+                "output": 110
+              },
+              "chunks_returned": 0,
+              "citations_count": 0,
+              "latency_ms": 1962,
+              "strategy_change": false,
+              "notes": "intent_parser invoked for entity linking"
+            },
+            {
+              "step_n": 2,
+              "agent_type": "graph_traversal",
+              "tool_called": "Q4 traverse",
+              "tokens": {
+                "input": 0,
+                "output": 0
+              },
+              "chunks_returned": 0,
+              "citations_count": 3,
+              "latency_ms": 314,
+              "strategy_change": false,
+              "notes": "Q4 traverse invoked for graph traversal"
+            },
+            {
+              "step_n": 3,
+              "agent_type": "evidence_evaluation",
+              "tool_called": "evidence_evaluator",
+              "tokens": {
+                "input": 1315,
+                "output": 110
+              },
+              "chunks_returned": 0,
+              "citations_count": 2,
+              "latency_ms": 1870,
+              "strategy_change": false,
+              "notes": "evidence_evaluator invoked for evidence evaluation"
+            },
+            {
+              "step_n": 4,
+              "agent_type": "multi_hop_reasoning",
+              "tool_called": "Q4 traverse",
+              "tokens": {
+                "input": 0,
+                "output": 0
+              },
+              "chunks_returned": 0,
+              "citations_count": 8,
+              "latency_ms": 308,
+              "strategy_change": true,
+              "notes": "Strategy change - initial routing returned insufficient scope, re-queried through the year-arithmetic fallback"
+            },
+            {
+              "step_n": 5,
+              "agent_type": "aggregation",
+              "tool_called": "Q3 argmax",
+              "tokens": {
+                "input": 0,
+                "output": 0
+              },
+              "chunks_returned": 0,
+              "citations_count": 4,
+              "latency_ms": 126,
+              "strategy_change": false,
+              "notes": "Q3 argmax invoked for aggregation"
+            },
+            {
+              "step_n": 6,
+              "agent_type": "evidence_evaluation",
+              "tool_called": "evidence_evaluator",
+              "tokens": {
+                "input": 6763,
+                "output": 567
+              },
+              "chunks_returned": 0,
+              "citations_count": 6,
+              "latency_ms": 2232,
+              "strategy_change": false,
+              "notes": "evidence_evaluator invoked for evidence evaluation"
+            }
+          ],
+          "strategy_changed": true,
+          "stop_reason": "evidence_sufficient",
+          "status": "done",
+          "error_detail": null
+        }
+      },
+      "verdict": {
+        "token_multiplier_vs_rag": 3.68,
+        "token_multiplier_vs_graphrag": 8.32,
+        "accuracy_delta_vs_rag": 1,
+        "accuracy_delta_vs_graphrag": 1,
+        "summary_line": "Agentic was correct where RAG was not, at 3.68x its tokens."
+      }
+    },
+    "scores": {
+      "rag": {
+        "em": 0,
+        "f1": 0.34,
+        "precision": 0.5,
+        "recall": 0.5,
+        "completeness": 0.5
+      },
+      "graphrag": {
+        "em": 0,
+        "f1": 0.43,
+        "precision": 0.5,
+        "recall": 0.5,
+        "completeness": 0.5
+      },
+      "agentic_graphrag": {
+        "em": 1,
+        "f1": 1,
+        "precision": 1,
+        "recall": 1,
+        "completeness": 1
+      }
+    }
+  },
+  {
+    "run_id": "latest",
+    "qid": "pub-017",
+    "question": "In which year were the Summer Olympics first held in Tokyo?",
+    "qtype": "temporal",
+    "ground_truth": [
+      "1964"
+    ],
+    "gold_doc_ids": [
+      "Q8558"
+    ],
+    "record": {
+      "query_id": "latest-pub-017",
+      "query_text": "In which year were the Summer Olympics first held in Tokyo?",
+      "qtype": "temporal",
+      "timestamp": "2026-09-21T11:00:00Z",
+      "pipelines": {
+        "rag": {
+          "pipeline": "rag",
+          "answer": "100",
+          "explanation": "The retrieved evidence did not cover the full scope required; the answer reflects only [Q8558, Q1191846, Q2887145, Q8567].",
+          "citations": [
+            {
+              "source_id": "Q8558",
+              "chunk_id": "Q8558::c07",
+              "ref_type": "chunk"
+            },
+            {
+              "source_id": "Q1191846",
+              "chunk_id": "Q1191846::c09",
+              "ref_type": "chunk"
+            },
+            {
+              "source_id": "Q2887145",
+              "chunk_id": "Q2887145::c06",
+              "ref_type": "chunk"
+            },
+            {
+              "source_id": "Q8567",
+              "chunk_id": "Q8567::c03",
+              "ref_type": "chunk"
+            }
+          ],
+          "chunks_returned": 10,
+          "citations_count": 4,
+          "tokens": {
+            "input": 2159,
+            "output": 127,
+            "total": 2286
+          },
+          "token_source": "provider",
+          "latency_ms": 1966,
+          "trace": null,
+          "strategy_changed": null,
+          "stop_reason": null,
+          "status": "done",
+          "error_detail": null
+        },
+        "graphrag": {
+          "pipeline": "graphrag",
+          "answer": "1940",
+          "explanation": "The retrieved evidence did not cover the full scope required; the answer reflects only [Q8558, Q1191846].",
+          "citations": [
+            {
+              "source_id": "Q8558",
+              "chunk_id": null,
+              "ref_type": "entity"
+            },
+            {
+              "source_id": "Q1191846",
+              "chunk_id": null,
+              "ref_type": "entity"
+            }
+          ],
+          "chunks_returned": 0,
+          "citations_count": 2,
+          "tokens": {
+            "input": 910,
+            "output": 83,
+            "total": 993
+          },
+          "token_source": "provider",
+          "latency_ms": 1148,
+          "trace": null,
+          "strategy_changed": null,
+          "stop_reason": null,
+          "status": "done",
+          "error_detail": null
+        },
+        "agentic_graphrag": {
+          "pipeline": "agentic_graphrag",
+          "answer": "2004 Summer Olympics",
+          "explanation": "The retrieved evidence did not cover the full scope required; the answer reflects only [Q8558].",
+          "citations": [
+            {
+              "source_id": "Q8558",
+              "chunk_id": null,
+              "ref_type": "entity"
+            }
+          ],
+          "chunks_returned": 3,
+          "citations_count": 1,
+          "tokens": {
+            "input": 4394,
+            "output": 470,
+            "total": 4864
+          },
+          "token_source": "provider",
+          "latency_ms": 2583,
+          "trace": [
+            {
+              "step_n": 1,
+              "agent_type": "entity_linking",
+              "tool_called": "intent_parser",
+              "tokens": {
+                "input": 1230,
+                "output": 132
+              },
+              "chunks_returned": 0,
+              "citations_count": 0,
+              "latency_ms": 1176,
+              "strategy_change": false,
+              "notes": "intent_parser invoked for entity linking"
+            },
+            {
+              "step_n": 2,
+              "agent_type": "graph_traversal",
+              "tool_called": "Q4 traverse",
+              "tokens": {
+                "input": 0,
+                "output": 0
+              },
+              "chunks_returned": 0,
+              "citations_count": 3,
+              "latency_ms": 194,
+              "strategy_change": false,
+              "notes": "Q4 traverse invoked for graph traversal"
+            },
+            {
+              "step_n": 3,
+              "agent_type": "document_retrieval",
+              "tool_called": "HAS_CHUNK expansion",
+              "tokens": {
+                "input": 0,
+                "output": 0
+              },
+              "chunks_returned": 4,
+              "citations_count": 1,
+              "latency_ms": 140,
+              "strategy_change": false,
+              "notes": "HAS_CHUNK expansion invoked for document retrieval"
+            },
+            {
+              "step_n": 4,
+              "agent_type": "evidence_evaluation",
+              "tool_called": "evidence_evaluator",
+              "tokens": {
+                "input": 3164,
+                "output": 338
+              },
+              "chunks_returned": 0,
+              "citations_count": 6,
+              "latency_ms": 787,
+              "strategy_change": false,
+              "notes": "evidence_evaluator invoked for evidence evaluation"
+            }
+          ],
+          "strategy_changed": false,
+          "stop_reason": "evidence_sufficient",
+          "status": "done",
+          "error_detail": null
+        }
+      },
+      "verdict": {
+        "token_multiplier_vs_rag": 2.13,
+        "token_multiplier_vs_graphrag": 4.9,
+        "accuracy_delta_vs_rag": 0,
+        "accuracy_delta_vs_graphrag": 0,
+        "summary_line": "No accuracy gain over RAG for 2.13x the tokens."
+      }
+    },
+    "scores": {
+      "rag": {
+        "em": 0,
+        "f1": 0.13,
+        "precision": 0.25,
+        "recall": 1,
+        "completeness": 1
+      },
+      "graphrag": {
+        "em": 0,
+        "f1": 0.07,
+        "precision": 0.5,
+        "recall": 1,
+        "completeness": 1
+      },
+      "agentic_graphrag": {
+        "em": 0,
+        "f1": 0.31,
+        "precision": 1,
+        "recall": 1,
+        "completeness": 1
+      }
+    }
+  },
+  {
+    "run_id": "latest",
+    "qid": "pub-018",
+    "question": "Which Games immediately followed the 1996 Summer Olympics?",
+    "qtype": "temporal",
+    "ground_truth": [
+      "2000 Summer Olympics"
+    ],
+    "gold_doc_ids": [
+      "Q2887145",
+      "Q1191846"
+    ],
+    "record": {
+      "query_id": "latest-pub-018",
+      "query_text": "Which Games immediately followed the 1996 Summer Olympics?",
+      "qtype": "temporal",
+      "timestamp": "2026-09-21T11:00:00Z",
+      "pipelines": {
+        "rag": {
+          "pipeline": "rag",
+          "answer": "2000 Summer Olympics",
+          "explanation": "Derived from 2 source documents [Q2887145, Q1191846].",
+          "citations": [
+            {
+              "source_id": "Q2887145",
+              "chunk_id": "Q2887145::c03",
+              "ref_type": "chunk"
+            },
+            {
+              "source_id": "Q1191846",
+              "chunk_id": "Q1191846::c06",
+              "ref_type": "chunk"
+            }
+          ],
+          "chunks_returned": 10,
+          "citations_count": 2,
+          "tokens": {
+            "input": 2016,
+            "output": 129,
+            "total": 2145
+          },
+          "token_source": "provider",
+          "latency_ms": 1761,
+          "trace": null,
+          "strategy_changed": null,
+          "stop_reason": null,
+          "status": "done",
+          "error_detail": null
+        },
+        "graphrag": {
+          "pipeline": "graphrag",
+          "answer": "14 August 2016",
+          "explanation": "The retrieved evidence did not cover the full scope required; the answer reflects only [Q2887145, Q1191846].",
+          "citations": [
+            {
+              "source_id": "Q2887145",
+              "chunk_id": null,
+              "ref_type": "entity"
+            },
+            {
+              "source_id": "Q1191846",
+              "chunk_id": null,
+              "ref_type": "relationship"
+            }
+          ],
+          "chunks_returned": 0,
+          "citations_count": 2,
+          "tokens": {
+            "input": 808,
+            "output": 79,
+            "total": 887
+          },
+          "token_source": "provider",
+          "latency_ms": 1316,
+          "trace": null,
+          "strategy_changed": null,
+          "stop_reason": null,
+          "status": "done",
+          "error_detail": null
+        },
+        "agentic_graphrag": {
+          "pipeline": "agentic_graphrag",
+          "answer": "14 August 2016",
+          "explanation": "The retrieved evidence did not cover the full scope required; the answer reflects only [Q2887145, Q1191846, Q2887145].",
+          "citations": [
+            {
+              "source_id": "Q2887145",
+              "chunk_id": null,
+              "ref_type": "entity"
+            },
+            {
+              "source_id": "Q1191846",
+              "chunk_id": null,
+              "ref_type": "entity"
+            },
+            {
+              "source_id": "Q2887145",
+              "chunk_id": null,
+              "ref_type": "entity"
+            }
+          ],
+          "chunks_returned": 1,
+          "citations_count": 3,
+          "tokens": {
+            "input": 3331,
+            "output": 313,
+            "total": 3644
+          },
+          "token_source": "provider",
+          "latency_ms": 4213,
+          "trace": [
+            {
+              "step_n": 1,
+              "agent_type": "entity_linking",
+              "tool_called": "intent_parser",
+              "tokens": {
+                "input": 933,
+                "output": 88
+              },
+              "chunks_returned": 0,
+              "citations_count": 0,
+              "latency_ms": 2022,
+              "strategy_change": false,
+              "notes": "intent_parser invoked for entity linking"
+            },
+            {
+              "step_n": 2,
+              "agent_type": "graph_traversal",
+              "tool_called": "Q4 traverse",
+              "tokens": {
+                "input": 0,
+                "output": 0
+              },
+              "chunks_returned": 0,
+              "citations_count": 6,
+              "latency_ms": 258,
+              "strategy_change": false,
+              "notes": "Q4 traverse invoked for graph traversal"
+            },
+            {
+              "step_n": 3,
+              "agent_type": "document_retrieval",
+              "tool_called": "HAS_CHUNK expansion",
+              "tokens": {
+                "input": 0,
+                "output": 0
+              },
+              "chunks_returned": 5,
+              "citations_count": 8,
+              "latency_ms": 180,
+              "strategy_change": false,
+              "notes": "HAS_CHUNK expansion invoked for document retrieval"
+            },
+            {
+              "step_n": 4,
+              "agent_type": "evidence_evaluation",
+              "tool_called": "evidence_evaluator",
+              "tokens": {
+                "input": 2398,
+                "output": 225
+              },
+              "chunks_returned": 0,
+              "citations_count": 6,
+              "latency_ms": 1469,
+              "strategy_change": false,
+              "notes": "evidence_evaluator invoked for evidence evaluation"
+            }
+          ],
+          "strategy_changed": false,
+          "stop_reason": "step_budget_exhausted",
+          "status": "done",
+          "error_detail": null
+        }
+      },
+      "verdict": {
+        "token_multiplier_vs_rag": 1.7,
+        "token_multiplier_vs_graphrag": 4.11,
+        "accuracy_delta_vs_rag": -1,
+        "accuracy_delta_vs_graphrag": 0,
+        "summary_line": "Agentic lost to RAG on this question and still cost 1.7x its tokens."
+      }
+    },
+    "scores": {
+      "rag": {
+        "em": 1,
+        "f1": 1,
+        "precision": 1,
+        "recall": 1,
+        "completeness": 1
+      },
+      "graphrag": {
+        "em": 0,
+        "f1": 0.45,
+        "precision": 1,
+        "recall": 1,
+        "completeness": 1
+      },
+      "agentic_graphrag": {
+        "em": 0,
+        "f1": 0.23,
+        "precision": 1,
+        "recall": 1,
+        "completeness": 1
+      }
+    }
+  },
+  {
+    "run_id": "latest",
+    "qid": "pub-019",
+    "question": "On what date was the men’s marathon held at the 2016 Summer Olympics?",
+    "qtype": "temporal",
+    "ground_truth": [
+      "21 August 2016"
+    ],
+    "gold_doc_ids": [
+      "Q20026533"
+    ],
+    "record": {
+      "query_id": "latest-pub-019",
+      "query_text": "On what date was the men’s marathon held at the 2016 Summer Olympics?",
+      "qtype": "temporal",
+      "timestamp": "2026-09-21T11:00:00Z",
+      "pipelines": {
+        "rag": {
+          "pipeline": "rag",
+          "answer": "21 August 2016",
+          "explanation": "Derived from 4 source documents [Q20026533, Q20026533, Q20026533, Q20026533].",
+          "citations": [
+            {
+              "source_id": "Q20026533",
+              "chunk_id": "Q20026533::c02",
+              "ref_type": "chunk"
+            },
+            {
+              "source_id": "Q20026533",
+              "chunk_id": "Q20026533::c05",
+              "ref_type": "chunk"
+            },
+            {
+              "source_id": "Q20026533",
+              "chunk_id": "Q20026533::c10",
+              "ref_type": "chunk"
+            },
+            {
+              "source_id": "Q20026533",
+              "chunk_id": "Q20026533::c02",
+              "ref_type": "chunk"
+            }
+          ],
+          "chunks_returned": 10,
+          "citations_count": 4,
+          "tokens": {
+            "input": 1987,
+            "output": 115,
+            "total": 2102
+          },
+          "token_source": "provider",
+          "latency_ms": 1978,
+          "trace": null,
+          "strategy_changed": null,
+          "stop_reason": null,
+          "status": "done",
+          "error_detail": null
+        },
+        "graphrag": {
+          "pipeline": "graphrag",
+          "answer": "14 August 2016",
+          "explanation": "The retrieved evidence did not cover the full scope required; the answer reflects only [Q20026533].",
+          "citations": [
+            {
+              "source_id": "Q20026533",
+              "chunk_id": null,
+              "ref_type": "entity"
+            }
+          ],
+          "chunks_returned": 0,
+          "citations_count": 1,
+          "tokens": {
+            "input": 842,
+            "output": 49,
+            "total": 891
+          },
+          "token_source": "provider",
+          "latency_ms": 1065,
+          "trace": null,
+          "strategy_changed": null,
+          "stop_reason": null,
+          "status": "done",
+          "error_detail": null
+        },
+        "agentic_graphrag": {
+          "pipeline": "agentic_graphrag",
+          "answer": "1940",
+          "explanation": "The retrieved evidence did not cover the full scope required; the answer reflects only [Q20026533, Q1191846].",
+          "citations": [
+            {
+              "source_id": "Q20026533",
+              "chunk_id": null,
+              "ref_type": "entity"
+            },
+            {
+              "source_id": "Q1191846",
+              "chunk_id": null,
+              "ref_type": "relationship"
+            }
+          ],
+          "chunks_returned": 3,
+          "citations_count": 2,
+          "tokens": {
+            "input": 5150,
+            "output": 320,
+            "total": 5470
+          },
+          "token_source": "provider",
+          "latency_ms": 3204,
+          "trace": [
+            {
+              "step_n": 1,
+              "agent_type": "entity_linking",
+              "tool_called": "intent_parser",
+              "tokens": {
+                "input": 1442,
+                "output": 90
+              },
+              "chunks_returned": 0,
+              "citations_count": 0,
+              "latency_ms": 631,
+              "strategy_change": false,
+              "notes": "intent_parser invoked for entity linking"
+            },
+            {
+              "step_n": 2,
+              "agent_type": "graph_traversal",
+              "tool_called": "Q4 traverse",
+              "tokens": {
+                "input": 0,
+                "output": 0
+              },
+              "chunks_returned": 0,
+              "citations_count": 1,
+              "latency_ms": 185,
+              "strategy_change": false,
+              "notes": "Q4 traverse invoked for graph traversal"
+            },
+            {
+              "step_n": 3,
+              "agent_type": "document_retrieval",
+              "tool_called": "HAS_CHUNK expansion",
+              "tokens": {
+                "input": 0,
+                "output": 0
+              },
+              "chunks_returned": 9,
+              "citations_count": 3,
+              "latency_ms": 157,
+              "strategy_change": false,
+              "notes": "HAS_CHUNK expansion invoked for document retrieval"
+            },
+            {
+              "step_n": 4,
+              "agent_type": "evidence_evaluation",
+              "tool_called": "evidence_evaluator",
+              "tokens": {
+                "input": 3708,
+                "output": 230
+              },
+              "chunks_returned": 0,
+              "citations_count": 9,
+              "latency_ms": 2043,
+              "strategy_change": false,
+              "notes": "evidence_evaluator invoked for evidence evaluation"
+            }
+          ],
+          "strategy_changed": false,
+          "stop_reason": "evidence_sufficient",
+          "status": "done",
+          "error_detail": null
+        }
+      },
+      "verdict": {
+        "token_multiplier_vs_rag": 2.6,
+        "token_multiplier_vs_graphrag": 6.14,
+        "accuracy_delta_vs_rag": -1,
+        "accuracy_delta_vs_graphrag": 0,
+        "summary_line": "Agentic lost to RAG on this question and still cost 2.6x its tokens."
+      }
+    },
+    "scores": {
+      "rag": {
+        "em": 1,
+        "f1": 1,
+        "precision": 1,
+        "recall": 1,
+        "completeness": 1
+      },
+      "graphrag": {
+        "em": 0,
+        "f1": 0.31,
+        "precision": 1,
+        "recall": 1,
+        "completeness": 1
+      },
+      "agentic_graphrag": {
+        "em": 0,
+        "f1": 0.36,
+        "precision": 0.5,
+        "recall": 1,
+        "completeness": 1
+      }
+    }
+  },
+  {
+    "run_id": "latest",
+    "qid": "pub-020",
+    "question": "How many years separated the first and most recent Summer Olympics held in Paris?",
+    "qtype": "temporal",
+    "ground_truth": [
+      "124"
+    ],
+    "gold_doc_ids": [
+      "Q8558",
+      "Q8567"
+    ],
+    "record": {
+      "query_id": "latest-pub-020",
+      "query_text": "How many years separated the first and most recent Summer Olympics held in Paris?",
+      "qtype": "temporal",
+      "timestamp": "2026-09-21T11:00:00Z",
+      "pipelines": {
+        "rag": {
+          "pipeline": "rag",
+          "answer": "1940",
+          "explanation": "The retrieved evidence did not cover the full scope required; the answer reflects only [Q8558, Q1191846, Q2887145].",
+          "citations": [
+            {
+              "source_id": "Q8558",
+              "chunk_id": "Q8558::c12",
+              "ref_type": "chunk"
+            },
+            {
+              "source_id": "Q1191846",
+              "chunk_id": "Q1191846::c08",
+              "ref_type": "chunk"
+            },
+            {
+              "source_id": "Q2887145",
+              "chunk_id": "Q2887145::c09",
+              "ref_type": "chunk"
+            }
+          ],
+          "chunks_returned": 10,
+          "citations_count": 3,
+          "tokens": {
+            "input": 2170,
+            "output": 230,
+            "total": 2400
+          },
+          "token_source": "provider",
+          "latency_ms": 1654,
+          "trace": null,
+          "strategy_changed": null,
+          "stop_reason": null,
+          "status": "done",
+          "error_detail": null
+        },
+        "graphrag": {
+          "pipeline": "graphrag",
+          "answer": "124",
+          "explanation": "Derived from 2 source documents [Q8558, Q8567].",
+          "citations": [
+            {
+              "source_id": "Q8558",
+              "chunk_id": null,
+              "ref_type": "entity"
+            },
+            {
+              "source_id": "Q8567",
+              "chunk_id": null,
+              "ref_type": "entity"
+            }
+          ],
+          "chunks_returned": 0,
+          "citations_count": 2,
+          "tokens": {
+            "input": 870,
+            "output": 58,
+            "total": 928
+          },
+          "token_source": "provider",
+          "latency_ms": 1148,
+          "trace": null,
+          "strategy_changed": null,
+          "stop_reason": null,
+          "status": "done",
+          "error_detail": null
+        },
+        "agentic_graphrag": {
+          "pipeline": "agentic_graphrag",
+          "answer": "2004 Summer Olympics",
+          "explanation": "The retrieved evidence did not cover the full scope required; the answer reflects only [Q8558, Q1191846, Q2887145].",
+          "citations": [
+            {
+              "source_id": "Q8558",
+              "chunk_id": null,
+              "ref_type": "entity"
+            },
+            {
+              "source_id": "Q1191846",
+              "chunk_id": null,
+              "ref_type": "entity"
+            },
+            {
+              "source_id": "Q2887145",
+              "chunk_id": null,
+              "ref_type": "entity"
+            }
+          ],
+          "chunks_returned": 3,
+          "citations_count": 3,
+          "tokens": {
+            "input": 5148,
+            "output": 394,
+            "total": 5542
+          },
+          "token_source": "provider",
+          "latency_ms": 5170,
+          "trace": [
+            {
+              "step_n": 1,
+              "agent_type": "entity_linking",
+              "tool_called": "intent_parser",
+              "tokens": {
+                "input": 1441,
+                "output": 110
+              },
+              "chunks_returned": 0,
+              "citations_count": 0,
+              "latency_ms": 2127,
+              "strategy_change": false,
+              "notes": "intent_parser invoked for entity linking"
+            },
+            {
+              "step_n": 2,
+              "agent_type": "graph_traversal",
+              "tool_called": "Q4 traverse",
+              "tokens": {
+                "input": 0,
+                "output": 0
+              },
+              "chunks_returned": 0,
+              "citations_count": 6,
+              "latency_ms": 274,
+              "strategy_change": false,
+              "notes": "Q4 traverse invoked for graph traversal"
+            },
+            {
+              "step_n": 3,
+              "agent_type": "document_retrieval",
+              "tool_called": "HAS_CHUNK expansion",
+              "tokens": {
+                "input": 0,
+                "output": 0
+              },
+              "chunks_returned": 4,
+              "citations_count": 5,
+              "latency_ms": 278,
+              "strategy_change": false,
+              "notes": "HAS_CHUNK expansion invoked for document retrieval"
+            },
+            {
+              "step_n": 4,
+              "agent_type": "evidence_evaluation",
+              "tool_called": "evidence_evaluator",
+              "tokens": {
+                "input": 3707,
+                "output": 284
+              },
+              "chunks_returned": 0,
+              "citations_count": 7,
+              "latency_ms": 2166,
+              "strategy_change": false,
+              "notes": "evidence_evaluator invoked for evidence evaluation"
+            }
+          ],
+          "strategy_changed": false,
+          "stop_reason": "disambiguation_required",
+          "status": "done",
+          "error_detail": null
+        }
+      },
+      "verdict": {
+        "token_multiplier_vs_rag": 2.31,
+        "token_multiplier_vs_graphrag": 5.97,
+        "accuracy_delta_vs_rag": 0,
+        "accuracy_delta_vs_graphrag": -1,
+        "summary_line": "No accuracy gain over RAG for 2.31x the tokens."
+      }
+    },
+    "scores": {
+      "rag": {
+        "em": 0,
+        "f1": 0.06,
+        "precision": 0.33,
+        "recall": 0.5,
+        "completeness": 0.5
+      },
+      "graphrag": {
+        "em": 1,
+        "f1": 1,
+        "precision": 1,
+        "recall": 1,
+        "completeness": 1
+      },
+      "agentic_graphrag": {
+        "em": 0,
+        "f1": 0.19,
+        "precision": 0.33,
+        "recall": 0.5,
+        "completeness": 0.5
+      }
+    }
+  }
+]
