@@ -28,12 +28,11 @@ LOOKUP must traverse ZERO loop edges — verified by test_routing_lookup_direct.
 
 from __future__ import annotations
 
-import json
 import logging
 import time
-from typing import Annotated, Any, Dict, List, Literal, Optional
+from typing import Annotated, Any, Dict, List, Optional
 
-from pydantic import BaseModel
+from typing_extensions import TypedDict
 
 logger = logging.getLogger(__name__)
 
@@ -42,29 +41,32 @@ logger = logging.getLogger(__name__)
 # Typed state
 # ---------------------------------------------------------------------------
 
-def _append_reducer(existing: list, new: list) -> list:
-    """Append-only list reducer for LangGraph state."""
+def append_reducer(existing: Optional[list], new: Optional[list]) -> list:
+    """Append-only list reducer for LangGraph state.
+
+    Without a reducer, a node returning {"path_taken": [x]} REPLACES the list.
+    That silently disarms the step budget, because step_count = len(path_taken)
+    then never grows across loop iterations (PLAN-003 Group 5).
+    """
     return (existing or []) + (new or [])
 
 
-class OrchestratorState(BaseModel):
-    """Typed state for the P3 LangGraph StateGraph.
+class OrchestratorState(TypedDict, total=False):
+    """Typed state for the P3 LangGraph StateGraph (PLAN-003 Group 5).
 
-    All fields are updated by nodes returning partial dicts.
-    path_taken is an append-only list — never reset mid-run.
+    path_taken, evidence and steps accumulate; every other field is replaced
+    by the node that writes it.
     """
-    model_config = {"arbitrary_types_allowed": True}
-
-    question: str = ""
-    intent: Optional[Any] = None              # IntentSchema
-    route_initial: str = ""                   # 'lookup_direct' | 'scoped_aggregate' | 'loop'
-    path_taken: List[str] = []               # append-only via reducer
-    evidence: List[Dict[str, Any]] = []
-    steps: List[Any] = []                     # TraceStep objects
-    tokens_used: int = 0
-    strategy_changed: bool = False
-    stop_reason: str = ""
-    resolved_anchors: Optional[Any] = None   # ResolvedAnchors
+    question: str
+    intent: Optional[Any]                     # IntentSchema
+    route_initial: str                        # lookup_direct | scoped_aggregate | loop
+    path_taken: Annotated[List[str], append_reducer]
+    evidence: Annotated[List[Dict[str, Any]], append_reducer]
+    steps: Annotated[List[Any], append_reducer]   # TraceStep objects
+    tokens_used: int
+    strategy_changed: bool
+    stop_reason: str
+    resolved_anchors: Optional[Any]           # ResolvedAnchors
 
 
 # ---------------------------------------------------------------------------
@@ -76,22 +78,28 @@ def build_p3_graph(
     tg_client: Any,
     entity_linker: Any,
     run_config: Any,
+    on_step: Optional[Any] = None,
 ):
     """Build and compile the P3 LangGraph StateGraph.
+
+    Args:
+        on_step: optional subscriber receiving each TraceStep as it is recorded,
+            so one emitter serves both the batch array and a live stream (AD-2).
 
     Returns a compiled graph ready for .invoke() or .stream().
     """
     from langgraph.graph import END, StateGraph
 
-    from ogr.common.contracts import Citation, PipelineRecord, TokenUsage, TraceStep
-    from ogr.common.llm import invoke_llm_with_answer_contract
+    from ogr.common.contracts import Citation, PipelineRecord, TokenUsage
+    from ogr.common.llm import invoke_llm_with_answer_contract, resolve_tool_calling_support
+    from ogr.pipelines.p3_agentic.agents.agent_result import AgentResult
     from ogr.pipelines.p3_agentic.agents.aggregation import run_aggregation
     from ogr.pipelines.p3_agentic.agents.document_retrieval import run_document_retrieval
     from ogr.pipelines.p3_agentic.agents.graph_traversal import run_graph_traversal
     from ogr.pipelines.p3_agentic.agents.multi_hop import run_multi_hop
     from ogr.pipelines.p3_agentic.agents.similarity_search import run_similarity_search
     from ogr.pipelines.p3_agentic.evidence import evaluate_evidence
-    from ogr.pipelines.p3_agentic.intent import IntentParser, IntentSchema
+    from ogr.pipelines.p3_agentic.intent import IntentParser
     from ogr.pipelines.p3_agentic.router import route
     from ogr.pipelines.p3_agentic.stopping import should_stop
     from ogr.pipelines.p3_agentic.strategy import detect_strategy_change
@@ -100,8 +108,10 @@ def build_p3_graph(
     # Use a mutable wrapper so the recorder persists across node calls within a run
     _state_store: Dict[str, Any] = {}
 
-    # Determine capability (from run_config or env probe)
-    supports_tool_calling = getattr(run_config, "llm_supports_tool_calling", False)
+    # Capability probe: 'auto' inspects the model, true/false force it (PLAT-08).
+    supports_tool_calling = resolve_tool_calling_support(
+        llm_model, getattr(run_config, "llm_supports_tool_calling", "auto")
+    )
     intent_parser = IntentParser(llm_model, supports_tool_calling=supports_tool_calling)
 
     # -----------------------------------------------------------------------
@@ -113,17 +123,31 @@ def build_p3_graph(
         intent = intent_parser.parse(question)
         route_decision = route(intent)
 
-        # Store in _state_store so routing functions can read it reliably
-        # (plain dict StateGraph doesn't guarantee key propagation across nodes)
-        _state_store["route_decision"] = route_decision
-
         # Initialize trace recorder keyed to this run's route decision
-        _state_store["recorder"] = TraceRecorder(route_initial=route_decision)
+        _state_store["recorder"] = TraceRecorder(
+            route_initial=route_decision,
+            on_step=on_step,
+        )
+
+        # The intent parse is an LLM call and is the entry point to P3; its
+        # tokens count against the per-query budget like any other (DP-5).
+        parse_tokens = getattr(intent_parser, "last_tokens", None)
+        parse_total = parse_tokens.total if parse_tokens else 0
+        if parse_total:
+            _state_store["recorder"].record(
+                "entity_linking",
+                "intent_parser",
+                AgentResult(
+                    tokens_input=parse_tokens.input,
+                    tokens_output=parse_tokens.output,
+                    notes=f"intent parse via {intent_parser.extraction_path}",
+                ),
+            )
 
         return {
             "intent": intent,
             "route_initial": route_decision,
-            "path_taken": [],
+            "tokens_used": state.get("tokens_used", 0) + parse_total,
         }
 
 
@@ -149,7 +173,6 @@ def build_p3_graph(
         raw = tg_client._run_query("q1_lookup", params)
         latency_ms = (time.perf_counter() - t0) * 1000.0
 
-        from ogr.pipelines.p3_agentic.agents.agent_result import AgentResult
         result = AgentResult(
             evidence=raw or [],
             chunks_returned=len(raw or []),
@@ -158,7 +181,7 @@ def build_p3_graph(
             notes="Q1 direct lookup",
         )
         if recorder:
-            recorder.record("entity_linking", "Q1", result)
+            recorder.record("entity_linking", "Q1", result, path_name="lookup")
 
         return {
             "evidence": raw or [],
@@ -172,10 +195,14 @@ def build_p3_graph(
         anchors = state.get("resolved_anchors")
         recorder: TraceRecorder = _state_store.get("recorder")
 
-        from ogr.pipelines.p3_agentic.agents.aggregation import run_aggregation
         result = run_aggregation(tg_client, intent, anchors)
         if recorder:
-            recorder.record("aggregation", f"Q{'2' if intent.operation == 'COUNT' else '3'}", result)
+            recorder.record(
+                "aggregation",
+                f"Q{'2' if intent.operation == 'COUNT' else '3'}",
+                result,
+                path_name="aggregation",
+            )
 
         new_tokens = state.get("tokens_used", 0) + result.tokens_input + result.tokens_output
         return {
@@ -193,14 +220,12 @@ def build_p3_graph(
 
         # Guard: if anchors not resolved (e.g. intent parse failed), return empty
         if anchors is None:
-            from ogr.pipelines.p3_agentic.agents.agent_result import AgentResult
             result = AgentResult(error="No resolved anchors", notes="anchors=None")
             if recorder:
-                recorder.record("graph_traversal", "Q4", result)
+                recorder.record("graph_traversal", "Q4", result, path_name="traversal")
             return {
-                "evidence": list(state.get("evidence", [])),
+                "evidence": [],
                 "path_taken": ["traversal"],
-                "tokens_used": state.get("tokens_used", 0),
             }
 
         # Choose appropriate traversal type based on operation
@@ -220,15 +245,14 @@ def build_p3_graph(
             q_name = "Q4"
 
         if recorder:
-            recorder.record("graph_traversal", q_name, result)
+            recorder.record("graph_traversal", q_name, result, path_name=tool_name)
 
-        combined_evidence = list(state.get("evidence", [])) + result.evidence
-        new_tokens = state.get("tokens_used", 0) + result.tokens_input + result.tokens_output
-
+        # evidence and path_taken accumulate through the reducer — return only
+        # what this step added.
         return {
-            "evidence": combined_evidence,
+            "evidence": result.evidence,
             "path_taken": [tool_name],
-            "tokens_used": new_tokens,
+            "tokens_used": state.get("tokens_used", 0) + result.tokens_input + result.tokens_output,
         }
 
     def node_evaluate_evidence(state: dict) -> dict:
@@ -238,7 +262,6 @@ def build_p3_graph(
         anchors = state.get("resolved_anchors")
         question = state.get("question", "")
         recorder: TraceRecorder = _state_store.get("recorder")
-        path_taken = state.get("path_taken", [])
 
         eval_result = evaluate_evidence(
             evidence=evidence,
@@ -248,10 +271,27 @@ def build_p3_graph(
             question=question,
         )
 
-        # Trigger fallbacks if needed (DP-2 Option A)
-        new_evidence = list(evidence)
-        new_path = list(path_taken)
-        extra_tokens = 0
+        # Trigger fallbacks if needed (DP-2 Option A). Only the additions are
+        # returned; the reducer appends them to the accumulated state.
+        new_evidence: list = []
+        new_path: list = []
+        # The groundedness check is the loop's only LLM call. Counting it is
+        # what arms the token budget (DP-3) and DP-5 requires every model call
+        # be attributed to a step_n, so it is recorded as one.
+        extra_tokens = eval_result.tokens_input + eval_result.tokens_output
+        if recorder:
+            recorder.record(
+                "evidence_evaluation",
+                "evidence_evaluator",
+                AgentResult(
+                    evidence=[],
+                    chunks_returned=0,
+                    citations_count=len(evidence),
+                    tokens_input=eval_result.tokens_input,
+                    tokens_output=eval_result.tokens_output,
+                    notes=eval_result.notes,
+                ),
+            )
 
         if not eval_result.is_sufficient:
             if eval_result.fallback_trigger == "scope_coverage_fail":
@@ -264,7 +304,7 @@ def build_p3_graph(
                     triggered_by="scope_coverage_fail",
                 )
                 if recorder:
-                    recorder.record("similarity_search", "Q5", sim_result)
+                    recorder.record("similarity_search", "Q5", sim_result, path_name="similarity_search")
                 new_evidence += sim_result.evidence
                 new_path.append("similarity_search")
                 extra_tokens += sim_result.tokens_input + sim_result.tokens_output
@@ -277,7 +317,7 @@ def build_p3_graph(
                     triggered_by=eval_result.fallback_trigger,
                 )
                 if recorder:
-                    recorder.record("document_retrieval", "HAS_CHUNK", doc_result)
+                    recorder.record("document_retrieval", "HAS_CHUNK", doc_result, path_name="document_retrieval")
                 new_evidence += doc_result.evidence
                 new_path.append("document_retrieval")
                 extra_tokens += doc_result.tokens_input + doc_result.tokens_output
@@ -347,7 +387,9 @@ def build_p3_graph(
                     ref_type=ref_type,
                 ))
 
-        # Derive strategy_changed from path_taken vs route_initial
+        # Derive strategy_changed — never set imperatively. The route-vs-path
+        # comparison catches an off-route tool; the step scan additionally
+        # catches a fallback that fired inside its own route (DP-2).
         strategy_changed, _ = detect_strategy_change(route_initial, path_taken)
 
         # Determine stop_reason
@@ -355,10 +397,10 @@ def build_p3_graph(
         tokens_used = state.get("tokens_used", 0) + tokens.total
         stop_reason = "sufficient_evidence"
         if last_eval and hasattr(last_eval, "is_sufficient"):
-            from ogr.pipelines.p3_agentic.stopping import should_stop
             _, stop_reason = should_stop(
                 evaluation=last_eval,
                 step_count=len(path_taken),
+                tools_tried=path_taken,
                 tokens_used=tokens_used,
                 max_steps=getattr(run_config, "max_steps", 6),
                 max_tokens=getattr(run_config, "max_tokens_per_query", 20000),
@@ -366,6 +408,7 @@ def build_p3_graph(
 
         # Finalize trace
         trace_steps = recorder.finalize() if recorder else []
+        strategy_changed = strategy_changed or any(s.strategy_change for s in trace_steps)
         cumulative = recorder.cumulative_tokens() if recorder else tokens
         final_tokens = TokenUsage(
             input=cumulative.input,
@@ -398,13 +441,8 @@ def build_p3_graph(
     # -----------------------------------------------------------------------
 
     def route_after_parse(state: dict) -> str:
-        """Conditional edge from link_entities to the correct path node.
-
-        Reads from _state_store rather than state dict to avoid key loss
-        when StateGraph(dict) is used (plain dict state does not guarantee
-        merging of all prior keys in every node's state view).
-        """
-        decision = _state_store.get("route_decision", "loop")
+        """Conditional edge from link_entities to the correct path node."""
+        decision = state.get("route_initial") or "loop"
         logger.debug("route_after_parse: → %s", decision)
         return decision
 
@@ -414,13 +452,13 @@ def build_p3_graph(
         path_taken = state.get("path_taken", [])
         tokens_used = state.get("tokens_used", 0)
 
-        from ogr.pipelines.p3_agentic.stopping import should_stop
         if last_eval is None:
             return "generate"
 
         stop, _ = should_stop(
             evaluation=last_eval,
             step_count=len(path_taken),
+            tools_tried=path_taken,
             tokens_used=tokens_used,
             max_steps=getattr(run_config, "max_steps", 6),
             max_tokens=getattr(run_config, "max_tokens_per_query", 20000),
@@ -431,7 +469,7 @@ def build_p3_graph(
     # Build graph
     # -----------------------------------------------------------------------
 
-    graph = StateGraph(dict)
+    graph = StateGraph(OrchestratorState)
 
     graph.add_node("parse_intent", node_parse_intent)
     graph.add_node("link_entities", node_link_entities)

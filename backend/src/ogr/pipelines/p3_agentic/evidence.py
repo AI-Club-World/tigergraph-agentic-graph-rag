@@ -48,6 +48,10 @@ class EvidenceEvaluation:
     groundedness_pass: bool
     fallback_trigger: FallbackTrigger
     notes: str = ""
+    # Tokens spent by the groundedness call. The loop's only LLM call, so
+    # without this the token budget can never arm (DP-3, DP-5).
+    tokens_input: int = 0
+    tokens_output: int = 0
 
 
 def evaluate_evidence(
@@ -88,8 +92,11 @@ def evaluate_evidence(
         )
 
     # Stage 2: LLM groundedness check (DP-4 Option A — labelled as LLM call)
+    tokens_in = tokens_out = 0
     if model is not None and question:
-        groundedness_pass, ground_notes = _check_groundedness_llm(evidence, question, model)
+        groundedness_pass, ground_notes, tokens_in, tokens_out = _check_groundedness_llm(
+            evidence, question, model
+        )
     else:
         # Deterministic fallback: check token overlap (DP-4 Option B)
         groundedness_pass, ground_notes = _check_groundedness_deterministic(evidence, question)
@@ -101,6 +108,8 @@ def evaluate_evidence(
             groundedness_pass=False,
             fallback_trigger="groundedness_fail",
             notes=ground_notes,
+            tokens_input=tokens_in,
+            tokens_output=tokens_out,
         )
 
     # Collect parse_confidence notes from Q2/Q3 evidence
@@ -113,6 +122,8 @@ def evaluate_evidence(
         groundedness_pass=True,
         fallback_trigger="none",
         notes=all_notes,
+        tokens_input=tokens_in,
+        tokens_output=tokens_out,
     )
 
 
@@ -157,8 +168,13 @@ def _check_groundedness_llm(
     evidence: List[Dict[str, Any]],
     question: str,
     model: Any,
-) -> tuple[bool, str]:
-    """LLM groundedness check — labelled as LLM call (DP-4 Option A)."""
+) -> tuple[bool, str, int, int]:
+    """LLM groundedness check — labelled as LLM call (DP-4 Option A).
+
+    Returns (passed, notes, tokens_input, tokens_output).
+    """
+    from ogr.common.llm import invoke_and_count
+
     try:
         from langchain_core.messages import HumanMessage, SystemMessage
     except ImportError:
@@ -176,16 +192,22 @@ def _check_groundedness_llm(
         "Reply with a single word: YES or NO."
     )
     try:
-        response = model.invoke([
+        response, tokens, _source, _latency = invoke_and_count(model, [
             SystemMessage(content="You are a groundedness evaluator. Answer only YES or NO."),
             HumanMessage(content=prompt),
         ])
         raw = (response.content if hasattr(response, "content") else str(response)).strip().upper()
         passed = raw.startswith("YES")
-        return passed, f"LLM groundedness: {'pass' if passed else 'fail'}"
+        return (
+            passed,
+            f"LLM groundedness: {'pass' if passed else 'fail'}",
+            tokens.input,
+            tokens.output,
+        )
     except Exception as e:
         logger.warning("Groundedness LLM call failed: %s; falling back to deterministic", e)
-        return _check_groundedness_deterministic(evidence, question)
+        passed, notes = _check_groundedness_deterministic(evidence, question)
+        return passed, notes, 0, 0
 
 
 def _check_groundedness_deterministic(

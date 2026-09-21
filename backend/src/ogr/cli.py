@@ -24,8 +24,31 @@ def build_parser() -> argparse.ArgumentParser:
         help="Comma-separated list of pipelines to run (e.g. 'rag', 'graphrag', 'agentic_graphrag')",
     )
     ask_parser.add_argument("--json", action="store_true", help="Output full JSON record")
+    ask_parser.add_argument(
+        "--show-trace",
+        action="store_true",
+        help="Print the agentic investigation trace step by step",
+    )
 
     return parser
+
+
+def _print_trace(record) -> None:
+    """Print the agentic TraceStep[] — one line per step (TECHNICAL-SPEC §6.3)."""
+    steps = record.trace or []
+    if not steps:
+        print("  (no trace recorded)")
+        return
+    for step in steps:
+        marker = "  <- STRATEGY CHANGE" if step.strategy_change else ""
+        print(
+            f"  [{step.step_n}] {step.agent_type} via {step.tool_called} | "
+            f"tokens={step.tokens.total} chunks={step.chunks_returned} "
+            f"citations={step.citations_count} {step.latency_ms:.0f}ms{marker}"
+        )
+        if step.notes:
+            print(f"      {step.notes}")
+    print(f"  stop_reason: {record.stop_reason}")
 
 
 def main(argv=None) -> int:
@@ -37,27 +60,36 @@ def main(argv=None) -> int:
         config = get_default_config()
         client = TigerGraphClient(config)
 
-        results = {}
+        records = {}
         for p in requested_pipelines:
             if p == "rag":
-                record = run_p1_rag(query=args.query, client=client, config=config)
-                results["rag"] = record.model_dump()
+                records["rag"] = run_p1_rag(query=args.query, client=client, config=config)
+            elif p in ("agentic", "agentic_graphrag"):
+                from ogr.pipelines.p3_agentic.orchestrator import run_p3_agentic
+
+                records["agentic_graphrag"] = run_p3_agentic(
+                    query=args.query, tg_client=client, config=config
+                )
             else:
                 print(f"Pipeline '{p}' is not yet implemented in this milestone.", file=sys.stderr)
 
-        if args.json or len(requested_pipelines) > 1:
-            print(json.dumps(results, indent=2))
-        else:
-            rag_record = results.get("rag")
-            if rag_record:
-                print(f"Pipeline: {rag_record['pipeline']}")
-                print(f"Answer: {rag_record['answer']}")
-                print(f"Explanation: {rag_record['explanation']}")
-                print(f"Chunks returned: {rag_record['chunks_returned']}")
-                print(f"Citations: {len(rag_record['citations'])}")
-                print(f"Tokens: {rag_record['tokens']}")
-                print(f"Latency: {rag_record['latency_ms']:.2f} ms")
-                print(f"Status: {rag_record['status']}")
+        if args.json:
+            print(json.dumps({k: v.model_dump() for k, v in records.items()}, indent=2))
+            return 0
+
+        for name, record in records.items():
+            print(f"Pipeline: {record.pipeline}")
+            print(f"Answer: {record.answer}")
+            print(f"Explanation: {record.explanation}")
+            print(f"Chunks returned: {record.chunks_returned}")
+            print(f"Citations: {len(record.citations)}")
+            print(f"Tokens: {record.tokens.model_dump()} ({record.token_source})")
+            print(f"Latency: {record.latency_ms:.2f} ms")
+            print(f"Status: {record.status}")
+            if args.show_trace and name == "agentic_graphrag":
+                print("Trace:")
+                _print_trace(record)
+            print()
 
     return 0
 

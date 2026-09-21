@@ -47,7 +47,10 @@ class PipelineRecord(BaseModel):
     chunks_returned: int = 0
     citations_count: int = 0
     tokens: TokenUsage = Field(default_factory=TokenUsage)
-    token_source: Literal["provider", "local_tokenizer"] = "provider"
+    # 'estimated' exists so a character-heuristic count is never presented as a
+    # tokenizer count: §11 forbids estimation, PLAT-08 requires the figure be
+    # labelled rather than fabricated or dropped.
+    token_source: Literal["provider", "local_tokenizer", "estimated"] = "provider"
     latency_ms: float = 0.0
     trace: Optional[List[TraceStep]] = None
     strategy_changed: Optional[bool] = None

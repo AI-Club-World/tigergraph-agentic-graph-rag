@@ -35,6 +35,9 @@ from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field, ValidationError
 
+from ogr.common.contracts import TokenUsage
+from ogr.common.llm import invoke_and_count
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -174,9 +177,14 @@ class IntentParser:
         self.supports_tool_calling = supports_tool_calling
         # Record which extraction path is active for run_config header
         self.extraction_path = "tool_calling" if supports_tool_calling else "json_schema"
+        # Tokens spent parsing intent. Read by the orchestrator so the entry
+        # point to P3 is not invisible on the cost axis (DP-5).
+        self.last_tokens = TokenUsage()
+        self.last_token_source = "provider"
 
     def parse(self, question: str) -> IntentSchema:
         """Parse question into IntentSchema with one retry on schema failure."""
+        self.last_tokens = TokenUsage()
         for attempt in range(2):  # exactly one retry
             try:
                 raw = self._extract(question)
@@ -207,7 +215,7 @@ class IntentParser:
             from langchain.schema import HumanMessage
 
         model_with_tools = self.model.bind_tools([INTENT_TOOL_DEFINITION])
-        response = model_with_tools.invoke([HumanMessage(content=question)])
+        response = self._invoke_counted(model_with_tools, [HumanMessage(content=question)])
         tool_calls = getattr(response, "tool_calls", [])
         if tool_calls:
             return tool_calls[0].get("args", {})
@@ -225,13 +233,24 @@ class IntentParser:
             SystemMessage(content=JSON_SCHEMA_SYSTEM_PROMPT),
             HumanMessage(content=JSON_SCHEMA_USER_PROMPT.format(question=question)),
         ]
-        response = self.model.invoke(messages)
+        response = self._invoke_counted(self.model, messages)
         raw_text = response.content if hasattr(response, "content") else str(response)
         if isinstance(raw_text, list):
             raw_text = "".join(
                 p.get("text", "") if isinstance(p, dict) else str(p) for p in raw_text
             )
         return self._parse_json_from_text(raw_text)
+
+    def _invoke_counted(self, model: Any, messages: Any) -> Any:
+        """Invoke through the accounting module, accumulating across retries."""
+        response, tokens, source, _ = invoke_and_count(model, messages)
+        self.last_tokens = TokenUsage(
+            input=self.last_tokens.input + tokens.input,
+            output=self.last_tokens.output + tokens.output,
+            total=self.last_tokens.total + tokens.total,
+        )
+        self.last_token_source = source
+        return response
 
     @staticmethod
     def _parse_json_from_text(text: str) -> Dict[str, Any]:

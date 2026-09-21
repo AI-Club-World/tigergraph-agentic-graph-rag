@@ -53,8 +53,14 @@ class RunConfig(BaseModel):
     max_tokens_per_query: int = Field(
         default_factory=lambda: int(os.getenv("RUN_MAX_TOKENS_PER_QUERY", "20000"))
     )
-    llm_supports_tool_calling: bool = Field(
-        default_factory=lambda: os.getenv("LLM_SUPPORTS_TOOL_CALLING", "false").lower() == "true"
+    # 'auto' probes the model's capability at startup; 'true'/'false' force it.
+    # auto is the default because assuming capability is what breaks P3 silently
+    # on a local model (PLAT-08 / AD-13).
+    llm_supports_tool_calling: str = Field(
+        default_factory=lambda: os.getenv("LLM_SUPPORTS_TOOL_CALLING", "auto").lower()
+    )
+    llm_reports_token_usage: str = Field(
+        default_factory=lambda: os.getenv("LLM_REPORTS_TOKEN_USAGE", "auto").lower()
     )
 
 
