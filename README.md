@@ -39,6 +39,18 @@ transport ships two runs: `latest` (20 scored questions) and `hidden` (8
 questions with no gold, so the gold and score columns disappear — the same
 component renders the hidden set).
 
+## Light and dark mode
+
+The toggle sits in the header. It defaults to the OS setting
+(`prefers-color-scheme`) and remembers an explicit choice in `localStorage`
+under `ogr-theme`; `index.html` applies the value before first paint so there is
+no flash. Every colour is a CSS custom property defined twice in `index.css` —
+once under `:root, :root[data-theme='dark']` and once under
+`:root[data-theme='light']`. Chart colours reference the same tokens
+(`components/colors.ts`), so bars, swatches and scatter points follow the
+switch. Because `var()` only resolves in CSS, SVG shapes set them via `style`
+rather than the `fill`/`stroke` attributes.
+
 ## Folder structure
 
 ```

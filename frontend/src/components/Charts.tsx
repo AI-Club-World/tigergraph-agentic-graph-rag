@@ -1,6 +1,6 @@
 export function BarChart({
   data,
-  color = '#58a6ff',
+  color = 'var(--accent)',
 }: {
   data: Array<{ label: string; value: number }>
   color?: string
@@ -79,9 +79,8 @@ export function ScatterPlot({
               cx={sx(p.x)}
               cy={sy(p.y)}
               r={5}
-              fill={s.color}
+              style={{ fill: s.color, stroke: s.color }}
               fillOpacity={0.7}
-              stroke={s.color}
             >
               <title>{`${s.name} — ${p.label}\n${xLabel}: ${p.x.toLocaleString('en-US')}\n${yLabel}: ${p.y.toFixed(2)}`}</title>
             </circle>
