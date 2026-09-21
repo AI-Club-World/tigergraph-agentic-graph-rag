@@ -20,7 +20,7 @@
 
 | Check | Command | Initial | Final |
 |---|---|---|---|
-| Tests | `python -m pytest -q` (in `backend/`) | **12 failed, 75 passed** | **99 passed** (87 existing + 12 new) |
+| Tests | `python -m pytest -q` (in `backend/`) | **12 failed, 75 passed** | **104 passed** (87 existing + 17 new) |
 | Import check | walk `ogr.*`, import every module | **27/27 OK** | **27/27 OK** |
 | Compile check | `python -m compileall -q src tests` | **clean** | **clean** |
 | Lint | — | **none present** (no ruff config, no `.github/workflows/` in repo) | none present |
@@ -81,7 +81,7 @@ No live external service was contacted at any point. All pipeline tests run agai
 | A22 | LangGraph `StateGraph` implementing the ARCH §8 runtime view; nodes + conditional edges | PLAN-003 G5; §8.3 | DONE | DONE | `orchestrator.py:436-475` | Node and edge topology matches the spec. |
 | A23 | **LOOKUP traverses zero loop edges** | PLAN-003 G5; G4 gate; US-5 | **BROKEN** | DONE | `orchestrator.py:459-460`; `test_orchestrator.py:169` | Topology was always correct (`lookup_direct → generate`); the verifying test failed on the undeclared dependency. |
 | A24 | Emits `PipelineRecord` with full trace, `strategy_changed`, `stop_reason` | PLAN-003 G5; §6.2 | **BROKEN** | DONE | `orchestrator.py:378-393` | Failed initially on the dependency; also under-reported tokens (A17/A20). |
-| A25 | One trace emitter, two consumers (live stream + batch array) | PLAN-003 G4; AD-1; AD-2 | **PARTIAL** | PARTIAL | `trace.py:TraceRecorder(on_step=…)` | The recorder now pushes each step to an optional subscriber as it is recorded, so a single emitter can serve both. The live SSE consumer itself is `API-01`/PLAN-004, which is **not on this branch** — wiring it here would be inventing an interface. Remains PARTIAL by scope, not by defect. |
+| A25 | One trace emitter, two consumers (live stream + batch array), built on `astream_events` | PLAN-003 G4; AD-1; AD-2 | **PARTIAL** | DONE | `orchestrator.py:astream_p3_agentic`; `trace.py:TraceRecorder(on_step=…)`; `test_trace_stream.py` | `astream_p3_agentic()` drives the compiled graph with LangGraph `astream_events` and yields each `TraceStep` as its node completes, then the `PipelineRecord` last. The `TraceRecorder` remains the single emitter feeding both. `test_one_emitter_two_consumers` asserts the streamed steps and the record's `trace` array are identical, which is the property AD-1/AD-2 actually care about; `test_stream_matches_the_sync_run` asserts streaming changes neither the answer, the stop reason nor the cost. The HTTP/SSE endpoint that will consume this is still `API-01`/PLAN-004 and out of scope, but the generator it consumes now exists and is tested. |
 | A26 | Paraphrase generalization set, ~15 entries | PLAN-003 G5; AGENT-08; FR-16 | DONE | DONE | `acceptance/paraphrase/paraphrase_set.jsonl` (15 lines) | 6 tests passing. |
 | A27 | Anti-overfitting review "gets a command, not an intention" | PLAN-003 Verification | **MISSING** | DONE | `tests/pipelines/p3/test_anti_overfitting.py` | The grep passed when run by hand but nothing enforced it. Now three tests. |
 | A28 | `python -m ogr.cli ask … --pipelines agentic --show-trace` | PLAN-003 Verification | **MISSING** | DONE | `cli.py` | The CLI only knew `rag`; `agentic` printed "not yet implemented" and `--show-trace` did not exist. |
@@ -156,9 +156,11 @@ BUILD-PLAN §1's layout places it at `backend/.env.example`. One template alread
 | `backend/src/ogr/pipelines/p3_agentic/trace.py` | `record_llm_generation` now emits a real `TraceStep`; `reconcile_assert` compares Σ `TraceStep.tokens` against the record total and returns a bool; add `trace_token_sum()`, the `on_step` subscriber, and the `path_name` parameter that separates tool steps from bookkeeping steps (A17, A15b, A15c, A25). |
 | `backend/src/ogr/pipelines/p3_agentic/orchestrator.py` | Use the typed `OrchestratorState` with an append-only `Annotated` reducer for `path_taken`, `evidence` and `steps`; nodes now return only their own additions; record the intent parse and the evidence evaluation as trace steps; resolve tool-calling capability through the probe; pass `tools_tried` to `should_stop`; derive `strategy_changed` from the route comparison OR any flagged step (A15b, A17, A18, A19, A20, A24). |
 | `backend/src/ogr/cli.py` | Add `--pipelines agentic` and `--show-trace` (A28). |
+| `backend/src/ogr/pipelines/p3_agentic/orchestrator.py` *(follow-up pass)* | Add `astream_p3_agentic()` built on LangGraph `astream_events`; factor the shared setup into `_prepare_run()` and the two duplicated error blocks into `_error_record()` so the sync and streaming paths cannot diverge (A25). |
 | `backend/tests/pipelines/p3/test_anti_overfitting.py` | **New.** Enforce the PLAN-003 verification greps: no runtime `qtype` read, no eval-set strings, no text-to-GSQL chain (A27, A30). |
 | `backend/tests/pipelines/p3/test_loop_budget.py` | **New.** Regression tests for A18/A19: `path_taken` accumulates across loop iterations, and an unsatisfiable TRAVERSE question stops on `step_budget_exhausted` rather than the recursion limit. |
 | `backend/tests/pipelines/p3/test_token_reconciliation.py` | **New.** Regression test for A17: Σ `TraceStep.tokens` equals the record total, and `reconcile_assert` warns on a genuine mismatch. |
+| `backend/tests/pipelines/p3/test_trace_stream.py` | **New.** A25: the streamed steps equal the record's trace array, and streaming changes neither the answer, the stop reason nor the cost. |
 | `README.md` | Add "Where the LLM is, and is not" — no LLM in the scoring path, one labelled groundedness call in the retrieval path (A12, DP-4). |
 | `env.example` | Document `LLM_REPORTS_TOKEN_USAGE`; note `auto` is now honoured for `LLM_SUPPORTS_TOOL_CALLING`. |
 
@@ -168,11 +170,13 @@ No existing test was modified. No file outside the audited scope was edited.
 
 | Status | Initial | Final |
 |---|---|---|
-| DONE | 24 | **42** |
-| PARTIAL | 5 | **1** (A25 — blocked by scope, not by defect) |
+| DONE | 24 | **43** |
+| PARTIAL | 5 | 0 |
 | BROKEN | 8 | 0 |
 | MISSING | 6 | 0 |
 
-**Not DONE at the end**: A25 only. The trace emitter now supports a live subscriber, but its second consumer — the SSE trace panel — is `API-01`/PLAN-004 and does not exist on this branch. Wiring `astream_events` to a caller that is not here would be inventing an interface, so it is recorded honestly rather than claimed.
+**Every RAG and Agentic-RAG item in PLAN-002 and PLAN-003 is now DONE.** A25 was the last one open and closed in a follow-up pass: `astream_p3_agentic()` now drives the graph with LangGraph `astream_events` and yields `TraceStep`s live, with a test asserting the stream and the batch record carry identical steps.
+
+**Out of scope, not audited** (named here so the boundary is explicit, not so it reads as complete): P2/GraphRAG (`GRAPH-08`), ingestion (`GRAPH-01…07`, `GRAPH-09`), the scorer and batch runner (`EVAL-01…04`), the API (`API-01`), and the frontend (`WEB-01…04`). The `out/` and `data/` directories and `.github/workflows/ci.yml` from the BUILD-PLAN §1 layout do not exist on this branch.
 
 **Not verifiable offline** (left as-is, per the no-live-services constraint): the end-to-end `python -m ogr.cli ask …` runs against a real LLM endpoint and a live TigerGraph workspace; the G4 manual check ("one question per operation traced by hand") and the PLAN-002 manual lookup/aggregation pair both need those services. All pipeline logic is exercised against mocks instead.

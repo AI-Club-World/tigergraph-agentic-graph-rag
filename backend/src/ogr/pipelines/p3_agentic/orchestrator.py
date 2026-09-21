@@ -513,6 +513,114 @@ def build_p3_graph(
     return graph.compile(), _state_store
 
 
+def _prepare_run(
+    llm_model: Optional[Any],
+    tg_client: Optional[Any],
+    entity_linker: Optional[Any],
+    config: Optional[Any],
+    on_step: Optional[Any] = None,
+):
+    """Resolve defaults and compile the graph. Shared by the sync and stream entry points."""
+    from ogr.common.config import get_default_config
+    from ogr.common.llm import get_chat_model
+    from ogr.graph.client import TigerGraphClient
+    from ogr.pipelines.p3_agentic.agents.entity_linking import EntityLinker
+
+    cfg = config or get_default_config()
+    client = tg_client or TigerGraphClient(cfg)
+    model = llm_model or get_chat_model(cfg)
+
+    # Build entity linker from graph vocabularies (or defaults for offline)
+    if entity_linker is None:
+        entity_linker = EntityLinker(
+            games_vocab=client.get_vocabulary("Games") or None,
+            sports_vocab=client.get_vocabulary("Sport") or None,
+            venues_vocab=client.get_vocabulary("Venue") or None,
+        )
+
+    return build_p3_graph(model, client, entity_linker, cfg, on_step=on_step)
+
+
+def _error_record(detail: str, latency_ms: float) -> Any:
+    """A PipelineRecord for a run that could not complete (NFR-2: never raise)."""
+    from ogr.common.contracts import PipelineRecord, TokenUsage
+
+    return PipelineRecord(
+        pipeline="agentic_graphrag",
+        answer="",
+        explanation=f"Orchestrator error: {detail}",
+        citations=[],
+        chunks_returned=0,
+        citations_count=0,
+        tokens=TokenUsage(),
+        token_source="provider",
+        latency_ms=latency_ms,
+        trace=[],
+        strategy_changed=False,
+        stop_reason="error",
+        status="error",
+        error_detail=detail,
+    )
+
+
+async def astream_p3_agentic(
+    query: str,
+    llm_model: Optional[Any] = None,
+    tg_client: Optional[Any] = None,
+    entity_linker: Optional[Any] = None,
+    config: Optional[Any] = None,
+) -> Any:  # AsyncIterator[TraceStep | PipelineRecord]
+    """Stream a P3 run: each TraceStep as its node completes, then the record.
+
+    Built on LangGraph `astream_events`, so the trace is assembled exactly once
+    (AD-1, AD-2). The TraceRecorder is the single emitter; its steps feed both
+    this stream and the `trace` array on the final PipelineRecord. Assembling
+    the trace twice is how the live demo and the submitted metrics drift apart.
+
+    Yields TraceStep objects, then exactly one PipelineRecord last.
+    """
+    compiled_graph, state_store = _prepare_run(llm_model, tg_client, entity_linker, config)
+    total_start = time.perf_counter()
+    emitted = 0
+
+    def _drain():
+        """Yield any steps the recorder has produced but not yet streamed."""
+        nonlocal emitted
+        recorder = state_store.get("recorder")
+        if recorder is None:
+            return []
+        steps = recorder.finalize()
+        new = steps[emitted:]
+        emitted = len(steps)
+        return new
+
+    try:
+        async for event in compiled_graph.astream_events({"question": query}):
+            # A node finishing is the point at which its step exists.
+            if event.get("event") not in ("on_chain_end", "on_chain_stream"):
+                continue
+            for step in _drain():
+                yield step
+    except Exception as e:  # noqa: BLE001 - fault isolation, never raise to the caller
+        logger.error("P3 stream failed: %s", e)
+        yield _error_record(str(e), (time.perf_counter() - total_start) * 1000.0)
+        return
+
+    # Anything recorded after the last observed event (e.g. the generate node).
+    for step in _drain():
+        yield step
+
+    record = state_store.get("pipeline_record")
+    if record is None:
+        yield _error_record(
+            "state_store missing pipeline_record", (time.perf_counter() - total_start) * 1000.0
+        )
+        return
+
+    record.latency_ms = (time.perf_counter() - total_start) * 1000.0
+    yield record
+
+
 def run_p3_agentic(
     query: str,
     llm_model: Optional[Any] = None,
@@ -532,72 +640,19 @@ def run_p3_agentic(
     Returns:
         PipelineRecord with full trace, strategy_changed, stop_reason.
     """
-    from ogr.common.config import get_default_config
-    from ogr.common.contracts import PipelineRecord, TokenUsage
-    from ogr.common.llm import get_chat_model
-    from ogr.graph.client import TigerGraphClient
-    from ogr.pipelines.p3_agentic.agents.entity_linking import EntityLinker
-
-    cfg = config or get_default_config()
-    client = tg_client or TigerGraphClient(cfg)
-    model = llm_model or get_chat_model(cfg)
-
-    # Build entity linker from graph vocabularies (or defaults for offline)
-    if entity_linker is None:
-        games_vocab = client.get_vocabulary("Games") or None
-        sports_vocab = client.get_vocabulary("Sport") or None
-        venues_vocab = client.get_vocabulary("Venue") or None
-        entity_linker = EntityLinker(
-            games_vocab=games_vocab,
-            sports_vocab=sports_vocab,
-            venues_vocab=venues_vocab,
-        )
-
-    compiled_graph, state_store = build_p3_graph(model, client, entity_linker, cfg)
-
-    initial_state = {"question": query}
+    compiled_graph, state_store = _prepare_run(llm_model, tg_client, entity_linker, config)
     total_start = time.perf_counter()
 
     try:
-        compiled_graph.invoke(initial_state)
+        compiled_graph.invoke({"question": query})
     except Exception as e:
         logger.error("P3 orchestrator failed: %s", e)
-        total_latency = (time.perf_counter() - total_start) * 1000.0
-        return PipelineRecord(
-            pipeline="agentic_graphrag",
-            answer="",
-            explanation=f"Orchestrator error: {e}",
-            citations=[],
-            chunks_returned=0,
-            citations_count=0,
-            tokens=TokenUsage(),
-            token_source="provider",
-            latency_ms=total_latency,
-            trace=[],
-            strategy_changed=False,
-            stop_reason="error",
-            status="error",
-            error_detail=str(e),
-        )
+        return _error_record(str(e), (time.perf_counter() - total_start) * 1000.0)
 
     record = state_store.get("pipeline_record")
     if record is None:
-        total_latency = (time.perf_counter() - total_start) * 1000.0
-        return PipelineRecord(
-            pipeline="agentic_graphrag",
-            answer="",
-            explanation="No pipeline record produced",
-            citations=[],
-            chunks_returned=0,
-            citations_count=0,
-            tokens=TokenUsage(),
-            token_source="provider",
-            latency_ms=total_latency,
-            trace=[],
-            strategy_changed=False,
-            stop_reason="error",
-            status="error",
-            error_detail="state_store missing pipeline_record",
+        return _error_record(
+            "state_store missing pipeline_record", (time.perf_counter() - total_start) * 1000.0
         )
 
     # Set total latency on the returned record
