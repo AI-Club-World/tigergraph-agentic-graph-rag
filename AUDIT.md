@@ -177,6 +177,23 @@ No existing test was modified. No file outside the audited scope was edited.
 
 **Every RAG and Agentic-RAG item in PLAN-002 and PLAN-003 is now DONE.** A25 was the last one open and closed in a follow-up pass: `astream_p3_agentic()` now drives the graph with LangGraph `astream_events` and yields `TraceStep`s live, with a test asserting the stream and the batch record carry identical steps.
 
-**Out of scope, not audited** (named here so the boundary is explicit, not so it reads as complete): P2/GraphRAG (`GRAPH-08`), ingestion (`GRAPH-01…07`, `GRAPH-09`), the scorer and batch runner (`EVAL-01…04`), the API (`API-01`), and the frontend (`WEB-01…04`). The `out/` and `data/` directories and `.github/workflows/ci.yml` from the BUILD-PLAN §1 layout do not exist on this branch.
+---
+
+## Follow-on work (beyond the RAG/Agentic-RAG audit scope)
+
+Built after the audit closed, at the user's direction. Verified the same way — existing tests, ruff, import/compile checks, no live services.
+
+| Task | Spec ref | Status | Evidence | Notes |
+|---|---|---|---|---|
+| Repo hygiene + CI guards | BUILD-PLAN §2 | DONE | `.gitignore`, `.github/workflows/ci.yml`, `pyproject.toml` `[tool.ruff]` | None of it existed. 39 `__pycache__/*.pyc` untracked (`--cached`, still on disk). Ruff clean over `src` and `tests`. Both guard checks wired: the holdout grep is scoped to source rather than the whole tree — the specs and this file discuss the holdout by name, and opening it from code is the thing being guarded — and was verified against a planted violation. The no-test-modified check requires an explicit `TEST-CHANGE:` marker. The frontend job self-skips when `package.json` is absent, since that module lives on `feature/initial-ui`. |
+| `EVAL-01` name normalizer | PLAN-004 G1; §9 | DONE | `common/names.py`; `tests/eval/test_names.py` | SQuAD normalization plus the multi-person splitter. Every guarded prefix (`Mac`, `Mc`, `Van`, `Di`, `De`, `Le`, `La`, `O'`) has a test, and a guarded name still splits correctly when a second person is concatenated onto it. |
+| `EVAL-02` scorer | PLAN-004 G1; §9; FR-14; NFR-6 | DONE | `eval/scorer.py`; `tests/eval/test_scorer.py` | EM and token F1 over the `answer` span only (PLAT-06), precision/recall/F1 over the returned document set, Completeness as the explicit recall alias (DP-2), per-qtype breakdown. No `@k` — undefined for P2/P3, which retrieve by traversal. No LLM in the path. F1 cases carry their arithmetic in the docstring so the expected value is checkable by eye. |
+| `EVAL-03` dispatcher | PLAN-004 G2; FR-2; NFR-1; NFR-2 | DONE | `eval/dispatcher.py`; `tests/eval/test_dispatcher.py` | `asyncio.gather`, each pipeline in its own failure domain, never raises. Sync pipelines run in a worker thread so a blocking call cannot stall the loop and serialise the others — which would look concurrent in the code and not be. Asserted with a timing test, per PLAN-004's own manual step. |
+| `EVAL-03` aggregator | PLAN-004 G2; FR-8; FR-9; NFR-5; AD-1 | DONE | `eval/aggregator.py`; `tests/eval/test_aggregator.py` | Token multipliers, EM-based accuracy deltas, literal `"n/a"` where no ground truth. Negative-delta and no-gain cases tested explicitly: a verdict that only ever flatters the agent would be a defect, not a good result. |
+| `GRAPH-08` P2 pipeline | PLAN-GRAPH G4; §8.2; PLAT-07 | DONE | `pipelines/p2_graphrag.py`; `tests/pipelines/test_p2.py` | Shares P3's intent parser, then exactly one query — counted by a test, including the empty-result case where an evidence check would have fired a second. `trace`/`strategy_changed`/`stop_reason` stay null because P2 has no loop. P2's cost includes its intent parse; omitting it would credit P2 with a free parse P3 is charged for, and that ratio is what the cost argument rests on. |
+
+**Final check results across the whole branch**: `pytest -q` → **185 passed**; `ruff check src tests` → **clean**; import walk → **33/33 OK**; `compileall` → **clean**. All three pipelines are reachable from the CLI (`--pipelines rag|graphrag|agentic`).
+
+**Still out of scope, not built**: ingestion and the GSQL query library (`GRAPH-01…07`, `GRAPH-09`), the batch runner and record store (`EVAL-04`), the API (`API-01`), the frontend (`WEB-01…04`, which lives on `feature/initial-ui`), the hidden run (`HID-01`) and `make reproduce` (`REPRO-01`). The `out/` and `data/` directories from the BUILD-PLAN §1 layout do not exist on this branch, so no pipeline has been run against a real graph or a real LLM — every test here runs against mocks.
 
 **Not verifiable offline** (left as-is, per the no-live-services constraint): the end-to-end `python -m ogr.cli ask …` runs against a real LLM endpoint and a live TigerGraph workspace; the G4 manual check ("one question per operation traced by hand") and the PLAN-002 manual lookup/aggregation pair both need those services. All pipeline logic is exercised against mocks instead.
