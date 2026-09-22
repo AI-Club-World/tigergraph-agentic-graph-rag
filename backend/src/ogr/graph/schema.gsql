@@ -11,7 +11,11 @@
 
 USE GLOBAL
 
-DROP GRAPH OlympicGraphRAG
+// CASCADE because the installed Q1-Q5 are dependent objects: a plain DROP
+// GRAPH succeeds only while no queries exist, so without this the second
+// install of the schema fails and leaves the old vertex types in place.
+// Re-running this file therefore requires re-running install_queries after.
+DROP GRAPH OlympicGraphRAG CASCADE
 // Edges first: a vertex type that still carries an edge type cannot be
 // dropped ("Please drop the edges first!"), which leaves the second run
 // unable to recreate the vertices it failed to drop.

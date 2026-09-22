@@ -65,6 +65,9 @@ _FIELD = re.compile(r"^[ \t]+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(.*)$")
 _TITLE_SPORT = re.compile(r"^(.*?)\s+at\s+the\s+\d{4}\b", re.IGNORECASE)
 # "2012 Summer" -> ("2012", "Summer")
 _GAMES = re.compile(r"(\d{4})\s*(Summer|Winter)", re.IGNORECASE)
+# The event part of a title, after the Olympics/dash separator. Titles use an
+# en dash in the corpus, but hyphen and em dash are accepted too.
+_TITLE_EVENT = re.compile(r"Olympics\s*[–—−-]\s*(.+)$", re.IGNORECASE)
 _LEADING_INT = re.compile(r"^\s*(\d[\d,]*)")
 
 OLYMPIC_INFOBOX = "olympic event"
@@ -94,6 +97,10 @@ class ParsedDocument:
     nations_text: str | None = None
     date_text: str | None = None
     date_year: int | None = None
+    # True when `date_year` was taken from the Games rather than read out of
+    # `date_text`. Keeps the coverage report honest about what the date parser
+    # actually recovered — see `parse_document`.
+    date_year_from_games: bool = False
     date_month: int | None = None
     date_day_start: int | None = None
     date_day_end: int | None = None
@@ -160,7 +167,8 @@ class CoverageReport:
             f"- Non-integer `competitors` values: **{len(self.non_integer_competitors)}**",
             f"- Events with no derivable sport: **{len(self.missing_sport)}**",
             f"- Events with no derivable games: **{len(self.missing_games)}**",
-            f"- Dates carrying no year: **{self.dates_without_year}**",
+            f"- Dates carrying no year (year taken from the Games): "
+            f"**{self.dates_without_year}**",
             f"- Events with concatenated medallist names: **{self.concatenated_medallists}**",
         ]
         if self.non_integer_competitors:
@@ -224,6 +232,21 @@ def derive_sport(title: str) -> str | None:
         return None
     sport = match.group(1).strip()
     return sport or None
+
+
+def _slug(text: str) -> str:
+    """Lowercase hyphen slug. `+` becomes `plus` because it distinguishes
+    weight classes ("Men's +105 kg" from "Men's 105 kg") and would otherwise
+    be stripped as punctuation."""
+    return re.sub(r"[^a-z0-9]+", "-", text.lower().replace("+", " plus ")).strip("-")
+
+
+def games_year(games_id: str | None) -> int | None:
+    """`2012-Summer` -> 2012. The Games year, not the date parser's year."""
+    if not games_id:
+        return None
+    year_part = games_id.split("-", 1)[0]
+    return int(year_part) if year_part.isdigit() else None
 
 
 def normalise_games_id(raw: str | None) -> str | None:
@@ -315,6 +338,15 @@ def parse_document(record: dict[str, Any]) -> ParsedDocument:
     doc.date_text = fields.get("date") or fields.get("dates")
     parsed_date = normalize_date(doc.date_text)
     doc.date_year = parsed_date.year
+    # Most infobox dates are day+month only ("6 to 8 August"), which left
+    # date_year null and made every year-filtered query miss the event even
+    # though `games: 2012 Summer` states the year outright. The Games year is
+    # the event's year by definition, so it backfills the gap.
+    if doc.date_year is None:
+        fallback = games_year(doc.games_id)
+        if fallback is not None:
+            doc.date_year = fallback
+            doc.date_year_from_games = True
     doc.date_month = parsed_date.month
     doc.date_day_start = parsed_date.day_start
     doc.date_day_end = parsed_date.day_end
@@ -328,10 +360,23 @@ def parse_document(record: dict[str, Any]) -> ParsedDocument:
     doc.prev_year = _year(fields.get("prev"))
     doc.next_year = _year(fields.get("next"))
 
-    # event_id must be stable and unique: sport + games + event name.
-    if doc.games_id and doc.sport_name and doc.event_name:
-        slug = re.sub(r"[^a-z0-9]+", "-", doc.event_name.lower()).strip("-")
-        doc.event_id = f"{doc.sport_name.lower().replace(' ', '-')}-{doc.games_id}-{slug}"
+    # event_id must be stable and unique: sport + games + event name. All
+    # three parts come from the title, which is the Wikipedia page title and
+    # so unique per document. Sourcing any part from the infobox instead
+    # collapsed 37 distinct events into 2150 ids, because:
+    #   - `+` is dropped by slugification, so "Men's +105 kg" and
+    #     "Men's 105 kg" produced the same id (hence `plus`, below);
+    #   - some infoboxes carry the wrong `games` year (a 1992 page whose
+    #     infobox says 1996), colliding with the real event of that year;
+    #   - some infoboxes omit the `+` in `event` even though the title has it.
+    # The infobox values still populate event_name/games_id as attributes —
+    # only the identity is taken from the title.
+    title_games = normalise_games_id(doc.title)
+    title_event = _TITLE_EVENT.search(doc.title or "")
+    if doc.sport_name and title_games and title_event:
+        doc.event_id = (
+            f"{_slug(doc.sport_name)}-{title_games}-{_slug(title_event.group(1))}"
+        )
     else:
         doc.event_id = doc.doc_id
 
@@ -378,7 +423,7 @@ def parse_corpus(path: str | Path) -> tuple[list[ParsedDocument], CoverageReport
                 report.missing_sport.append(doc.doc_id)
             if not doc.games_id:
                 report.missing_games.append(doc.doc_id)
-            if doc.date_text and doc.date_year is None:
+            if doc.date_text and (doc.date_year is None or doc.date_year_from_games):
                 report.dates_without_year += 1
             if len(doc.gold) > 1:
                 report.concatenated_medallists += 1

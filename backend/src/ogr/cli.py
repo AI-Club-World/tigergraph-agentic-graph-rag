@@ -35,7 +35,7 @@ def build_parser() -> argparse.ArgumentParser:
     coverage_parser = subparsers.add_parser(
         "coverage", help="Parse the corpus and write the GRAPH-02 ingest coverage report"
     )
-    coverage_parser.add_argument("--corpus", type=str, default="data/corpus.jsonl")
+    coverage_parser.add_argument("--corpus", type=str, default="data/corpus/corpus.jsonl")
     coverage_parser.add_argument("--out", type=str, default="out/ingest-coverage.md")
 
     batch_parser = subparsers.add_parser(

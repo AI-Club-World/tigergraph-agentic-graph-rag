@@ -61,7 +61,7 @@ _builds: dict[str, dict[str, Any]] = {}
 # service should not depend on which directory it happened to be started
 # from (unlike the CLI, whose defaults already assume the repo root).
 _REPO_ROOT = Path(__file__).resolve().parents[4]
-CORPUS_PATH = _REPO_ROOT / "data" / "corpus.jsonl"
+CORPUS_PATH = _REPO_ROOT / "data" / "corpus" / "corpus.jsonl"
 OUT_DIR = _REPO_ROOT / "out"
 
 

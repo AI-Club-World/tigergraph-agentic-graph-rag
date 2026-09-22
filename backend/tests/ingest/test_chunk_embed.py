@@ -13,8 +13,8 @@ import pytest
 
 from ogr.ingest.chunk_embed import chunk_and_embed_corpus, chunk_document, chunk_text
 
-CORPUS = Path(__file__).resolve().parents[3] / "data" / "corpus.jsonl"
-corpus_required = pytest.mark.skipif(not CORPUS.exists(), reason="data/corpus.jsonl not present")
+CORPUS = Path(__file__).resolve().parents[3] / "data" / "corpus" / "corpus.jsonl"
+corpus_required = pytest.mark.skipif(not CORPUS.exists(), reason="data/corpus/corpus.jsonl not present")
 
 
 class TestChunkText:

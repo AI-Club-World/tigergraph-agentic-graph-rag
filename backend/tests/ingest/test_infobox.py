@@ -31,8 +31,10 @@ from ogr.ingest.infobox import (
     parse_infobox_header,
 )
 
-CORPUS = Path(__file__).resolve().parents[3] / "data" / "corpus.jsonl"
-corpus_required = pytest.mark.skipif(not CORPUS.exists(), reason="data/corpus.jsonl not present")
+CORPUS = Path(__file__).resolve().parents[3] / "data" / "corpus" / "corpus.jsonl"
+corpus_required = pytest.mark.skipif(
+    not CORPUS.exists(), reason="data/corpus/corpus.jsonl not present"
+)
 
 # Adapted from data/corpus.jsonl (Q303623): same structure and concatenated
 # names as the real row, with medallist names transliterated to ASCII.
@@ -126,12 +128,18 @@ class TestOlympicEventParse:
             "gold: Rudolf DombiRoland Kokeny", "gold: Rosannagh MacLennan"))
         assert parse_document(record).gold == ["Rosannagh MacLennan"]
 
-    def test_date_without_a_year_parses_what_it_can(self):
-        """'6 to 8 August' has no year — the field is nullable by design."""
+    def test_date_without_a_year_takes_the_year_from_the_games(self):
+        """'6 to 8 August' carries no year, but 'games: 2012 Summer' does.
+
+        Leaving date_year null here made every year-filtered query miss the
+        event, so the Games year backfills it — flagged, so the coverage
+        report still reports what the date parser itself recovered.
+        """
         doc = parse_document(CANOE)
         assert doc.date_text == "6 to 8 August"
         assert doc.date_month == 8
-        assert doc.date_year is None
+        assert doc.date_year == 2012
+        assert doc.date_year_from_games is True
 
     def test_prev_and_next_are_years(self):
         doc = parse_document(CANOE)
@@ -143,6 +151,29 @@ class TestOlympicEventParse:
 
     def test_event_id_is_stable(self):
         assert parse_document(CANOE).event_id == parse_document(CANOE).event_id
+
+    def test_weight_class_plus_survives_the_event_id(self):
+        """"Men's +105 kg" and "Men's 105 kg" are different events.
+
+        `+` is punctuation to a slugifier, so both used to collapse onto
+        `men-s-105-kg` and the second document overwrote the first.
+        """
+        base = "Weightlifting at the 2016 Summer Olympics – Men's {}"
+        over = parse_document(dict(CANOE, doc_id="A", title=base.format("+105 kg")))
+        under = parse_document(dict(CANOE, doc_id="B", title=base.format("105 kg")))
+        assert over.event_id != under.event_id
+        assert over.event_id.endswith("men-s-plus-105-kg")
+        assert under.event_id.endswith("men-s-105-kg")
+
+    def test_event_id_comes_from_the_title_not_the_infobox(self):
+        """Some infoboxes carry the wrong games year, or drop the `+` the
+        title has. The title is the unique page name, so identity is taken
+        from it; the infobox still supplies the attributes.
+        """
+        record = dict(CANOE, text=CANOE["text"].replace("games: 2012 Summer", "games: 1996 Summer"))
+        doc = parse_document(record)
+        assert doc.event_id.startswith("canoeing-2012-Summer-")  # title wins
+        assert doc.games_id == "1996-Summer"  # infobox still reported as-is
 
 
 class TestPartialParse:
@@ -233,6 +264,26 @@ class TestAgainstTheRealCorpus:
         one, not the originally documented one.
         """
         assert parsed[1].olympic_events == 2187
+
+    def test_event_ids_are_unique_across_the_corpus(self, parsed):
+        """One vertex per event. Sourcing any part of the id from the infobox
+        collapsed 37 pairs of distinct events onto shared ids (2,187 events ->
+        2,150 vertices), so the second page's medallists silently replaced the
+        first's. This is the assertion that catches that class of bug.
+        """
+        docs, _ = parsed
+        ids = [d.event_id for d in docs if d.is_olympic_event]
+        assert len(ids) == 2187
+        assert len(set(ids)) == 2187
+
+    def test_every_olympic_event_has_a_year(self, parsed):
+        """A null date_year made year-filtered queries miss the event even
+        when the Games stated the year. 420 of the 2,187 are backfilled.
+        """
+        docs, _ = parsed
+        events = [d for d in docs if d.is_olympic_event]
+        assert [d.doc_id for d in events if d.date_year is None] == []
+        assert sum(1 for d in events if d.date_year_from_games) == 420
 
     def test_sport_derives_for_every_olympic_event(self, parsed):
         docs, report = parsed
