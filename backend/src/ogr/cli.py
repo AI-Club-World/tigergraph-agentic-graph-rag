@@ -64,6 +64,12 @@ def main(argv=None) -> int:
         for p in requested_pipelines:
             if p == "rag":
                 records["rag"] = run_p1_rag(query=args.query, client=client, config=config)
+            elif p in ("graphrag", "graph"):
+                from ogr.pipelines.p2_graphrag import run_p2_graphrag
+
+                records["graphrag"] = run_p2_graphrag(
+                    query=args.query, client=client, config=config
+                )
             elif p in ("agentic", "agentic_graphrag"):
                 from ogr.pipelines.p3_agentic.orchestrator import run_p3_agentic
 
