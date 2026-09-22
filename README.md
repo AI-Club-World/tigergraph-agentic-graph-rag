@@ -1,5 +1,15 @@
 # tigergraph-agentic-graph-rag
 
+> **Picking this up fresh? Start at
+> [`config-docs/CONTINUE.md`](config-docs/CONTINUE.md).** It covers what runs
+> today, what does not and why, what you need to supply, and the ordered list
+> of what to build next.
+>
+> **Current state in one line:** three pipelines and the UI are implemented and
+> unit-tested (185 backend tests green), but the system has **never run
+> end to end** — there is no ingestion code, there are no GSQL queries, and
+> there is no HTTP API, so the frontend runs on fixtures.
+
 Three pipelines — RAG, GraphRAG and Agentic GraphRAG — answering the same
 questions over the same corpus, benchmarked to determine when a multi-step
 agentic investigation beats simpler retrieval and when it is overkill once
@@ -22,6 +32,7 @@ The specs, implementation plans and audit records live in
 
 | Document | What it is |
 |---|---|
+| [`CONTINUE.md`](config-docs/CONTINUE.md) | **Start here** — handoff: state, blockers, what to build next |
 | [`APPLICATION-SPEC.md`](config-docs/APPLICATION-SPEC.md) | Functional and non-functional requirements (FR/NFR) |
 | [`ARCHITECTURE-SPEC.md`](config-docs/ARCHITECTURE-SPEC.md) | C4 views, the seven agents, necessity routing, decision records |
 | [`TECHNICAL-SPEC.md`](config-docs/TECHNICAL-SPEC.md) | Stack, graph schema, query library, record contracts, evaluation |
