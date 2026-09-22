@@ -1,0 +1,9 @@
+# SPA rewrite for folder (drag-and-drop / CLI) deploys.
+#
+# netlify.toml is only read on Git-linked builds. On a folder deploy Netlify
+# reads redirects from the deployed directory instead, so this file has to
+# travel inside dist/. Vite copies public/ into dist/ on every build.
+#
+# Without it, /build, /dashboard and /eval return 404 on a shared link or a
+# refresh, because BrowserRouter routes have no file behind them.
+/*  /index.html  200

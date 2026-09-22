@@ -13,26 +13,69 @@ real questions**. Worth saying that when you share the link, or people will
 reasonably assume the pipelines are live. `config-docs/AUDIT.md` records what
 is and is not implemented.
 
-## One-time setup
+## The free path: deploy the built folder, not the repo
 
-Everything is already committed in `netlify.toml` at the repo root, so there
-is nothing to configure in the Netlify UI.
+> **Do not use "Import an existing project".** This repository is **private**
+> and owned by a GitHub **Organization** (`AI-Club-World`). Netlify puts
+> Git-linked deploys of private *org-owned* repos behind the **Pro plan
+> ($20/month)** and will show an upgrade wall with a card form. Vercel's free
+> Hobby tier has the same restriction. An earlier revision of this file said
+> the free tier was fine here; that was wrong.
+>
+> The paywall is on the **Git integration**, not on hosting. Deploying the
+> built folder directly is free, unlimited, and needs no card.
 
-1. Sign in at [app.netlify.com](https://app.netlify.com) with the GitHub
-   account that can see `AI-Club-World/tigergraph-agentic-graph-rag`.
-2. **Add new site → Import an existing project → GitHub**, and pick the repo.
-   Netlify will ask for access to the org; a private org repo is fine on the
-   free tier.
-3. Choose the branch to deploy — `application-integration`.
-4. Netlify reads `netlify.toml` and pre-fills base, build command and publish
-   directory. **Do not override them.** Click Deploy.
+Build locally, then ship `frontend/dist`:
 
-First build takes roughly a minute. You get a URL like
-`https://<random-name>.netlify.app`, renameable under
-**Site configuration → Change site name**.
+```bash
+cd frontend && npm install && npm run build
+```
 
-Every push to the deployed branch redeploys automatically. Pull requests get
-their own preview URL.
+**Either** drag the `frontend/dist` folder onto
+[app.netlify.com/drop](https://app.netlify.com/drop) — no account strictly
+required, though signing in keeps the site in your dashboard so you can rename
+it and redeploy later.
+
+**Or** use the CLI, which is repeatable:
+
+```bash
+npm install -g netlify-cli
+netlify deploy --dir=frontend/dist --prod
+```
+
+Either way you get `https://<name>.netlify.app`, renameable under **Site
+configuration → Change site name**.
+
+**Trade-off:** no automatic redeploy on push. After changing the frontend,
+re-run the build and drop/`netlify deploy` again. For sharing a demo that is
+usually the right trade; a paid plan buys automation, not capability.
+
+### If you want push-to-deploy without paying
+
+Two options, both free:
+
+- **Make the repository public.** Git integration on Netlify's free tier, and
+  GitHub Pages, both work with public repos. Read `config-docs/AUDIT.md`
+  first — it documents plainly what is and is not built, which is the sort of
+  thing you want to be deliberate about publishing.
+- **Mirror only `frontend/dist` to a separate public repo** and point GitHub
+  Pages or Netlify at that. Keeps the source private and the built output
+  public. Note that a JS bundle is readable, so treat anything in it as public
+  regardless.
+
+Cloudflare Pages is often suggested as the free alternative for private repos.
+It may well work here, but after getting Netlify's terms wrong once, this file
+will not assert it — check the current limits before relying on it.
+
+### When `netlify.toml` applies
+
+The committed `netlify.toml` configures **Git-linked** builds: base directory,
+build command, publish path. On a folder deploy you have already built
+locally, so those settings do not apply — but the `[[redirects]]` block still
+matters. Netlify reads redirects and headers from the deployed directory, so
+for a folder deploy the SPA rewrite must travel *inside* `dist`. That is what
+`frontend/public/_redirects` is for: Vite copies `public/` into `dist/` on
+every build, so the rewrite is always present in the artifact you upload.
 
 ## What `netlify.toml` does, and why
 
