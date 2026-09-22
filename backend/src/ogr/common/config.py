@@ -36,8 +36,21 @@ class RunConfig(BaseModel):
     # TigerGraph connection
     tg_host: str = Field(default_factory=lambda: os.getenv("TG_HOST", "http://localhost"))
     tg_graphname: str = Field(default_factory=lambda: os.getenv("TG_GRAPHNAME", "OlympicGraphRAG"))
-    tg_restpp_port: int = Field(default_factory=lambda: int(os.getenv("TG_RESTPP_PORT", "14240")))
-    tg_gs_port: int = Field(default_factory=lambda: int(os.getenv("TG_GS_PORT", "14240")))
+    # Ports are optional. Community Edition uses 14240; Savanna serves over TLS
+    # on 443 and pyTigerGraph derives that itself when tg_cloud is set, so
+    # forcing 14240 there would send every request to a closed port.
+    tg_restpp_port: int | None = Field(
+        default_factory=lambda: int(p) if (p := os.getenv("TG_RESTPP_PORT", "")) else None
+    )
+    tg_gs_port: int | None = Field(
+        default_factory=lambda: int(p) if (p := os.getenv("TG_GS_PORT", "")) else None
+    )
+    # Savanna / TigerGraph Cloud. Changes how pyTigerGraph builds URLs and
+    # negotiates auth, so it must be set for a cloud workspace.
+    tg_cloud: bool = Field(
+        default_factory=lambda: os.getenv("TG_CLOUD", "false").lower() == "true"
+    )
+    tg_jwt_token: str = Field(default_factory=lambda: os.getenv("TG_JWT_TOKEN", ""))
     tg_username: str = Field(default_factory=lambda: os.getenv("TG_USERNAME", "tigergraph"))
     tg_password: str = Field(default_factory=lambda: os.getenv("TG_PASSWORD", ""))
     tg_secret: str = Field(default_factory=lambda: os.getenv("TG_SECRET", ""))

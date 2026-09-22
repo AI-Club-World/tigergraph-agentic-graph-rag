@@ -27,22 +27,65 @@ class TigerGraphClient:
         self.last_query_args: dict[str, Any] = {}
 
     def _ensure_connection(self) -> None:
-        """Initializes pyTigerGraph connection if not already created."""
+        """Initializes pyTigerGraph connection if not already created.
+
+        Four credential styles are supported, in the order pyTigerGraph
+        prefers them. Which one a Savanna workspace wants depends on how it
+        was provisioned, so all are passed through from configuration rather
+        than hard-coded:
+
+          TG_JWT_TOKEN   JWT bearer token (TigerGraph 4.x / Savanna)
+          TG_TOKEN       pre-minted REST++ token
+          TG_SECRET      a workspace secret, from which a token is minted
+          TG_USERNAME/TG_PASSWORD   basic credentials
+
+        Only non-empty values are forwarded: pyTigerGraph treats an empty
+        string as "not supplied" but an explicit None can raise, so the
+        kwargs are assembled rather than always passed.
+        """
         if self.conn is not None:
             return
 
         try:
             import pyTigerGraph as tg
-            self.conn = tg.TigerGraphConnection(
-                host=self.config.tg_host,
-                graphname=self.config.tg_graphname,
-                restppPort=self.config.tg_restpp_port,
-                gsPort=self.config.tg_gs_port,
-                username=self.config.tg_username,
-                password=self.config.tg_password,
-                apiToken=self.config.tg_token or None,
-                useCert=self.config.tg_use_cert,
-                certPath=self.config.tg_cert_path,
+
+            kwargs: dict[str, Any] = {
+                "host": self.config.tg_host,
+                "graphname": self.config.tg_graphname,
+            }
+            # Savanna: let pyTigerGraph derive the TLS endpoints.
+            if self.config.tg_cloud:
+                kwargs["tgCloud"] = True
+            if self.config.tg_restpp_port is not None:
+                kwargs["restppPort"] = self.config.tg_restpp_port
+            if self.config.tg_gs_port is not None:
+                kwargs["gsPort"] = self.config.tg_gs_port
+
+            if self.config.tg_jwt_token:
+                kwargs["jwtToken"] = self.config.tg_jwt_token
+            elif self.config.tg_token:
+                kwargs["apiToken"] = self.config.tg_token
+            elif self.config.tg_secret:
+                kwargs["gsqlSecret"] = self.config.tg_secret
+            else:
+                kwargs["username"] = self.config.tg_username
+                kwargs["password"] = self.config.tg_password
+
+            if self.config.tg_use_cert:
+                kwargs["useCert"] = True
+            if self.config.tg_cert_path:
+                kwargs["certPath"] = self.config.tg_cert_path
+
+            self.conn = tg.TigerGraphConnection(**kwargs)
+            logger.info(
+                "TigerGraph connection initialised: host=%s graph=%s cloud=%s auth=%s",
+                self.config.tg_host,
+                self.config.tg_graphname,
+                self.config.tg_cloud,
+                next(
+                    (k for k in ("jwtToken", "apiToken", "gsqlSecret", "username") if k in kwargs),
+                    "none",
+                ),
             )
         except Exception as e:
             logger.warning("Failed to initialize live TigerGraph connection: %s", e)
