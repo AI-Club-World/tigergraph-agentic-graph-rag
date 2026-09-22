@@ -60,6 +60,34 @@ class PipelineRecord(BaseModel):
     error_detail: str | None = None
 
 
+class PipelineScores(BaseModel):
+    """Deterministic scores for one pipeline on one question (TECHNICAL-SPEC §9).
+
+    Completeness is an explicit alias of Recall (DP-2 Option A): |retrieved n
+    gold| / |gold| *is* recall. It is retained as its own field only because
+    the guidebook names the column.
+    """
+    em: float = 0.0
+    f1: float = 0.0
+    precision: float = 0.0
+    recall: float = 0.0
+    completeness: float = 0.0
+
+
+class Question(BaseModel):
+    """An evaluation question, using the data files' field names verbatim.
+
+    Both eval_public.jsonl and eval_hidden.jsonl use qid / question / qtype
+    (BUILD-PLAN §10 — the F-14 adapter was deleted). `answer` is a list of
+    gold variants scored max-over-variants, and is empty for the hidden set.
+    """
+    qid: str
+    question: str
+    qtype: Literal["lookup", "multi_hop", "temporal", "aggregation", "superlative"] | None = None
+    answer: list[str] = Field(default_factory=list)
+    gold_doc_ids: list[str] = Field(default_factory=list)
+
+
 # CORE-02: Shared answer contract prompt template
 # Used identically across P1, P2, and P3 apart from retrieved context
 SHARED_SYSTEM_PROMPT = """You are a precise question-answering assistant.

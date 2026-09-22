@@ -14,7 +14,23 @@ from pathlib import Path
 
 SRC = Path(__file__).resolve().parents[3] / "src" / "ogr"
 
-ANSWER_PATH = sorted(SRC.rglob("*.py"))
+# NFR-7 scopes to "the answer path": the code that turns a question into an
+# answer at query time. That is the pipelines and the graph access they use.
+#
+# Deliberately NOT scanned:
+#   ogr/eval/**      — the scoring and reporting path. TECHNICAL-SPEC §9 makes
+#                      the per-qtype breakdown "the headline artifact", so
+#                      qtype is required there.
+#   ogr/common/**    — the record contract. §6.1 and §6.4 both carry a qtype
+#                      field, and §7 states the mapping "exists for reporting
+#                      only".
+# Widening this to all of src/ would fail on code the spec mandates, which
+# would make the guard noise rather than a guard.
+ANSWER_PATH = sorted((SRC / "pipelines").rglob("*.py")) + sorted((SRC / "graph").rglob("*.py"))
+
+# The forbidden-chain check has no such nuance: text-to-query generation is
+# rejected outright (§7), so it scans everything.
+ALL_SOURCES = sorted(SRC.rglob("*.py"))
 
 
 def _code_without_comments_or_docstrings(path: Path) -> str:
@@ -65,6 +81,14 @@ def test_no_eval_set_strings_in_answer_path():
     )
 
 
+def test_answer_path_is_not_empty():
+    """A guard that scans nothing always passes. Make that impossible."""
+    names = {p.name for p in ANSWER_PATH}
+    assert "orchestrator.py" in names and "p1_rag.py" in names, (
+        f"The answer-path scan is missing the pipelines it exists to check: {sorted(names)}"
+    )
+
+
 def test_no_text_to_gsql_chain():
     """TECHNICAL-SPEC §7 rejects text-to-query generation by name.
 
@@ -72,7 +96,7 @@ def test_no_text_to_gsql_chain():
     """
     forbidden = ("GraphCypherQAChain", "GraphQAChain", "create_sql_query_chain")
     offenders = []
-    for path in ANSWER_PATH:
+    for path in ALL_SOURCES:
         source = path.read_text(encoding="utf-8")
         for name in forbidden:
             if name in source:
