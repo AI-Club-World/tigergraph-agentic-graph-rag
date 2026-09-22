@@ -41,6 +41,7 @@ The specs, implementation plans and audit records live in
 | [`implementation-plan-GRAPH.md`](config-docs/implementation-plan-GRAPH.md) | P2 and the shared foundation |
 | [`implementation-plan-AGENT.md`](config-docs/implementation-plan-AGENT.md) | P3 plan |
 | [`implementation-plan-UI.md`](config-docs/implementation-plan-UI.md) | UI, scorer, dispatcher and batch plan |
+| [`UI-SPEC.md`](config-docs/UI-SPEC.md) | Frontend contract — screens, states, data, formatting; design-tool ready |
 | [`AUDIT.md`](config-docs/AUDIT.md) | What is implemented, what is not, and the evidence |
 | [`INTEGRATION.md`](config-docs/INTEGRATION.md) | How the feature branches were merged |
 | [`DEPLOY.md`](config-docs/DEPLOY.md) | Hosting the frontend on Netlify |
