@@ -30,6 +30,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print the agentic investigation trace step by step",
     )
 
+    subparsers.add_parser("verify", help="Check the LLM and TigerGraph endpoints are reachable")
+
     return parser
 
 
@@ -54,6 +56,11 @@ def _print_trace(record) -> None:
 def main(argv=None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+
+    if args.command == "verify":
+        from ogr.verify import run as run_verify
+
+        return run_verify()
 
     if args.command == "ask":
         requested_pipelines = [p.strip().lower() for p in args.pipelines.split(",")]
