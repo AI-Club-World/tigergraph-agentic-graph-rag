@@ -63,7 +63,8 @@ class TestQueryFiles:
             text = (QUERIES_DIR / filename).read_text(encoding="utf-8")
             name = filename.removesuffix(".gsql")
             assert name in expected_names
-            assert f"CREATE QUERY {name}(" in text
+            # CREATE OR REPLACE, so re-installing over an existing query works.
+            assert f"CREATE OR REPLACE QUERY {name}(" in text
             assert f"INSTALL QUERY {name}" in text
 
     def test_q5_vtype_parameter_branches_between_chunk_and_event(self):

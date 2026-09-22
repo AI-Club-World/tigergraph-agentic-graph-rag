@@ -18,7 +18,7 @@ USE GRAPH OlympicGraphRAG
 // reported separately as `excluded_count` (DP-2 Option A) — the system
 // states what it could not parse rather than silently dropping it.
 
-CREATE QUERY q2_count_where(
+CREATE OR REPLACE QUERY q2_count_where(
   STRING anchor_sport = "", STRING anchor_games = "", STRING anchor_venue = "",
   STRING constraints_json = "[]", STRING field = "competitors"
 ) FOR GRAPH OlympicGraphRAG SYNTAX V2 {

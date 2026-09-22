@@ -159,6 +159,16 @@ class TigerGraphClient:
             elif "top_chunks" in raw_res[0]:
                 items = raw_res[0]["top_chunks"]
 
+        # vectorSearch returns the ranked vertices and their distances in two
+        # separate PRINT blocks, so the scores have to be joined back on here.
+        # The metric is COSINE, whose distance is 1 - similarity.
+        distances: dict[str, float] = {}
+        if isinstance(raw_res, list):
+            for block in raw_res:
+                if isinstance(block, dict) and isinstance(block.get("distances"), dict):
+                    distances = block["distances"]
+                    break
+
         if isinstance(items, list):
             for item in items:
                 attributes = item.get("attributes", {}) if "attributes" in item else item
@@ -172,8 +182,17 @@ class TigerGraphClient:
                     "chunk_id": v_id,
                     "doc_id": doc_id,
                     "text": attributes.get("text", attributes.get("content", "")),
-                    "score": float(item.get("score", attributes.get("score", 0.0))),
+                    "score": (
+                        1.0 - float(distances[v_id])
+                        if v_id in distances
+                        else float(item.get("score", attributes.get("score", 0.0)))
+                    ),
                 })
+
+        # The vertex set comes back in no particular order, so ranking has to
+        # be applied here for the caller's top-k to mean anything.
+        if distances:
+            chunks.sort(key=lambda c: c["score"], reverse=True)
         return chunks
 
     def _run_query(self, query_name: str, params: dict[str, Any]) -> list[dict[str, Any]]:

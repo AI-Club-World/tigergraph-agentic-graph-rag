@@ -6,7 +6,7 @@ USE GRAPH OlympicGraphRAG
 // OlympicEvent attributes are rankable (competitors, nations); anything
 // else falls back to competitors, same reasoning as Q2's field restriction.
 
-CREATE QUERY q3_argmax(
+CREATE OR REPLACE QUERY q3_argmax(
   STRING anchor_sport = "", STRING anchor_games = "", STRING anchor_venue = "",
   STRING field = "competitors"
 ) FOR GRAPH OlympicGraphRAG SYNTAX V2 {

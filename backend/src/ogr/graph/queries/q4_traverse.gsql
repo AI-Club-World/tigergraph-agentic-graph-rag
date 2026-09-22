@@ -11,7 +11,7 @@ USE GRAPH OlympicGraphRAG
 // or — for HELD_AT — either an event (resolve its venue) or a Venue name
 // (resolve the events held there, via `reverse_HELD_AT`).
 
-CREATE QUERY q4_traverse(STRING anchor = "", STRING edge_type = "PREV_EDITION", INT hops = 1)
+CREATE OR REPLACE QUERY q4_traverse(STRING anchor = "", STRING edge_type = "PREV_EDITION", INT hops = 1)
 FOR GRAPH OlympicGraphRAG SYNTAX V2 {
 
   TYPEDEF TUPLE<STRING event_id, STRING event_name, STRING doc_id> EventRow;

@@ -9,27 +9,33 @@ USE GRAPH OlympicGraphRAG
 // `PRINT ... AS top_chunks` matches client.py's `_normalize_q5_results`,
 // which reads `raw_res[0]["top_chunks"]`.
 
-CREATE QUERY q5_hybrid_search(
+CREATE OR REPLACE QUERY q5_hybrid_search(
   LIST<FLOAT> query_vector, INT k = 10, STRING vtype = "Chunk", SET<STRING> candidate_set
 ) FOR GRAPH OlympicGraphRAG SYNTAX V2 {
+
+  // vectorSearch only returns a ranked vertex set; the similarity scores come
+  // back separately through the optional `distance_map`. Without it every
+  // result reaches the client with score 0.0.
+  MapAccum<VERTEX, FLOAT> @@distances;
 
   IF vtype == "OlympicEvent" THEN
     IF candidate_set.size() > 0 THEN
       CandidateSeeds = SELECT e FROM OlympicEvent:e WHERE candidate_set.contains(e.event_id);
-      TopResults = vectorSearch({OlympicEvent.emb}, query_vector, k, {candidate_set: CandidateSeeds});
+      TopResults = vectorSearch({OlympicEvent.emb}, query_vector, k, {candidate_set: CandidateSeeds, distance_map: @@distances});
     ELSE
-      TopResults = vectorSearch({OlympicEvent.emb}, query_vector, k);
+      TopResults = vectorSearch({OlympicEvent.emb}, query_vector, k, {distance_map: @@distances});
     END;
   ELSE
     IF candidate_set.size() > 0 THEN
       CandidateSeeds = SELECT c FROM Chunk:c WHERE candidate_set.contains(c.chunk_id);
-      TopResults = vectorSearch({Chunk.emb}, query_vector, k, {candidate_set: CandidateSeeds});
+      TopResults = vectorSearch({Chunk.emb}, query_vector, k, {candidate_set: CandidateSeeds, distance_map: @@distances});
     ELSE
-      TopResults = vectorSearch({Chunk.emb}, query_vector, k);
+      TopResults = vectorSearch({Chunk.emb}, query_vector, k, {distance_map: @@distances});
     END;
   END;
 
   PRINT TopResults AS top_chunks;
+  PRINT @@distances AS distances;
 }
 
 INSTALL QUERY q5_hybrid_search

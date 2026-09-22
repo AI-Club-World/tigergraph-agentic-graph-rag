@@ -15,7 +15,7 @@ USE GRAPH OlympicGraphRAG
 // resolved); both parameters default to empty so either call shape works
 // without error.
 
-CREATE QUERY q1_lookup(STRING title = "", STRING event_id = "", STRING target_field = "")
+CREATE OR REPLACE QUERY q1_lookup(STRING title = "", STRING event_id = "", STRING target_field = "")
 FOR GRAPH OlympicGraphRAG SYNTAX V2 {
 
   // GSQL tuple fields must be primitive types — LIST/SET are rejected by the
