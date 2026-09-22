@@ -1,4 +1,25 @@
-.env
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
 .venv/
+venv/
+
+# Node (frontend module)
+node_modules/
+dist/
+
+# Secrets — env.example carries the shape, .env carries the values
+.env
+.env.local
+
+# Run outputs
+out/
+coverage/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
