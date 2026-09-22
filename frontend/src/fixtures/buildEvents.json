@@ -1,0 +1,44 @@
+[
+  { "stage": "schema_install", "pipeline_affected": ["graphrag", "agentic_graphrag"], "status": "running", "items_done": 0, "items_total": 6, "elapsed_ms": 0, "tokens": 0, "note": "Creating vertex and edge types on OlympicGraphRAG" },
+  { "stage": "schema_install", "pipeline_affected": ["graphrag", "agentic_graphrag"], "status": "done", "items_done": 6, "items_total": 6, "elapsed_ms": 900, "tokens": 0, "note": "Document, OlympicEvent, Games, Sport, Venue, Chunk created; all edge endpoints pinned" },
+
+  { "stage": "parse_infoboxes", "pipeline_affected": ["graphrag", "agentic_graphrag"], "status": "running", "items_done": 0, "items_total": 2951, "elapsed_ms": 950, "tokens": 0, "note": "Parsing [Infobox <type>] headers and normalising date fields" },
+  { "stage": "parse_infoboxes", "pipeline_affected": ["graphrag", "agentic_graphrag"], "status": "running", "items_done": 980, "items_total": 2951, "elapsed_ms": 1800, "tokens": 0, "note": "Parsing [Infobox <type>] headers and normalising date fields" },
+  { "stage": "parse_infoboxes", "pipeline_affected": ["graphrag", "agentic_graphrag"], "status": "running", "items_done": 2070, "items_total": 2951, "elapsed_ms": 2600, "tokens": 0, "note": "Parsing [Infobox <type>] headers and normalising date fields" },
+  { "stage": "parse_infoboxes", "pipeline_affected": ["graphrag", "agentic_graphrag"], "status": "done", "items_done": 2951, "items_total": 2951, "elapsed_ms": 3300, "tokens": 0, "note": "2,162 Olympic infoboxes parsed into 41 sports; 23 non-integer competitors values flagged parse_confidence < 1.0" },
+
+  { "stage": "chunk_documents", "pipeline_affected": ["rag", "graphrag", "agentic_graphrag"], "status": "running", "items_done": 0, "items_total": 18430, "elapsed_ms": 3350, "tokens": 0, "note": "Chunking at 300 tokens with 50 overlap" },
+  { "stage": "chunk_documents", "pipeline_affected": ["rag", "graphrag", "agentic_graphrag"], "status": "running", "items_done": 8900, "items_total": 18430, "elapsed_ms": 4200, "tokens": 0, "note": "Chunking at 300 tokens with 50 overlap" },
+  { "stage": "chunk_documents", "pipeline_affected": ["rag", "graphrag", "agentic_graphrag"], "status": "done", "items_done": 18430, "items_total": 18430, "elapsed_ms": 5000, "tokens": 0, "note": "18,430 chunks written across all 2,951 documents - no type filtering, so RAG's ceiling stays visible" },
+
+  { "stage": "embed_chunks", "pipeline_affected": ["rag", "graphrag", "agentic_graphrag"], "status": "running", "items_done": 0, "items_total": 18430, "elapsed_ms": 5050, "tokens": 0, "note": "Encoding with all-MiniLM-L6-v2, 384-dim, local" },
+  { "stage": "embed_chunks", "pipeline_affected": ["rag", "graphrag", "agentic_graphrag"], "status": "running", "items_done": 6100, "items_total": 18430, "elapsed_ms": 5900, "tokens": 0, "note": "Encoding with all-MiniLM-L6-v2, 384-dim, local" },
+  { "stage": "embed_chunks", "pipeline_affected": ["rag", "graphrag", "agentic_graphrag"], "status": "running", "items_done": 12800, "items_total": 18430, "elapsed_ms": 6800, "tokens": 0, "note": "Encoding with all-MiniLM-L6-v2, 384-dim, local" },
+  { "stage": "embed_chunks", "pipeline_affected": ["rag", "graphrag", "agentic_graphrag"], "status": "done", "items_done": 18430, "items_total": 18430, "elapsed_ms": 7600, "tokens": 0, "note": "Local encoder, zero provider calls - this is why the token column below reads 0" },
+
+  { "stage": "load_vertices", "pipeline_affected": ["graphrag", "agentic_graphrag"], "status": "running", "items_done": 0, "items_total": 23908, "elapsed_ms": 7650, "tokens": 0, "note": "Upserting vertices" },
+  { "stage": "load_vertices", "pipeline_affected": ["graphrag", "agentic_graphrag"], "status": "running", "items_done": 11200, "items_total": 23908, "elapsed_ms": 8400, "tokens": 0, "note": "Upserting vertices" },
+  { "stage": "load_vertices", "pipeline_affected": ["graphrag", "agentic_graphrag"], "status": "done", "items_done": 23908, "items_total": 23908, "elapsed_ms": 9100, "tokens": 0, "note": "2,951 Document, 2,162 OlympicEvent, 21 Games, 41 Sport, 303 Venue, 18,430 Chunk" },
+
+  { "stage": "load_edges", "pipeline_affected": ["graphrag", "agentic_graphrag"], "status": "running", "items_done": 0, "items_total": 47120, "elapsed_ms": 9150, "tokens": 0, "note": "Upserting edges" },
+  { "stage": "load_edges", "pipeline_affected": ["graphrag", "agentic_graphrag"], "status": "running", "items_done": 22400, "items_total": 47120, "elapsed_ms": 9900, "tokens": 0, "note": "Upserting edges" },
+  { "stage": "load_edges", "pipeline_affected": ["graphrag", "agentic_graphrag"], "status": "done", "items_done": 47120, "items_total": 47120, "elapsed_ms": 10500, "tokens": 0, "note": "PREV_EDITION resolved on 93.4% of events, NEXT_EDITION on 97.6%" },
+
+  { "stage": "vector_index", "pipeline_affected": ["rag", "graphrag", "agentic_graphrag"], "status": "running", "items_done": 0, "items_total": 2, "elapsed_ms": 10550, "tokens": 0, "note": "Polling /restpp/vector/status - the index build is asynchronous and lags loading" },
+  { "stage": "vector_index", "pipeline_affected": ["rag", "graphrag", "agentic_graphrag"], "status": "done", "items_done": 2, "items_total": 2, "elapsed_ms": 11600, "tokens": 0, "note": "OlympicEvent.emb and Chunk.emb both report Ready_for_query" },
+
+  { "stage": "install_q5", "pipeline_affected": ["rag", "graphrag", "agentic_graphrag"], "status": "running", "items_done": 0, "items_total": 1, "elapsed_ms": 11650, "tokens": 0, "note": "Installing Q5 hybrid_search" },
+  { "stage": "install_q5", "pipeline_affected": ["rag", "graphrag", "agentic_graphrag"], "status": "done", "items_done": 1, "items_total": 1, "elapsed_ms": 12250, "tokens": 0, "note": "Q5 installed - installation blocks concurrent operations, so the library stays at five queries" },
+
+  { "stage": "pipeline_ready", "pipeline_affected": ["rag"], "status": "ready", "items_done": 1, "items_total": 1, "elapsed_ms": 12300, "tokens": 0, "note": "RAG ready: chunks embedded, vector index live, Q5 installed. It consumed the shared foundation and paid for none of the graph setup" },
+
+  { "stage": "install_graph_queries", "pipeline_affected": ["graphrag", "agentic_graphrag"], "status": "running", "items_done": 0, "items_total": 4, "elapsed_ms": 12350, "tokens": 0, "note": "Installing Q1-Q4" },
+  { "stage": "install_graph_queries", "pipeline_affected": ["graphrag", "agentic_graphrag"], "status": "done", "items_done": 4, "items_total": 4, "elapsed_ms": 13100, "tokens": 0, "note": "Q1 lookup, Q2 count_where, Q3 argmax, Q4 traverse installed" },
+
+  { "stage": "pipeline_ready", "pipeline_affected": ["graphrag"], "status": "ready", "items_done": 1, "items_total": 1, "elapsed_ms": 13150, "tokens": 0, "note": "GraphRAG ready: schema, parsed events, loaded graph and the full query library" },
+
+  { "stage": "register_agent_tools", "pipeline_affected": ["agentic_graphrag"], "status": "running", "items_done": 0, "items_total": 7, "elapsed_ms": 13200, "tokens": 0, "note": "Binding the seven specialised agents to the tool router" },
+  { "stage": "register_agent_tools", "pipeline_affected": ["agentic_graphrag"], "status": "done", "items_done": 7, "items_total": 7, "elapsed_ms": 13800, "tokens": 0, "note": "Entity linking, graph traversal, similarity search, document retrieval, aggregation, multi-hop reasoning, evidence evaluation" },
+
+  { "stage": "pipeline_ready", "pipeline_affected": ["agentic_graphrag"], "status": "ready", "items_done": 1, "items_total": 1, "elapsed_ms": 13850, "tokens": 0, "note": "Agentic ready last: it carries every stage GraphRAG carries, plus the tool registry" }
+]

@@ -10,6 +10,7 @@ venv/
 # Node (frontend module)
 node_modules/
 dist/
+.vite/
 
 # Secrets — env.example carries the shape, .env carries the values
 .env
