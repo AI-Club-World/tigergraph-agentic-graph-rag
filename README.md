@@ -12,8 +12,30 @@ dashboard and per-question eval table), and the `scripts/` vector spike.
 
 The frontend still runs against fixture data by default — `VITE_USE_MOCK_API`
 defaults to `true` — because the FastAPI service that joins the two modules
-(`API-01`) is not built yet. `AUDIT.md` records what is implemented and what
-is not.
+(`API-01`) is not built yet. [`config-docs/AUDIT.md`](config-docs/AUDIT.md)
+records what is implemented and what is not.
+
+## Documentation
+
+The specs, implementation plans and audit records live in
+[`config-docs/`](config-docs/):
+
+| Document | What it is |
+|---|---|
+| [`APPLICATION-SPEC.md`](config-docs/APPLICATION-SPEC.md) | Functional and non-functional requirements (FR/NFR) |
+| [`ARCHITECTURE-SPEC.md`](config-docs/ARCHITECTURE-SPEC.md) | C4 views, the seven agents, necessity routing, decision records |
+| [`TECHNICAL-SPEC.md`](config-docs/TECHNICAL-SPEC.md) | Stack, graph schema, query library, record contracts, evaluation |
+| [`BUILD-PLAN.md`](config-docs/BUILD-PLAN.md) | Task table, gates, branching model |
+| [`implementation-plan-RAG.md`](config-docs/implementation-plan-RAG.md) | P1 plan |
+| [`implementation-plan-GRAPH.md`](config-docs/implementation-plan-GRAPH.md) | P2 and the shared foundation |
+| [`implementation-plan-AGENT.md`](config-docs/implementation-plan-AGENT.md) | P3 plan |
+| [`implementation-plan-UI.md`](config-docs/implementation-plan-UI.md) | UI, scorer, dispatcher and batch plan |
+| [`AUDIT.md`](config-docs/AUDIT.md) | What is implemented, what is not, and the evidence |
+| [`INTEGRATION.md`](config-docs/INTEGRATION.md) | How the feature branches were merged |
+
+Source files cite these documents by name in their docstrings (for example
+`Plan: implementation-plan-AGENT.md Group 4`); the names are unchanged, only
+the directory moved.
 
 # Backend
 
