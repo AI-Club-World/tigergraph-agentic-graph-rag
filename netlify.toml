@@ -1,0 +1,40 @@
+# Netlify deployment for the frontend module.
+#
+# Only the frontend is deployed. There is no FastAPI service in this repo yet
+# (API-01), so the app runs on fixture data: VITE_USE_MOCK_API defaults to
+# true and every screen is served from frontend/src/fixtures/.
+
+[build]
+  # The app is not at the repo root, so builds run inside frontend/.
+  base = "frontend"
+  command = "npm run build"
+  # Relative to base — resolves to frontend/dist.
+  publish = "dist"
+
+[build.environment]
+  # Pinned so a Netlify default bump cannot silently change the build.
+  NODE_VERSION = "20"
+  # Explicit rather than relying on the code default, so the deployed mode is
+  # visible here instead of buried in config.ts.
+  VITE_USE_MOCK_API = "true"
+
+# The app uses BrowserRouter, so /build, /dashboard and /eval are client-side
+# routes with no file behind them. Without this rewrite they 404 on a refresh
+# or a shared deep link — the request has to reach index.html and let the
+# router resolve it. Status 200, not 301: the URL must stay as typed.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Fingerprinted bundles are immutable; index.html must not be cached or a
+# deploy would keep serving the old asset references.
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"

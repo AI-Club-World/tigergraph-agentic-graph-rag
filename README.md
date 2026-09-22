@@ -32,6 +32,7 @@ The specs, implementation plans and audit records live in
 | [`implementation-plan-UI.md`](config-docs/implementation-plan-UI.md) | UI, scorer, dispatcher and batch plan |
 | [`AUDIT.md`](config-docs/AUDIT.md) | What is implemented, what is not, and the evidence |
 | [`INTEGRATION.md`](config-docs/INTEGRATION.md) | How the feature branches were merged |
+| [`DEPLOY.md`](config-docs/DEPLOY.md) | Hosting the frontend on Netlify |
 
 Source files cite these documents by name in their docstrings (for example
 `Plan: implementation-plan-AGENT.md Group 4`); the names are unchanged, only
