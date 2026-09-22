@@ -1,0 +1,35 @@
+USE GRAPH OlympicGraphRAG
+
+// Q5: hybrid_search(query_vector, k, vtype, candidate_set) — TECHNICAL-SPEC §3.
+// The P1/P2/P3 semantic-search path, and the only query both `Chunk` and
+// `OlympicEvent` share (both carry `emb`). DP-3: one query, `vtype` branches
+// inside the body — this is the whole reason the library stays at exactly
+// five installed queries (AD-7) instead of a sixth for events.
+//
+// `PRINT ... AS top_chunks` matches client.py's `_normalize_q5_results`,
+// which reads `raw_res[0]["top_chunks"]`.
+
+CREATE QUERY q5_hybrid_search(
+  LIST<FLOAT> query_vector, INT k = 10, STRING vtype = "Chunk", SET<STRING> candidate_set
+) FOR GRAPH OlympicGraphRAG SYNTAX V2 {
+
+  IF vtype == "OlympicEvent" THEN
+    IF candidate_set.size() > 0 THEN
+      CandidateSeeds = SELECT e FROM OlympicEvent:e WHERE candidate_set.contains(e.event_id);
+      TopResults = vectorSearch({OlympicEvent.emb}, query_vector, k, {candidate_set: CandidateSeeds});
+    ELSE
+      TopResults = vectorSearch({OlympicEvent.emb}, query_vector, k);
+    END;
+  ELSE
+    IF candidate_set.size() > 0 THEN
+      CandidateSeeds = SELECT c FROM Chunk:c WHERE candidate_set.contains(c.chunk_id);
+      TopResults = vectorSearch({Chunk.emb}, query_vector, k, {candidate_set: CandidateSeeds});
+    ELSE
+      TopResults = vectorSearch({Chunk.emb}, query_vector, k);
+    END;
+  END;
+
+  PRINT TopResults AS top_chunks;
+}
+
+INSTALL QUERY q5_hybrid_search

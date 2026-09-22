@@ -3,6 +3,21 @@
 Handoff for picking this project up fresh, on a new machine or a new session.
 Written 2026-09-22 against `application-integration` @ `6291601`.
 
+> **Update, same day, later commit.** Everything this file originally said
+> was missing — GSQL queries, ingestion beyond the infobox parser, the HTTP
+> API, the batch runner — has since been **written and unit-tested against
+> mocks**: `graph/schema.gsql`, `graph/queries/q{1..5}_*.gsql`,
+> `ingest/chunk_embed.py`, `ingest/load.py`, `graph/vector_status.py`,
+> `ingest/progress.py`, `eval/batch_runner.py` + `eval/store.py`, and
+> `api/main.py` (FastAPI + SSE + API-key auth, routes matching the frontend
+> exactly). 283 backend tests pass. **What is still true, and still blocks a
+> real run**: none of the GSQL has been installed against a live TigerGraph
+> workspace (`TG_HOST` is still empty), so §3's blocker chain below is
+> accurate for *live verification*, not for *code existing*. The GRAPH-04
+> chunk+embed step has been run for real against the actual 2,951-document
+> corpus (`out/chunks.jsonl`, 16,669 chunks) — that part needs no TigerGraph
+> and is genuinely done, not just written.
+
 Read this file top to bottom before changing anything. It is written to be
 self-contained: you should not need the conversation that produced it.
 
@@ -10,15 +25,16 @@ self-contained: you should not need the conversation that produced it.
 
 ## 1. The one-paragraph state of things
 
-Three RAG pipelines are **implemented and unit-tested** (185 backend tests,
-all green), the React UI is **built and deployable**, and the LLM and
-TigerGraph client boundaries both **read real credentials and make real
-calls**. But the system **has never run end to end**, and cannot today,
-because the data layer underneath it was never built: there are **zero GSQL
-queries**, **no ingestion code**, and **no corpus in the repo**. There is also
-**no HTTP API**, so the frontend runs on fixtures.
+Three RAG pipelines are **implemented and unit-tested** (283 backend tests,
+all green), the React UI is **built and deployable**, the LLM and TigerGraph
+client boundaries both **read real credentials and make real calls**, and
+the schema, query library, ingestion, batch runner and HTTP API are now
+**written and unit-tested against mocks** (see the update note above). But
+the system **has still never run end to end against a live graph**, because
+no GSQL has been installed against a real TigerGraph workspace yet —
+`TG_HOST` is empty and the configured LLM key has no credits.
 
-Nothing here is broken. It is unfinished in a specific, well-understood place.
+Nothing here is broken. It is unverified live in a specific, well-understood place.
 
 ## 2. What runs today, verified
 

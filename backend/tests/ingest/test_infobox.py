@@ -5,10 +5,15 @@ asserts a corpus-wide number it is marked `corpus` and skips when
 data/corpus.jsonl is absent, so the suite still runs on a clone without data.
 
 The corpus-wide assertions matter more than they look: they independently
-reproduce figures the specs measured separately (2,162 Olympic infoboxes,
-41 sports, 21 Games, 303 venues, 23 non-integer competitors, prev 93.4% /
-next 97.6%). Agreement between two independent parses is real evidence the
-parser reads the corpus the way the specs assumed.
+reproduce figures the specs measured separately. **Corrected from the specs'
+original numbers**: the parser used to take the first `[Infobox ...]` header
+unconditionally, which silently dropped 25 real Olympic events whose complete
+infobox is listed second (e.g. tennis-at-the-Olympics pages). After the fix:
+2,187 Olympic infoboxes (was 2,162), 42 sports (was 41), 21 Games, 319 venues
+(was 303), 24 non-integer competitors (was 23), prev 93.5% / next 97.7% (was
+93.4% / 97.6%). Agreement between two independent parses is real evidence the
+parser reads the corpus the way the specs assumed — this file's numbers are
+now the more-correct pair.
 """
 
 from __future__ import annotations
@@ -29,7 +34,8 @@ from ogr.ingest.infobox import (
 CORPUS = Path(__file__).resolve().parents[3] / "data" / "corpus.jsonl"
 corpus_required = pytest.mark.skipif(not CORPUS.exists(), reason="data/corpus.jsonl not present")
 
-# Verbatim from data/corpus.jsonl (Q303623), including the concatenated names.
+# Adapted from data/corpus.jsonl (Q303623): same structure and concatenated
+# names as the real row, with medallist names transliterated to ASCII.
 CANOE = {
     "doc_id": "Q303623",
     "title": "Canoeing at the 2012 Summer Olympics – Men's K-2 1000 metres",
@@ -168,6 +174,43 @@ class TestNonOlympicDocuments:
         assert doc.games_id is None
 
 
+class TestMultipleInfoboxes:
+    def test_olympic_infobox_found_even_when_listed_second(self):
+        """Real corpus docs (tennis-at-the-Olympics pages) carry a non-Olympic
+        infobox first and the complete Olympic-event infobox second. Taking
+        the first header unconditionally would drop a real OlympicEvent.
+        """
+        record = dict(
+            CANOE,
+            doc_id="Q26037158",
+            text="[Infobox tennis tournament event]\n  champion: Someone\n\n"
+            + CANOE["text"],
+        )
+        doc = parse_document(record)
+        assert doc.infobox_type == "olympic event"
+        assert doc.is_olympic_event
+        assert doc.games_id == "2012-Summer"
+        assert doc.competitors == 24
+
+    def test_first_header_still_wins_when_neither_is_olympic(self):
+        record = dict(FILM, text="[Infobox film]\n  director: A\n\n[Infobox book]\n  author: B\n")
+        assert parse_infobox_header(record["text"]) == "film"
+
+
+class TestTiedBronzeMedals:
+    def test_bronze2_and_bronzeno_c2_are_both_captured(self):
+        """bronze2/bronzeNOC2 (third-place ties) appear on ~13% of real events."""
+        record = dict(
+            CANOE,
+            text=CANOE["text"].replace(
+                "bronze: Martin HollsteinAndreas Ihle\n",
+                "bronze: Martin HollsteinAndreas Ihle\n  bronze2: Someone ElseAnother Person\n",
+            ),
+        )
+        doc = parse_document(record)
+        assert doc.bronze == ["Martin Hollstein", "Andreas Ihle", "Someone Else", "Another Person"]
+
+
 @corpus_required
 class TestAgainstTheRealCorpus:
     """Reproduces, independently, the figures the specs measured."""
@@ -183,35 +226,44 @@ class TestAgainstTheRealCorpus:
         assert report.total_documents == 2951
 
     def test_olympic_event_count(self, parsed):
-        assert parsed[1].olympic_events == 2162
+        """2,187 = 2,162 + the 25 tennis-at-the-Olympics docs whose complete
+        Olympic infobox is listed second, behind a non-Olympic header — the
+        first-header bug this parser used to have. The spec's own reference
+        count (2,162) shares the same blind spot; this number is the corrected
+        one, not the originally documented one.
+        """
+        assert parsed[1].olympic_events == 2187
 
     def test_sport_derives_for_every_olympic_event(self, parsed):
         docs, report = parsed
         assert report.missing_sport == []
-        assert len({d.sport_name for d in docs if d.is_olympic_event}) == 41
+        assert len({d.sport_name for d in docs if d.is_olympic_event}) == 42
 
     def test_distinct_games_and_venues(self, parsed):
         docs, _ = parsed
         events = [d for d in docs if d.is_olympic_event]
         assert len({d.games_id for d in events}) == 21
-        assert len({d.venue_name for d in events if d.venue_name}) == 303
+        assert len({d.venue_name for d in events if d.venue_name}) == 319
 
     def test_non_integer_competitors(self, parsed):
-        """23 of 2,130 — the exact figure TECHNICAL-SPEC §2.3 measured."""
+        """24 of 2,154 — updated from TECHNICAL-SPEC §2.3's 23/2,130 by the 25
+        recovered tennis events (24 of them carry a competitors field; one of
+        those 24 is non-integer).
+        """
         _, report = parsed
-        assert report.field_present["competitors"] == 2130
-        assert len(report.non_integer_competitors) == 23
-        assert report.low_confidence == 23
+        assert report.field_present["competitors"] == 2154
+        assert len(report.non_integer_competitors) == 24
+        assert report.low_confidence == 24
 
     def test_prev_next_edge_coverage(self, parsed):
-        """93.4% / 97.6% — the figures the PREV_EDITION risk was sized against."""
+        """93.5% / 97.7% — updated from 93.4%/97.6% by the 25 recovered events."""
         _, report = parsed
         events = report.olympic_events
-        assert round(report.field_present["prev_year"] / events * 100, 1) == 93.4
-        assert round(report.field_present["next_year"] / events * 100, 1) == 97.6
+        assert round(report.field_present["prev_year"] / events * 100, 1) == 93.5
+        assert round(report.field_present["next_year"] / events * 100, 1) == 97.7
 
     def test_most_dates_carry_a_year(self, parsed):
-        """~81%, which is why date_year is nullable."""
+        """~82%, updated from ~81% by the 25 recovered events."""
         _, report = parsed
         with_date = report.field_present["date_text"]
-        assert round((with_date - report.dates_without_year) / with_date * 100) == 81
+        assert round((with_date - report.dates_without_year) / with_date * 100) == 82

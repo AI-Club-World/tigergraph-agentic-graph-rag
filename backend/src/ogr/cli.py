@@ -32,6 +32,19 @@ def build_parser() -> argparse.ArgumentParser:
 
     subparsers.add_parser("verify", help="Check the LLM and TigerGraph endpoints are reachable")
 
+    coverage_parser = subparsers.add_parser(
+        "coverage", help="Parse the corpus and write the GRAPH-02 ingest coverage report"
+    )
+    coverage_parser.add_argument("--corpus", type=str, default="data/corpus.jsonl")
+    coverage_parser.add_argument("--out", type=str, default="out/ingest-coverage.md")
+
+    batch_parser = subparsers.add_parser(
+        "batch", help="Run a JSONL question set through all three pipelines (EVAL-04)"
+    )
+    batch_parser.add_argument("questions", type=str, help="Path to a Question JSONL file")
+    batch_parser.add_argument("--out", type=str, required=True, help="Output BatchRecord JSONL path")
+    batch_parser.add_argument("--run-id", type=str, default=None, help="Defaults to a UTC timestamp")
+
     return parser
 
 
@@ -61,6 +74,45 @@ def main(argv=None) -> int:
         from ogr.verify import run as run_verify
 
         return run_verify()
+
+    if args.command == "coverage":
+        from pathlib import Path
+
+        from ogr.ingest.infobox import parse_corpus
+
+        _, report = parse_corpus(args.corpus)
+        out_path = Path(args.out)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(report.as_markdown(), encoding="utf-8")
+        print(f"Wrote {out_path} ({report.olympic_events}/{report.total_documents} Olympic events)")
+        return 0
+
+    if args.command == "batch":
+        from datetime import UTC, datetime
+
+        from ogr.eval.batch_runner import run_batch_sync, run_config_header
+        from ogr.pipelines.p2_graphrag import run_p2_graphrag
+        from ogr.pipelines.p3_agentic.orchestrator import run_p3_agentic
+
+        config = get_default_config()
+        client = TigerGraphClient(config)
+        run_id = args.run_id or datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+
+        pipelines = {
+            "rag": lambda q: run_p1_rag(query=q, client=client, config=config),
+            "graphrag": lambda q: run_p2_graphrag(query=q, client=client, config=config),
+            "agentic_graphrag": lambda q: run_p3_agentic(query=q, tg_client=client, config=config),
+        }
+        count = run_batch_sync(
+            questions_path=args.questions,
+            out_path=args.out,
+            pipelines=pipelines,
+            run_id=run_id,
+            run_config=run_config_header(config),
+            pool_size=config.pool_size,
+        )
+        print(f"Batch {run_id}: ran {count} question(s), wrote to {args.out}")
+        return 0
 
     if args.command == "ask":
         requested_pipelines = [p.strip().lower() for p in args.pipelines.split(",")]

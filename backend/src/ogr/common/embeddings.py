@@ -22,6 +22,15 @@ def get_embedding_model(model_name: str = "sentence-transformers/all-MiniLM-L6-v
     return _MODEL_INSTANCE
 
 
+def _fallback_vector(text: str, dim: int) -> list[float]:
+    """Deterministic normalized vector from a sha256 hash, for unit testing
+    without downloading model weights."""
+    seed = hashlib.sha256(text.encode("utf-8")).digest()
+    raw = [(seed[i % len(seed)] / 255.0) * 2.0 - 1.0 for i in range(dim)]
+    norm = math.sqrt(sum(x * x for x in raw)) or 1.0
+    return [x / norm for x in raw]
+
+
 def embed_query(
     text: str,
     model_name: str = "sentence-transformers/all-MiniLM-L6-v2",
@@ -34,9 +43,26 @@ def embed_query(
     if model is not None:
         vector = model.encode(text, normalize_embeddings=True)
         return [float(x) for x in vector]
+    return _fallback_vector(text, dim)
 
-    # Deterministic fallback vector based on sha256 hash for unit testing without downloading model weights
-    seed = hashlib.sha256(text.encode("utf-8")).digest()
-    raw = [(seed[i % len(seed)] / 255.0) * 2.0 - 1.0 for i in range(dim)]
-    norm = math.sqrt(sum(x * x for x in raw)) or 1.0
-    return [x / norm for x in raw]
+
+def embed_texts(
+    texts: list[str],
+    model_name: str = "sentence-transformers/all-MiniLM-L6-v2",
+    dim: int = 384,
+    batch_size: int = 64,
+) -> list[list[float]]:
+    """Batch form of embed_query — one model load, many texts.
+
+    GRAPH-04 embeds all 2,951 documents' chunks; encoding one text at a time
+    would reload nothing (the model is cached), but sentence-transformers'
+    own batching is materially faster than a Python-level loop over
+    `model.encode(single_text)` calls.
+    """
+    if not texts:
+        return []
+    model = get_embedding_model(model_name)
+    if model is not None:
+        vectors = model.encode(texts, normalize_embeddings=True, batch_size=batch_size)
+        return [[float(x) for x in vector] for vector in vectors]
+    return [_fallback_vector(text, dim) for text in texts]

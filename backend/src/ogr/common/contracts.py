@@ -97,6 +97,17 @@ class PipelineScores(BaseModel):
     completeness: float = 0.0
 
 
+class BatchRecord(BaseModel):
+    """One evaluation question across all three pipelines, per TECHNICAL-SPEC §6.4."""
+    run_id: str
+    question_id: str
+    question_text: str
+    qtype: str | None = None
+    ground_truth: list[str] = Field(default_factory=list)
+    gold_doc_ids: list[str] = Field(default_factory=list)
+    record: QueryLevelRecord
+
+
 class Question(BaseModel):
     """An evaluation question, using the data files' field names verbatim.
 

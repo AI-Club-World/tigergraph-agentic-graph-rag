@@ -75,6 +75,18 @@ class RunConfig(BaseModel):
         default_factory=lambda: os.getenv("LLM_REPORTS_TOKEN_USAGE", "auto").lower()
     )
 
+    # Batch runner (EVAL-04). PLAT-08: default 2 concurrent on cloud free
+    # tiers — a 429 storm mid-run is the likeliest cause of a partial run.
+    pool_size: int = Field(default_factory=lambda: int(os.getenv("RUN_POOL_SIZE", "2")))
+
+    # API-01. Required on every route except /health (TECHNICAL-SPEC §4.5).
+    # Empty means "no key configured" — the API refuses every request rather
+    # than silently running unauthenticated.
+    ogr_api_key: str = Field(default_factory=lambda: os.getenv("OGR_API_KEY", ""))
+    ogr_stream_token_ttl_s: int = Field(
+        default_factory=lambda: int(os.getenv("OGR_STREAM_TOKEN_TTL_S", "300"))
+    )
+
 
 
 def get_default_config() -> RunConfig:

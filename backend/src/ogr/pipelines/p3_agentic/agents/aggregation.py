@@ -128,7 +128,7 @@ def _normalize_count_results(raw: Any) -> tuple[list[dict[str, Any]], int]:
         if "excluded_count" in attrs:
             excluded_count = attrs["excluded_count"]
         results.append({
-            "count": attrs.get("count", attrs.get("value", 0)),
+            "count": attrs.get("count", attrs.get("count_value", attrs.get("value", 0))),
             "doc_id": attrs.get("doc_id", attrs.get("event_id", "")),
             "source": "aggregation_count",
         })

@@ -89,7 +89,9 @@ def check_queries(config: RunConfig) -> tuple[str, str]:
         return FAIL, f"could not list queries: {str(e)[:140]}"
 
     expected = {"q1_lookup", "q2_count_where", "q3_argmax", "q4_traverse", "q5_hybrid_search"}
-    missing = sorted(expected - {n.lstrip("/") for n in names})
+    # pyTigerGraph returns endpoint keys ("GET /query/<graph>/q1_lookup"),
+    # not bare query names — compare on the last path segment.
+    missing = sorted(expected - {n.rsplit("/", 1)[-1] for n in names})
     if missing:
         return FAIL, f"missing: {', '.join(missing)} (GRAPH-07 not built yet)"
     return OK, "all five installed"

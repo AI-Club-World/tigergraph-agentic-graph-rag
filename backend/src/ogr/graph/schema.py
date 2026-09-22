@@ -1,0 +1,58 @@
+"""Installs the GRAPH-01 schema and the GRAPH-07 query library.
+
+Source spec: implementation-plan-GRAPH.md Groups 1 and 3 · Gate: G0/G1
+
+Both installers just hand the committed `.gsql` text to pyTigerGraph's
+`conn.gsql()`, which is the same mechanism `graph/client.py` already relies
+on being available (it calls `conn.runInstalledQuery` for queries this module
+installs). Nothing here can be verified beyond "the file exists and contains
+the expected names" without a live TigerGraph connection — a real install is
+the first true syntax check.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from ogr.graph.client import TigerGraphClient
+
+_GRAPH_DIR = Path(__file__).resolve().parent
+SCHEMA_PATH = _GRAPH_DIR / "schema.gsql"
+QUERIES_DIR = _GRAPH_DIR / "queries"
+
+QUERY_FILES = (
+    "q1_lookup.gsql",
+    "q2_count_where.gsql",
+    "q3_argmax.gsql",
+    "q4_traverse.gsql",
+    "q5_hybrid_search.gsql",
+)
+
+__all__ = ["SCHEMA_PATH", "QUERIES_DIR", "QUERY_FILES", "install_schema", "install_queries"]
+
+
+def install_schema(client: TigerGraphClient) -> str:
+    """Run schema.gsql against the client's connection. Idempotent — the
+    file drops the graph and its types before recreating them.
+    """
+    client._ensure_connection()
+    if client.conn is None:
+        raise RuntimeError("No TigerGraph connection available; cannot install schema")
+    gsql_text = SCHEMA_PATH.read_text(encoding="utf-8")
+    return client.conn.gsql(gsql_text)
+
+
+def install_queries(client: TigerGraphClient) -> list[str]:
+    """INTERPRET+install each of Q1-Q5, in order. Each install can take
+    ~1 minute and blocks concurrent operations (TECHNICAL-SPEC §3) — install
+    once, near the end of a build, not per run.
+    """
+    client._ensure_connection()
+    if client.conn is None:
+        raise RuntimeError("No TigerGraph connection available; cannot install queries")
+
+    results = []
+    for filename in QUERY_FILES:
+        gsql_text = (QUERIES_DIR / filename).read_text(encoding="utf-8")
+        results.append(client.conn.gsql(gsql_text))
+    return results

@@ -1,0 +1,112 @@
+// GRAPH-01: schema for OlympicGraphRAG.
+// Source spec: TECHNICAL-SPEC.md §2.1/§2.2, amended by implementation-plan-GRAPH.md
+// DP-1 (date_month/date_day_start/date_day_end/date_year as typed INTs),
+// DP-2 (competitors_text / nations_text retained alongside the typed INT),
+// DP-5 (bronze as a SET<STRING> for third-place ties).
+//
+// Idempotent: drops the graph and every type it owns before recreating them,
+// so re-running this file against a workspace that already has
+// OlympicGraphRAG installed does not error. Run/Step vertices are cut
+// (BUILD-PLAN §1, "Round 1").
+
+USE GLOBAL
+
+DROP GRAPH OlympicGraphRAG
+// Edges first: a vertex type that still carries an edge type cannot be
+// dropped ("Please drop the edges first!"), which leaves the second run
+// unable to recreate the vertices it failed to drop.
+DROP EDGE DESCRIBES
+DROP EDGE AT_GAMES
+DROP EDGE IN_SPORT
+DROP EDGE HELD_AT
+DROP EDGE PREV_EDITION
+DROP EDGE NEXT_EDITION
+DROP EDGE HAS_CHUNK
+DROP VERTEX Document
+DROP VERTEX OlympicEvent
+DROP VERTEX Games
+DROP VERTEX Sport
+DROP VERTEX Venue
+DROP VERTEX Chunk
+
+CREATE VERTEX Document (
+  PRIMARY_ID doc_id STRING,
+  title STRING,
+  url STRING,
+  infobox_type STRING,
+  approx_tokens INT,
+  wikipedia_pageid STRING
+) WITH PRIMARY_ID_AS_ATTRIBUTE="true"
+
+CREATE VERTEX OlympicEvent (
+  PRIMARY_ID event_id STRING,
+  event_name STRING,
+  competitors INT,
+  competitors_text STRING,
+  nations INT,
+  nations_text STRING,
+  date_text STRING,
+  date_month INT,
+  date_day_start INT,
+  date_day_end INT,
+  date_year INT,
+  gold LIST<STRING>,
+  silver LIST<STRING>,
+  bronze SET<STRING>,
+  gold_noc STRING,
+  win_value STRING,
+  win_label STRING,
+  parse_confidence FLOAT
+) WITH PRIMARY_ID_AS_ATTRIBUTE="true"
+
+CREATE VERTEX Games (
+  PRIMARY_ID games_id STRING,
+  year INT,
+  season STRING
+) WITH PRIMARY_ID_AS_ATTRIBUTE="true"
+
+CREATE VERTEX Sport (
+  PRIMARY_ID sport_name STRING
+) WITH PRIMARY_ID_AS_ATTRIBUTE="true"
+
+CREATE VERTEX Venue (
+  PRIMARY_ID venue_name STRING
+) WITH PRIMARY_ID_AS_ATTRIBUTE="true"
+
+CREATE VERTEX Chunk (
+  PRIMARY_ID chunk_id STRING,
+  doc_id STRING,
+  text STRING,
+  seq INT,
+  token_count INT
+) WITH PRIMARY_ID_AS_ATTRIBUTE="true"
+
+// All endpoints pinned explicitly (TECHNICAL-SPEC §2.2 note: v0.2 left four
+// undirected, and direction inversion is a named failure mode).
+CREATE DIRECTED EDGE DESCRIBES (FROM Document, TO OlympicEvent) WITH REVERSE_EDGE="reverse_DESCRIBES"
+CREATE DIRECTED EDGE AT_GAMES (FROM OlympicEvent, TO Games)
+CREATE DIRECTED EDGE IN_SPORT (FROM OlympicEvent, TO Sport)
+CREATE DIRECTED EDGE HELD_AT (FROM OlympicEvent, TO Venue, date_text STRING) WITH REVERSE_EDGE="reverse_HELD_AT"
+CREATE DIRECTED EDGE PREV_EDITION (FROM OlympicEvent, TO OlympicEvent)
+CREATE DIRECTED EDGE NEXT_EDITION (FROM OlympicEvent, TO OlympicEvent)
+CREATE DIRECTED EDGE HAS_CHUNK (FROM Document, TO Chunk)
+
+CREATE GRAPH OlympicGraphRAG (
+  Document, OlympicEvent, Games, Sport, Venue, Chunk,
+  DESCRIBES, AT_GAMES, IN_SPORT, HELD_AT, PREV_EDITION, NEXT_EDITION, HAS_CHUNK
+)
+
+// Vector attributes can only be added by ALTER VERTEX inside a SCHEMA_CHANGE
+// JOB (GSQL 4.2 vector reference) — a bare ALTER at statement level is a parse
+// error. The job is global because the vertex types are global; CREATE GRAPH
+// leaves the session scoped to that graph, so the scope must be reset first.
+USE GLOBAL
+
+DROP JOB add_vectors
+
+CREATE GLOBAL SCHEMA_CHANGE JOB add_vectors {
+  ALTER VERTEX OlympicEvent ADD VECTOR ATTRIBUTE emb(DIMENSION=384, METRIC="COSINE");
+  ALTER VERTEX Chunk ADD VECTOR ATTRIBUTE emb(DIMENSION=384, METRIC="COSINE");
+}
+
+RUN GLOBAL SCHEMA_CHANGE JOB add_vectors

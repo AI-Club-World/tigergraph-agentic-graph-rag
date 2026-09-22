@@ -1,0 +1,41 @@
+USE GRAPH OlympicGraphRAG
+
+// Q3: argmax(anchor_sport, anchor_games, anchor_venue, field) — TECHNICAL-SPEC §3.
+// HeapAccum top-3 ranked by `field`, serving ARGMAX/superlative questions
+// (e.g. "which event had the most competitors"). Only the numeric
+// OlympicEvent attributes are rankable (competitors, nations); anything
+// else falls back to competitors, same reasoning as Q2's field restriction.
+
+CREATE QUERY q3_argmax(
+  STRING anchor_sport = "", STRING anchor_games = "", STRING anchor_venue = "",
+  STRING field = "competitors"
+) FOR GRAPH OlympicGraphRAG SYNTAX V2 {
+
+  TYPEDEF TUPLE<STRING event_id, STRING event_name, STRING doc_id, DOUBLE value> Ranked;
+  HeapAccum<Ranked>(3, value DESC) @@top3;
+
+  Events = {OlympicEvent.*};
+  IF anchor_sport != "" THEN
+    Events = SELECT e FROM Events:e -(IN_SPORT>)- Sport:s WHERE s.sport_name == anchor_sport;
+  END;
+  IF anchor_games != "" THEN
+    Events = SELECT e FROM Events:e -(AT_GAMES>)- Games:g WHERE g.games_id == anchor_games;
+  END;
+  IF anchor_venue != "" THEN
+    Events = SELECT e FROM Events:e -(HELD_AT>)- Venue:v WHERE v.venue_name == anchor_venue;
+  END;
+
+  Ranked_ = SELECT e FROM Events:e -(reverse_DESCRIBES>:conn)- Document:doc
+    ACCUM
+      DOUBLE rankValue = 0.0,
+      IF field == "nations" THEN
+        rankValue = e.nations
+      ELSE
+        rankValue = e.competitors
+      END,
+      @@top3 += Ranked(e.event_id, e.event_name, doc.doc_id, rankValue);
+
+  PRINT @@top3 AS results;
+}
+
+INSTALL QUERY q3_argmax

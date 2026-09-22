@@ -170,9 +170,25 @@ class CoverageReport:
         return "\n".join(lines) + "\n"
 
 
+def _find_header_match(text: str) -> re.Match[str] | None:
+    """The Olympic-event infobox header if the document has one, else the first.
+
+    Some corpus documents carry two infobox headers (e.g. a tennis-tournament
+    page whose complete Olympic-event infobox is listed second). Taking the
+    first match unconditionally silently drops a real OlympicEvent whenever a
+    non-Olympic infobox happens to come first, so the Olympic header is
+    preferred wherever present.
+    """
+    matches = list(_HEADER.finditer(text))
+    for match in matches:
+        if match.group(1).strip().lower() == OLYMPIC_INFOBOX:
+            return match
+    return matches[0] if matches else None
+
+
 def parse_infobox_header(text: str) -> str | None:
     """The infobox type, lowercased, or None when the document has no infobox."""
-    match = _HEADER.search(text)
+    match = _find_header_match(text)
     return match.group(1).strip().lower() if match else None
 
 
@@ -183,16 +199,14 @@ def parse_infobox_fields(text: str) -> dict[str, str]:
     the prose begins. A repeated key keeps its first value; `bronze2`-style
     numbered duplicates are separate keys and handled by the caller.
     """
-    match = _HEADER.search(text)
+    match = _find_header_match(text)
     if not match:
         return {}
 
     fields: dict[str, str] = {}
     for line in text[match.end():].splitlines():
         if not line.strip():
-            # A blank line inside the block is tolerated; two in a row is prose.
-            if fields:
-                continue
+            # A blank line inside the block is tolerated.
             continue
         field_match = _FIELD.match(line)
         if not field_match:

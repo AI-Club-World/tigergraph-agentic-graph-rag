@@ -80,6 +80,26 @@ is used and the figure is labelled `local_tokenizer`; where the model exposes
 no tokenizer either, the figure is labelled `estimated` rather than being
 presented as a count.
 
+## What P3's agent design actually is
+
+P3 is a deterministic `StateGraph` with exactly **two** LLM touchpoints per
+run — the intent parse and, when the loop runs, one groundedness check per
+iteration. Routing (LOOKUP-direct vs. scoped-aggregate vs. loop), the
+stopping decision, and fallback tool selection are all plain Python, not
+model choices. Read the design as "deterministic orchestration with minimal
+LLM touchpoints," not free-form multi-tool ReAct — the model never chooses
+which tool to call next.
+
+## A caveat on the measured lift
+
+P3 can accumulate evidence across up to `RUN_MAX_STEPS` (default 6) loop
+iterations plus fallback tools, while P1 takes a single k=10 vector-search
+shot per AD-9. Part of any accuracy lift P3 shows over P1 is therefore "more
+retrieval attempts," not purely "smarter retrieval" — both are real
+properties of the architectures being compared, but they are not the same
+claim, and the submission should say so rather than let a reader assume the
+whole gap is investigative skill.
+
 # Frontend
 
 ## Run it
