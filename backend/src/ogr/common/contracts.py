@@ -60,6 +60,29 @@ class PipelineRecord(BaseModel):
     error_detail: str | None = None
 
 
+class Verdict(BaseModel):
+    """Cost/accuracy verdict per TECHNICAL-SPEC §6.1.
+
+    Accuracy deltas are the literal string "n/a" where no ground truth exists
+    (FR-9: the field is displayed as N/A rather than omitted).
+    """
+    token_multiplier_vs_rag: float = 0.0
+    token_multiplier_vs_graphrag: float = 0.0
+    accuracy_delta_vs_rag: float | Literal["n/a"] = "n/a"
+    accuracy_delta_vs_graphrag: float | Literal["n/a"] = "n/a"
+    summary_line: str = ""
+
+
+class QueryLevelRecord(BaseModel):
+    """One query across all three pipelines, per TECHNICAL-SPEC §6.1."""
+    query_id: str
+    query_text: str
+    qtype: str | None = None
+    timestamp: str = ""
+    pipelines: dict[str, PipelineRecord] = Field(default_factory=dict)
+    verdict: Verdict = Field(default_factory=Verdict)
+
+
 class PipelineScores(BaseModel):
     """Deterministic scores for one pipeline on one question (TECHNICAL-SPEC §9).
 
