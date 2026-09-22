@@ -24,10 +24,9 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
 
 from ogr.common.dates import normalize_date
-from ogr.pipelines.p3_agentic.intent import Anchor, IntentSchema
+from ogr.pipelines.p3_agentic.intent import IntentSchema
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +36,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 # 21 distinct Games values matching AT_GAMES edge targets
-DEFAULT_GAMES_VOCAB: List[str] = [
+DEFAULT_GAMES_VOCAB: list[str] = [
     "1896-Summer", "1900-Summer", "1904-Summer", "1906-Summer",
     "1908-Summer", "1912-Summer", "1920-Summer", "1924-Summer",
     "1928-Summer", "1932-Summer", "1936-Summer", "1948-Summer",
@@ -59,16 +58,16 @@ DEFAULT_GAMES_VOCAB: List[str] = [
 @dataclass
 class ResolvedAnchors:
     """Anchor resolution result — unresolved fields remain None."""
-    sport: Optional[str] = None
-    games: Optional[str] = None
-    venue: Optional[str] = None
-    title: Optional[str] = None          # pass-through (no disambiguation needed)
-    event_id: Optional[str] = None       # pass-through
-    date_year: Optional[int] = None
-    date_month: Optional[int] = None
-    date_day_start: Optional[int] = None
-    unresolved_fields: List[str] = field(default_factory=list)
-    disambiguation_candidates: Dict[str, List[str]] = field(default_factory=dict)
+    sport: str | None = None
+    games: str | None = None
+    venue: str | None = None
+    title: str | None = None          # pass-through (no disambiguation needed)
+    event_id: str | None = None       # pass-through
+    date_year: int | None = None
+    date_month: int | None = None
+    date_day_start: int | None = None
+    unresolved_fields: list[str] = field(default_factory=list)
+    disambiguation_candidates: dict[str, list[str]] = field(default_factory=dict)
 
 
 class EntityLinker:
@@ -81,17 +80,17 @@ class EntityLinker:
 
     def __init__(
         self,
-        games_vocab: Optional[List[str]] = None,
-        sports_vocab: Optional[List[str]] = None,
-        venues_vocab: Optional[List[str]] = None,
+        games_vocab: list[str] | None = None,
+        sports_vocab: list[str] | None = None,
+        venues_vocab: list[str] | None = None,
     ) -> None:
-        self.games_vocab: List[str] = sorted(
+        self.games_vocab: list[str] = sorted(
             games_vocab or DEFAULT_GAMES_VOCAB, key=len, reverse=True
         )
-        self.sports_vocab: List[str] = sorted(
+        self.sports_vocab: list[str] = sorted(
             sports_vocab or [], key=len, reverse=True
         )
-        self.venues_vocab: List[str] = sorted(
+        self.venues_vocab: list[str] = sorted(
             venues_vocab or [], key=len, reverse=True
         )
 
@@ -148,7 +147,7 @@ class EntityLinker:
 
         return result
 
-    def _longest_match(self, query: str, vocab: List[str]) -> Optional[str]:
+    def _longest_match(self, query: str, vocab: list[str]) -> str | None:
         """Longest-match lookup (vocab pre-sorted by length descending)."""
         q_lower = query.lower().strip()
         for entry in vocab:
@@ -156,7 +155,7 @@ class EntityLinker:
                 return entry
         return None
 
-    def _resolve_games(self, query: str) -> Optional[str]:
+    def _resolve_games(self, query: str) -> str | None:
         """Resolve games string — handles year-only inputs like '2016' → '2016-Summer'."""
         q_lower = query.lower().strip()
 
@@ -176,7 +175,7 @@ class EntityLinker:
 
         return None
 
-    def _resolve_venue(self, query: str) -> tuple[Optional[str], List[str]]:
+    def _resolve_venue(self, query: str) -> tuple[str | None, list[str]]:
         """Longest-match venue resolution, returning candidates on ambiguity."""
         q_lower = query.lower().strip()
         candidates = []

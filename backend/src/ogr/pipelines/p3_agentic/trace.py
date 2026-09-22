@@ -24,8 +24,7 @@ NFR-3: token/latency capture at the invocation layer — not estimated post-hoc.
 from __future__ import annotations
 
 import logging
-import time
-from typing import Callable, List, Optional
+from collections.abc import Callable
 
 from ogr.common.contracts import TokenUsage, TraceStep
 from ogr.pipelines.p3_agentic.agents.agent_result import AgentResult
@@ -46,11 +45,11 @@ class TraceRecorder:
     def __init__(
         self,
         route_initial: str = "loop",
-        on_step: Optional[Callable[[TraceStep], None]] = None,
+        on_step: Callable[[TraceStep], None] | None = None,
     ) -> None:
         self.route_initial = route_initial
-        self._steps: List[TraceStep] = []
-        self._path_taken: List[str] = []
+        self._steps: list[TraceStep] = []
+        self._path_taken: list[str] = []
         self._cumulative_input_tokens: int = 0
         self._cumulative_output_tokens: int = 0
         # One emitter, two consumers (AD-1, AD-2): the collected trace array
@@ -68,7 +67,7 @@ class TraceRecorder:
         agent_type: str,
         tool_called: str,
         result: AgentResult,
-        path_name: Optional[str] = None,
+        path_name: str | None = None,
         extra_tokens_input: int = 0,
         extra_tokens_output: int = 0,
     ) -> TraceStep:
@@ -164,7 +163,7 @@ class TraceRecorder:
         self._emit(step)
         return step
 
-    def finalize(self) -> List[TraceStep]:
+    def finalize(self) -> list[TraceStep]:
         """Return the collected trace steps."""
         return list(self._steps)
 

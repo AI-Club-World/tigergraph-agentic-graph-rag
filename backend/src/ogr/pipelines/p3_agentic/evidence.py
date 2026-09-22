@@ -28,7 +28,7 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Literal
 
 logger = logging.getLogger(__name__)
 
@@ -55,10 +55,10 @@ class EvidenceEvaluation:
 
 
 def evaluate_evidence(
-    evidence: List[Dict[str, Any]],
+    evidence: list[dict[str, Any]],
     intent_operation: str,
     anchors: Any,         # ResolvedAnchors
-    model: Optional[Any] = None,   # LLM for groundedness check
+    model: Any | None = None,   # LLM for groundedness check
     question: str = "",
 ) -> EvidenceEvaluation:
     """Evaluate whether the retrieved evidence is sufficient.
@@ -128,7 +128,7 @@ def evaluate_evidence(
 
 
 def _check_scope_coverage(
-    evidence: List[Dict[str, Any]],
+    evidence: list[dict[str, Any]],
     operation: str,
     anchors: Any,
 ) -> tuple[bool, str]:
@@ -165,7 +165,7 @@ def _check_scope_coverage(
 
 
 def _check_groundedness_llm(
-    evidence: List[Dict[str, Any]],
+    evidence: list[dict[str, Any]],
     question: str,
     model: Any,
 ) -> tuple[bool, str, int, int]:
@@ -211,7 +211,7 @@ def _check_groundedness_llm(
 
 
 def _check_groundedness_deterministic(
-    evidence: List[Dict[str, Any]],
+    evidence: list[dict[str, Any]],
     question: str,
 ) -> tuple[bool, str]:
     """Deterministic groundedness: minimal token overlap check (DP-4 Option B baseline)."""
@@ -227,7 +227,7 @@ def _check_groundedness_deterministic(
     return False, "deterministic groundedness: insufficient token overlap"
 
 
-def _collect_parse_confidence_notes(evidence: List[Dict[str, Any]]) -> str:
+def _collect_parse_confidence_notes(evidence: list[dict[str, Any]]) -> str:
     """Surface parse_confidence exclusion counts from Q2/Q3 evidence."""
     total_excluded = sum(
         int(e.get("excluded_count", 0)) for e in evidence

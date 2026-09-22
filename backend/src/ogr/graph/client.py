@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import logging
-import time
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from ogr.common.config import RunConfig, get_default_config
 
@@ -18,14 +17,14 @@ class TigerGraphClient:
 
     def __init__(
         self,
-        config: Optional[RunConfig] = None,
-        conn: Optional[Any] = None,
-        mock_chunks: Optional[List[Dict[str, Any]]] = None,
+        config: RunConfig | None = None,
+        conn: Any | None = None,
+        mock_chunks: list[dict[str, Any]] | None = None,
     ) -> None:
         self.config = config or get_default_config()
         self.conn = conn
         self.mock_chunks = mock_chunks
-        self.last_query_args: Dict[str, Any] = {}
+        self.last_query_args: dict[str, Any] = {}
 
     def _ensure_connection(self) -> None:
         """Initializes pyTigerGraph connection if not already created."""
@@ -51,11 +50,11 @@ class TigerGraphClient:
 
     def hybrid_search(
         self,
-        query_vector: List[float],
+        query_vector: list[float],
         k: int = 10,
         vtype: str = "Chunk",
-        candidate_set: Optional[List[str]] = None,
-    ) -> List[Dict[str, Any]]:
+        candidate_set: list[str] | None = None,
+    ) -> list[dict[str, Any]]:
         """Q5: hybrid_search(query_vector, k, vtype, candidate_set).
         Executes vectorSearch over the specified vertex type (Chunk or OlympicEvent).
         Returns top-k records with resolved parent doc_id via HAS_CHUNK for chunks.
@@ -102,9 +101,9 @@ class TigerGraphClient:
             logger.error("Error executing Q5 hybrid_search: %s", e)
             return []
 
-    def _normalize_q5_results(self, raw_res: Any) -> List[Dict[str, Any]]:
+    def _normalize_q5_results(self, raw_res: Any) -> list[dict[str, Any]]:
         """Normalizes raw TigerGraph query output into standard chunk dicts."""
-        chunks: List[Dict[str, Any]] = []
+        chunks: list[dict[str, Any]] = []
         if not raw_res:
             return chunks
 
@@ -134,7 +133,7 @@ class TigerGraphClient:
                 })
         return chunks
 
-    def _run_query(self, query_name: str, params: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def _run_query(self, query_name: str, params: dict[str, Any]) -> list[dict[str, Any]]:
         """Generic runner for installed Q1–Q4 queries.
 
         Returns raw list of result dicts, or empty list on failure/offline.
@@ -163,7 +162,7 @@ class TigerGraphClient:
             logger.error("Error running query '%s': %s", query_name, e)
             return []
 
-    def _expand_has_chunk(self, doc_ids: List[str]) -> List[Dict[str, Any]]:
+    def _expand_has_chunk(self, doc_ids: list[str]) -> list[dict[str, Any]]:
         """Expand Document vertices to their Chunks via the HAS_CHUNK edge.
 
         Used by the document_retrieval agent (prose fallback).
@@ -177,7 +176,7 @@ class TigerGraphClient:
             logger.warning("TigerGraph unavailable; _expand_has_chunk returning empty")
             return []
 
-        all_chunks: List[Dict[str, Any]] = []
+        all_chunks: list[dict[str, Any]] = []
         for doc_id in doc_ids:
             try:
                 # Navigate HAS_CHUNK edge from Document to Chunk vertices
@@ -193,7 +192,7 @@ class TigerGraphClient:
                 logger.warning("HAS_CHUNK expansion failed for %s: %s", doc_id, e)
         return all_chunks
 
-    def get_vocabulary(self, vtype: str) -> List[str]:
+    def get_vocabulary(self, vtype: str) -> list[str]:
         """Retrieve distinct values for a vertex type (Games, Sport, Venue names).
 
         Used by EntityLinker to build its closed vocabularies at startup.

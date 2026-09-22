@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from ogr.graph.client import TigerGraphClient
 from ogr.pipelines.p3_agentic.agents.agent_result import AgentResult
@@ -53,7 +53,7 @@ def run_graph_traversal(
         "hops": hops,
     }
 
-    raw_results: List[Dict[str, Any]] = []
+    raw_results: list[dict[str, Any]] = []
     try:
         raw_results = client._run_query("q4_traverse", params)
     except Exception as e:
@@ -77,7 +77,7 @@ def run_graph_traversal(
     )
 
 
-def _normalize_traverse_results(raw: Any) -> List[Dict[str, Any]]:
+def _normalize_traverse_results(raw: Any) -> list[dict[str, Any]]:
     if not raw or not isinstance(raw, list):
         return []
     results = []

@@ -22,12 +22,12 @@ from __future__ import annotations
 import json
 import logging
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from ogr.graph.client import TigerGraphClient
 from ogr.pipelines.p3_agentic.agents.agent_result import AgentResult
 from ogr.pipelines.p3_agentic.agents.entity_linking import ResolvedAnchors
-from ogr.pipelines.p3_agentic.intent import AnchorConstraint, IntentSchema
+from ogr.pipelines.p3_agentic.intent import IntentSchema
 
 logger = logging.getLogger(__name__)
 
@@ -118,8 +118,8 @@ def _run_argmax(
     )
 
 
-def _normalize_count_results(raw: Any) -> tuple[List[Dict[str, Any]], int]:
-    results: List[Dict[str, Any]] = []
+def _normalize_count_results(raw: Any) -> tuple[list[dict[str, Any]], int]:
+    results: list[dict[str, Any]] = []
     excluded_count = 0
     if not raw or not isinstance(raw, list):
         return results, excluded_count
@@ -135,8 +135,8 @@ def _normalize_count_results(raw: Any) -> tuple[List[Dict[str, Any]], int]:
     return results, excluded_count
 
 
-def _normalize_argmax_results(raw: Any) -> List[Dict[str, Any]]:
-    results: List[Dict[str, Any]] = []
+def _normalize_argmax_results(raw: Any) -> list[dict[str, Any]]:
+    results: list[dict[str, Any]] = []
     if not raw or not isinstance(raw, list):
         return results
     for item in raw:

@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from ogr.common.config import RunConfig, get_default_config
 from ogr.common.contracts import Citation, PipelineRecord, TokenUsage
@@ -25,12 +25,12 @@ from ogr.graph.client import TigerGraphClient
 logger = logging.getLogger(__name__)
 
 
-def format_chunks_into_context(chunks: List[Dict[str, Any]]) -> str:
+def format_chunks_into_context(chunks: list[dict[str, Any]]) -> str:
     """Formats retrieved chunks into text context for the shared generation prompt."""
     if not chunks:
         return "No relevant documents found."
 
-    context_parts: List[str] = []
+    context_parts: list[str] = []
     for idx, chunk in enumerate(chunks, 1):
         doc_id = chunk.get("doc_id", "unknown")
         chunk_id = chunk.get("chunk_id", "unknown")
@@ -42,9 +42,9 @@ def format_chunks_into_context(chunks: List[Dict[str, Any]]) -> str:
 
 def run_p1_rag(
     query: str,
-    client: Optional[TigerGraphClient] = None,
-    config: Optional[RunConfig] = None,
-    model: Optional[Any] = None,
+    client: TigerGraphClient | None = None,
+    config: RunConfig | None = None,
+    model: Any | None = None,
 ) -> PipelineRecord:
     """Executes the P1 unfiltered RAG pipeline.
 
@@ -101,7 +101,7 @@ def run_p1_rag(
         error_detail = str(e)
 
     # Step 5: Build citations (source_id = parent doc_id, chunk_id retained for display)
-    citations: List[Citation] = []
+    citations: list[Citation] = []
     for chunk in retrieved_chunks:
         doc_id = chunk.get("doc_id", "")
         chunk_id = chunk.get("chunk_id")

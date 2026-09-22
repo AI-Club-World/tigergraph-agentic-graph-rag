@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from ogr.graph.client import TigerGraphClient
 from ogr.pipelines.p3_agentic.agents.agent_result import AgentResult
@@ -27,8 +27,8 @@ logger = logging.getLogger(__name__)
 
 def run_document_retrieval(
     client: TigerGraphClient,
-    doc_ids: Optional[List[str]] = None,
-    event_ids: Optional[List[str]] = None,
+    doc_ids: list[str] | None = None,
+    event_ids: list[str] | None = None,
     triggered_by: str = "groundedness_fail",
 ) -> AgentResult:
     """Expand Document vertices → Chunks via HAS_CHUNK edge.
@@ -74,7 +74,7 @@ def run_document_retrieval(
     )
 
 
-def _normalize_chunks(chunks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def _normalize_chunks(chunks: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [
         {
             "chunk_id": c.get("chunk_id", ""),

@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from ogr.common.embeddings import embed_query
 from ogr.graph.client import TigerGraphClient
@@ -31,7 +31,7 @@ def run_similarity_search(
     k: int = 10,
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2",
     embedding_dim: int = 384,
-    candidate_set: Optional[List[str]] = None,
+    candidate_set: list[str] | None = None,
     triggered_by: str = "scope_coverage_fail",
 ) -> AgentResult:
     """Execute Q5 hybrid_search similarity expansion.
@@ -81,7 +81,7 @@ def run_similarity_search(
     )
 
 
-def _normalize_chunks(chunks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def _normalize_chunks(chunks: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [
         {
             "chunk_id": c.get("chunk_id", ""),

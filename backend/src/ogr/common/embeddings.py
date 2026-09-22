@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import hashlib
 import math
-from typing import List, Optional
 
 _MODEL_INSTANCE = None
 
@@ -27,7 +26,7 @@ def embed_query(
     text: str,
     model_name: str = "sentence-transformers/all-MiniLM-L6-v2",
     dim: int = 384,
-) -> List[float]:
+) -> list[float]:
     """Generates a normalized embedding vector for query text.
     Uses sentence-transformers if available; otherwise produces a deterministic normalized vector.
     """

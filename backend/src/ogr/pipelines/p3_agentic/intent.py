@@ -29,9 +29,8 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import re
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, ValidationError
 
@@ -56,19 +55,19 @@ class AnchorConstraint(BaseModel):
 
 
 class Anchor(BaseModel):
-    sport: Optional[str] = None
-    games: Optional[str] = None
-    venue: Optional[str] = None
-    title: Optional[str] = None
-    event_id: Optional[str] = None
+    sport: str | None = None
+    games: str | None = None
+    venue: str | None = None
+    title: str | None = None
+    event_id: str | None = None
 
 
 class IntentSchema(BaseModel):
     """Constrained intent output per TECHNICAL-SPEC §7."""
     operation: OPERATION_TYPES
     anchor: Anchor = Field(default_factory=Anchor)
-    constraints: List[AnchorConstraint] = Field(default_factory=list)
-    target_field: Optional[str] = None
+    constraints: list[AnchorConstraint] = Field(default_factory=list)
+    target_field: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -117,7 +116,10 @@ INTENT_TOOL_DEFINITION = {
                 },
                 "target_field": {
                     "type": "string",
-                    "description": "The field to retrieve or aggregate (e.g. 'nations', 'gold', 'event_name').",
+                    "description": (
+                        "The field to retrieve or aggregate "
+                        "(e.g. 'nations', 'gold', 'event_name')."
+                    ),
                 },
             },
             "required": ["operation"],
@@ -202,12 +204,12 @@ class IntentParser:
                     return IntentSchema(operation="TRAVERSE")
         return IntentSchema(operation="TRAVERSE")
 
-    def _extract(self, question: str) -> Dict[str, Any]:
+    def _extract(self, question: str) -> dict[str, Any]:
         if self.supports_tool_calling:
             return self._extract_tool_calling(question)
         return self._extract_json_schema(question)
 
-    def _extract_tool_calling(self, question: str) -> Dict[str, Any]:
+    def _extract_tool_calling(self, question: str) -> dict[str, Any]:
         """Native function-calling path."""
         try:
             from langchain_core.messages import HumanMessage
@@ -222,7 +224,7 @@ class IntentParser:
         # Fallback if tool_calls empty
         return self._parse_json_from_text(getattr(response, "content", "{}"))
 
-    def _extract_json_schema(self, question: str) -> Dict[str, Any]:
+    def _extract_json_schema(self, question: str) -> dict[str, Any]:
         """JSON-schema prompting fallback for local models."""
         try:
             from langchain_core.messages import HumanMessage, SystemMessage
@@ -253,7 +255,7 @@ class IntentParser:
         return response
 
     @staticmethod
-    def _parse_json_from_text(text: str) -> Dict[str, Any]:
+    def _parse_json_from_text(text: str) -> dict[str, Any]:
         text = text.strip()
         # Strip markdown fences
         text = re.sub(r"^```(?:json)?\s*", "", text)
@@ -262,7 +264,7 @@ class IntentParser:
         return json.loads(text)
 
     @staticmethod
-    def _validate(raw: Dict[str, Any]) -> IntentSchema:
+    def _validate(raw: dict[str, Any]) -> IntentSchema:
         """Validate raw dict against IntentSchema (raises ValidationError on failure)."""
         # Normalize anchor: ensure it's a dict
         if "anchor" not in raw or raw["anchor"] is None:

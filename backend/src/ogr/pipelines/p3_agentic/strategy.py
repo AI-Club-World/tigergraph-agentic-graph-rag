@@ -18,9 +18,6 @@ This is what makes the Strategy-Change Detector's output verifiable:
 
 from __future__ import annotations
 
-from typing import List, Optional
-
-
 # Map route decisions to expected tool categories
 ROUTE_TO_EXPECTED_TOOLS = {
     "lookup_direct": {"lookup"},
@@ -31,8 +28,8 @@ ROUTE_TO_EXPECTED_TOOLS = {
 
 def detect_strategy_change(
     route_initial: str,
-    path_taken: List[str],
-) -> tuple[bool, Optional[str]]:
+    path_taken: list[str],
+) -> tuple[bool, str | None]:
     """Determine whether the executed path deviated from the initial route.
 
     Args:
@@ -56,8 +53,8 @@ def detect_strategy_change(
 
 def annotate_steps_with_strategy_change(
     route_initial: str,
-    path_taken: List[str],
-) -> List[bool]:
+    path_taken: list[str],
+) -> list[bool]:
     """Return a parallel list of strategy_change booleans per step.
 
     Args:

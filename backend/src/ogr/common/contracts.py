@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any, Dict, List, Literal, Optional
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -14,7 +15,7 @@ class Citation(BaseModel):
     chunk_id is the chunk identifier retained for display.
     """
     source_id: str
-    chunk_id: Optional[str] = None
+    chunk_id: str | None = None
     ref_type: Literal["chunk", "entity", "relationship"] = "chunk"
 
 
@@ -43,7 +44,7 @@ class PipelineRecord(BaseModel):
     pipeline: Literal["rag", "graphrag", "agentic_graphrag"]
     answer: str
     explanation: str
-    citations: List[Citation] = Field(default_factory=list)
+    citations: list[Citation] = Field(default_factory=list)
     chunks_returned: int = 0
     citations_count: int = 0
     tokens: TokenUsage = Field(default_factory=TokenUsage)
@@ -52,11 +53,11 @@ class PipelineRecord(BaseModel):
     # labelled rather than fabricated or dropped.
     token_source: Literal["provider", "local_tokenizer", "estimated"] = "provider"
     latency_ms: float = 0.0
-    trace: Optional[List[TraceStep]] = None
-    strategy_changed: Optional[bool] = None
-    stop_reason: Optional[str] = None
+    trace: list[TraceStep] | None = None
+    strategy_changed: bool | None = None
+    stop_reason: str | None = None
     status: Literal["done", "error"] = "done"
-    error_detail: Optional[str] = None
+    error_detail: str | None = None
 
 
 # CORE-02: Shared answer contract prompt template
@@ -77,7 +78,7 @@ Question: {question}
 JSON:"""
 
 
-def parse_answer_contract_json(raw_text: str) -> Dict[str, str]:
+def parse_answer_contract_json(raw_text: str) -> dict[str, str]:
     """Parses model output conforming to the CORE-02 answer contract.
     Extracts 'answer' and 'explanation'.
     """
@@ -98,7 +99,11 @@ def parse_answer_contract_json(raw_text: str) -> Dict[str, str]:
         pass
 
     # Fallback heuristic if JSON parsing fails
-    match = re.search(r'\{\s*"answer"\s*:\s*"(.*?)"\s*,\s*"explanation"\s*:\s*"(.*?)"\s*\}', cleaned, re.DOTALL)
+    match = re.search(
+        r'\{\s*"answer"\s*:\s*"(.*?)"\s*,\s*"explanation"\s*:\s*"(.*?)"\s*\}',
+        cleaned,
+        re.DOTALL,
+    )
     if match:
         return {"answer": match.group(1).strip(), "explanation": match.group(2).strip()}
 

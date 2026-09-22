@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from ogr.graph.client import TigerGraphClient
 from ogr.pipelines.p3_agentic.agents.agent_result import AgentResult
@@ -58,7 +58,7 @@ def run_multi_hop(
         )
 
     # Step 1: Q4 traverse
-    traversal_results: List[Dict[str, Any]] = []
+    traversal_results: list[dict[str, Any]] = []
     try:
         params_q4 = {"anchor": anchor_value, "edge_type": edge_type, "hops": hops}
         traversal_results = client._run_query("q4_traverse", params_q4)
@@ -77,7 +77,7 @@ def run_multi_hop(
         )
 
     # Step 2: Q1 lookup on each traversed event
-    all_evidence: List[Dict[str, Any]] = []
+    all_evidence: list[dict[str, Any]] = []
     target_field = intent.target_field or "event_name"
 
     for traversed in traversal_results:

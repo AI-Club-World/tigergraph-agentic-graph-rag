@@ -5,7 +5,7 @@ Built on LangChain's ChatOpenAI / provider abstractions per PLAT-08 / LLM-01.
 from __future__ import annotations
 
 import time
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 from ogr.common.config import RunConfig
 from ogr.common.contracts import (
@@ -26,15 +26,16 @@ def get_chat_model(config: RunConfig) -> Any:
         # Fallback if langchain_openai is not yet installed
         try:
             from langchain.chat_models import ChatOpenAI
-        except ImportError:
+        except ImportError as exc:
             raise ImportError(
-                "langchain-openai or langchain is required. Please install via: pip install langchain-openai"
-            )
+                "langchain-openai or langchain is required. "
+                "Install it with: pip install langchain-openai"
+            ) from exc
 
     base_url = config.llm_base_url
     api_key = config.llm_api_key or "local"
 
-    kwargs: Dict[str, Any] = {
+    kwargs: dict[str, Any] = {
         "model": config.llm_model,
         "temperature": config.llm_temperature,
         "max_tokens": config.llm_max_tokens,
@@ -75,7 +76,7 @@ def resolve_tool_calling_support(model: Any, setting: str = "auto") -> bool:
     return bind_tools is not getattr(BaseChatModel, "bind_tools", None)
 
 
-def _extract_usage(response: Any) -> Optional[TokenUsage]:
+def _extract_usage(response: Any) -> TokenUsage | None:
     """Read provider-reported usage off a response, or None if absent."""
     usage_metadata = getattr(response, "usage_metadata", None)
     if isinstance(usage_metadata, dict) and usage_metadata:
@@ -99,7 +100,7 @@ def _extract_usage(response: Any) -> Optional[TokenUsage]:
     return None
 
 
-def _count_with_model_tokenizer(model: Any, text: str) -> Optional[int]:
+def _count_with_model_tokenizer(model: Any, text: str) -> int | None:
     """Count tokens with the model's own tokenizer, or None if it has none."""
     counter = getattr(model, "get_num_tokens", None)
     if not callable(counter):
@@ -114,7 +115,7 @@ def invoke_and_count(
     model: Any,
     messages: Any,
     reports_usage: str = "auto",
-) -> Tuple[Any, TokenUsage, str, float]:
+) -> tuple[Any, TokenUsage, str, float]:
     """The single accounting entry point — every model call goes through here.
 
     DP-5 Option A: provider-reported usage where available, the model's own
@@ -173,7 +174,7 @@ def invoke_llm_with_answer_contract(
     context: str,
     question: str,
     reports_usage: str = "auto",
-) -> Tuple[str, str, TokenUsage, str, float]:
+) -> tuple[str, str, TokenUsage, str, float]:
     """Invokes the chat model with the byte-identical CORE-02 shared answer contract.
     Returns:
         (answer, explanation, token_usage, token_source, latency_ms)

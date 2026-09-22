@@ -26,7 +26,7 @@ The budget exists as a safety valve, not as the primary stop signal.
 from __future__ import annotations
 
 import logging
-from typing import List, Literal, Optional
+from typing import Literal
 
 from ogr.pipelines.p3_agentic.evidence import EvidenceEvaluation
 
@@ -51,7 +51,7 @@ def should_stop(
     evaluation: EvidenceEvaluation,
     step_count: int,
     tokens_used: int,
-    tools_tried: Optional[List[str]] = None,
+    tools_tried: list[str] | None = None,
     has_disambiguation_candidates: bool = False,
     has_error: bool = False,
     max_steps: int = DEFAULT_MAX_STEPS,

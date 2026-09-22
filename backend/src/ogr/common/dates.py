@@ -16,7 +16,6 @@ matching the OlympicEvent schema attributes:
 from __future__ import annotations
 
 import re
-from typing import Optional
 
 # Month name → number mapping
 MONTH_MAP = {
@@ -40,10 +39,10 @@ class NormalizedDate:
 
     def __init__(
         self,
-        year: Optional[int] = None,
-        month: Optional[int] = None,
-        day_start: Optional[int] = None,
-        day_end: Optional[int] = None,
+        year: int | None = None,
+        month: int | None = None,
+        day_start: int | None = None,
+        day_end: int | None = None,
     ) -> None:
         self.year = year
         self.month = month
@@ -65,7 +64,7 @@ class NormalizedDate:
         }
 
 
-def normalize_date(raw: Optional[str]) -> NormalizedDate:
+def normalize_date(raw: str | None) -> NormalizedDate:
     """Parse a raw date string from the corpus into NormalizedDate.
 
     Handles formats observed in the corpus:
@@ -120,7 +119,7 @@ def normalize_date(raw: Optional[str]) -> NormalizedDate:
     return result
 
 
-def parse_games_year(games_id: str) -> Optional[int]:
+def parse_games_year(games_id: str) -> int | None:
     """Extract year from games_id like '2016-Summer' or '1996-Atlanta'."""
     m = re.match(r"(\d{4})", games_id)
     return int(m.group(1)) if m else None

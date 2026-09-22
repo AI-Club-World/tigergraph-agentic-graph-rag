@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Annotated, Any, Dict, List, Optional
+from typing import Annotated, Any
 
 from typing_extensions import TypedDict
 
@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 # Typed state
 # ---------------------------------------------------------------------------
 
-def append_reducer(existing: Optional[list], new: Optional[list]) -> list:
+def append_reducer(existing: list | None, new: list | None) -> list:
     """Append-only list reducer for LangGraph state.
 
     Without a reducer, a node returning {"path_taken": [x]} REPLACES the list.
@@ -58,15 +58,15 @@ class OrchestratorState(TypedDict, total=False):
     by the node that writes it.
     """
     question: str
-    intent: Optional[Any]                     # IntentSchema
+    intent: Any | None                     # IntentSchema
     route_initial: str                        # lookup_direct | scoped_aggregate | loop
-    path_taken: Annotated[List[str], append_reducer]
-    evidence: Annotated[List[Dict[str, Any]], append_reducer]
-    steps: Annotated[List[Any], append_reducer]   # TraceStep objects
+    path_taken: Annotated[list[str], append_reducer]
+    evidence: Annotated[list[dict[str, Any]], append_reducer]
+    steps: Annotated[list[Any], append_reducer]   # TraceStep objects
     tokens_used: int
     strategy_changed: bool
     stop_reason: str
-    resolved_anchors: Optional[Any]           # ResolvedAnchors
+    resolved_anchors: Any | None           # ResolvedAnchors
 
 
 # ---------------------------------------------------------------------------
@@ -78,7 +78,7 @@ def build_p3_graph(
     tg_client: Any,
     entity_linker: Any,
     run_config: Any,
-    on_step: Optional[Any] = None,
+    on_step: Any | None = None,
 ):
     """Build and compile the P3 LangGraph StateGraph.
 
@@ -106,7 +106,7 @@ def build_p3_graph(
     from ogr.pipelines.p3_agentic.trace import TraceRecorder
 
     # Use a mutable wrapper so the recorder persists across node calls within a run
-    _state_store: Dict[str, Any] = {}
+    _state_store: dict[str, Any] = {}
 
     # Capability probe: 'auto' inspects the model, true/false force it (PLAT-08).
     supports_tool_calling = resolve_tool_calling_support(
@@ -216,7 +216,6 @@ def build_p3_graph(
         intent = state.get("intent")
         anchors = state.get("resolved_anchors")
         recorder: TraceRecorder = _state_store.get("recorder")
-        question = state.get("question", "")
 
         # Guard: if anchors not resolved (e.g. intent parse failed), return empty
         if anchors is None:
@@ -317,7 +316,12 @@ def build_p3_graph(
                     triggered_by=eval_result.fallback_trigger,
                 )
                 if recorder:
-                    recorder.record("document_retrieval", "HAS_CHUNK", doc_result, path_name="document_retrieval")
+                    recorder.record(
+                        "document_retrieval",
+                        "HAS_CHUNK",
+                        doc_result,
+                        path_name="document_retrieval",
+                    )
                 new_evidence += doc_result.evidence
                 new_path.append("document_retrieval")
                 extra_tokens += doc_result.tokens_input + doc_result.tokens_output
@@ -335,7 +339,6 @@ def build_p3_graph(
         """Final generation using CORE-02 shared answer contract (byte-identical prompt to P1/P2)."""
         evidence = state.get("evidence", [])
         question = state.get("question", "")
-        intent = state.get("intent")
         route_initial = state.get("route_initial", "loop")
         path_taken = state.get("path_taken", [])
         recorder: TraceRecorder = _state_store.get("recorder")
@@ -514,11 +517,11 @@ def build_p3_graph(
 
 
 def _prepare_run(
-    llm_model: Optional[Any],
-    tg_client: Optional[Any],
-    entity_linker: Optional[Any],
-    config: Optional[Any],
-    on_step: Optional[Any] = None,
+    llm_model: Any | None,
+    tg_client: Any | None,
+    entity_linker: Any | None,
+    config: Any | None,
+    on_step: Any | None = None,
 ):
     """Resolve defaults and compile the graph. Shared by the sync and stream entry points."""
     from ogr.common.config import get_default_config
@@ -565,10 +568,10 @@ def _error_record(detail: str, latency_ms: float) -> Any:
 
 async def astream_p3_agentic(
     query: str,
-    llm_model: Optional[Any] = None,
-    tg_client: Optional[Any] = None,
-    entity_linker: Optional[Any] = None,
-    config: Optional[Any] = None,
+    llm_model: Any | None = None,
+    tg_client: Any | None = None,
+    entity_linker: Any | None = None,
+    config: Any | None = None,
 ) -> Any:  # AsyncIterator[TraceStep | PipelineRecord]
     """Stream a P3 run: each TraceStep as its node completes, then the record.
 
@@ -623,10 +626,10 @@ async def astream_p3_agentic(
 
 def run_p3_agentic(
     query: str,
-    llm_model: Optional[Any] = None,
-    tg_client: Optional[Any] = None,
-    entity_linker: Optional[Any] = None,
-    config: Optional[Any] = None,
+    llm_model: Any | None = None,
+    tg_client: Any | None = None,
+    entity_linker: Any | None = None,
+    config: Any | None = None,
 ) -> Any:  # PipelineRecord
     """Run the P3 Agentic GraphRAG pipeline for a single query.
 
