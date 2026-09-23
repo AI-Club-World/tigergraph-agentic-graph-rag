@@ -319,3 +319,24 @@ class TestDeterministicGroundednessPreCheck:
         )
         assert model.invoke.call_count == 1
         assert result.is_sufficient is True
+
+
+def test_groundedness_reads_list_shaped_content():
+    """Claude/Gemini can return content blocks; the LLM verdict must still be read."""
+    from ogr.pipelines.p3_agentic.agents.entity_linking import ResolvedAnchors
+    model = MagicMock()
+    resp = MagicMock()
+    resp.content = [{"type": "text", "text": "NO"}]
+    resp.usage_metadata = {"input_tokens": 20, "output_tokens": 1, "total_tokens": 21}
+    resp.response_metadata = {}
+    model.invoke.return_value = resp
+    result = evaluate_evidence(
+        evidence=[{"value": "United States", "event_id": "E1", "source": "multi_hop"}],
+        intent_operation="TRAVERSE",
+        anchors=ResolvedAnchors(),
+        model=model,
+        question="Which nation won?",
+    )
+    assert result.groundedness_pass is False
+    assert "LLM groundedness: fail" in result.notes
+    assert result.tokens_input == 20

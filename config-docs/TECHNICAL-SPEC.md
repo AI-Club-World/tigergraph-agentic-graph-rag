@@ -20,7 +20,7 @@ Status: **v0.3 — synchronised with implementation plans, 2026-09-21.** Superse
 |---|---|---|
 | Graph + vector store | TigerGraph Savanna (Community Edition fallback) | 384-dim embeddings fit either |
 | Embedding model | BAAI/bge-small-en-v1.5, 384-dim, local via `sentence-transformers`, COSINE similarity | Provider-swappable via config; local = deterministic, zero API cost, no rate limits, removes an external dependency from the reproduce path |
-| LLM | **Pluggable — local (Ollama/llama.cpp/vLLM via OpenAI-compatible `base_url`) or free-tier cloud.** One boundary: `common/llm.py`. Pinned within a run, swappable between runs | No LLM in the scoring loop. A capability probe selects native tool-calling or a JSON-schema fallback (§14) |
+| LLM | **Pluggable — `LLM_PROVIDER` selects the client: `anthropic`/`claude` → native Claude (`langchain-anthropic`), `google`/`gemini`/`google_genai` → native Gemini (`langchain-google-genai`), anything else (`openai`, `openai_compatible`, `groq`, `ollama`, vLLM, llama.cpp, OpenRouter…) → OpenAI-compatible client at `LLM_BASE_URL`.** One boundary: `common/llm.py`; every provider shares one retry policy, one rate limiter and LangChain `usage_metadata` accounting. Pinned within a run, swappable between runs | No LLM in the scoring loop. A capability probe selects native tool-calling or a JSON-schema fallback (§14) |
 | Backend | **Python 3.11 · FastAPI · `sse-starlette` · LangGraph/LangChain · pyTigerGraph ≥ 2.0** | `asyncio.gather` for concurrent invocation; the sync pipelines run in worker threads and share one `TigerGraphClient`, which is safe because pyTigerGraph ≥ 2.0 keeps one HTTP session per thread. Python is forced: `sentence-transformers` and `pyTigerGraph` are Python-only |
 | Frontend | **React + Vite**, native `EventSource` | Independent per-column async rendering + streaming trace |
 | Dev acceleration | TigerGraph MCP (optional, SHOULD) | Natural-language GSQL via Cursor/Copilot; 5 MCP tools, one per GSQL query (F-19) |
@@ -253,7 +253,7 @@ browser `EventSource` is GET-only. `POST /query` returns
 
 ## 7. Intent Schema (P3 only)
 
-Emitted by the Intent Parser via LLM function-calling, schema-validated with one retry on failure; the retry carries the validation error back to the model (an identical prompt at temperature 0 would reproduce the failure). No question-template regex anywhere in this path.
+Emitted by the Intent Parser via LLM function-calling (the `emit_intent` tool is forced, so a model cannot answer with empty text), schema-validated with one retry on failure; the retry carries the validation error back to the model (an identical prompt at temperature 0 would reproduce the failure). A deterministic post-check then normalises the extraction for every provider: empty strings → null, numeric constraint strings → numbers, and a `venue` or `event_id` that does not appear in the question is dropped as invented (an invented `event_id` makes Q1 match nothing). `title`, `sport` and `games` are exempt — the model legitimately composes or normalises them, and the graph checks them. No question-template regex anywhere in this path.
 
 ```json
 {
@@ -470,7 +470,7 @@ TG_TOKEN=                                   # optional: pre-minted REST++ token
 TG_GRAPHNAME=OlympicGraphRAG
 
 # ── LLM (pluggable: local or free-tier cloud) ─────────────────
-LLM_PROVIDER=openai_compatible              # openai_compatible | openai | google_genai | groq | ollama
+LLM_PROVIDER=openai_compatible              # anthropic | google | openai | openai_compatible | groq | ollama
 LLM_MODEL=qwen2.5:7b-instruct
 LLM_BASE_URL=http://localhost:11434/v1      # local server; leave blank for a hosted provider
 LLM_API_KEY=                                # blank for a local server that needs none
