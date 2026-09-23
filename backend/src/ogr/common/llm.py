@@ -4,17 +4,21 @@ Built on LangChain's ChatOpenAI / provider abstractions per PLAT-08 / LLM-01.
 
 from __future__ import annotations
 
+import logging
+import random
 import threading
 import time
 from typing import Any
 
-from ogr.common.config import RunConfig
+from ogr.common.config import RunConfig, get_default_config
 from ogr.common.contracts import (
     SHARED_SYSTEM_PROMPT,
     SHARED_USER_PROMPT,
     TokenUsage,
     parse_answer_contract_json,
 )
+
+logger = logging.getLogger(__name__)
 
 _MODEL_CACHE: dict[tuple, Any] = {}
 _MODEL_CACHE_LOCK = threading.Lock()
@@ -34,6 +38,8 @@ def get_chat_model(config: RunConfig) -> Any:
         config.llm_api_key,
         config.llm_temperature,
         config.llm_max_tokens,
+        config.seed,
+        config.llm_requests_per_minute,
     )
     with _MODEL_CACHE_LOCK:
         if key not in _MODEL_CACHE:
@@ -65,7 +71,21 @@ def _build_chat_model(config: RunConfig) -> Any:
         # Several integrations omit usage when streaming unless asked (DP-5).
         # Without this the cost axis silently reads zero.
         "stream_usage": True,
+        # Retries are owned by invoke_and_count (one backoff policy, from
+        # run_config), so the SDK's own retry loop is switched off.
+        "max_retries": 0,
     }
+    if config.seed is not None:
+        kwargs["seed"] = config.seed
+    if config.llm_requests_per_minute > 0:
+        from langchain_core.rate_limiters import InMemoryRateLimiter
+
+        # Shared by every pipeline because the model instance is shared.
+        kwargs["rate_limiter"] = InMemoryRateLimiter(
+            requests_per_second=config.llm_requests_per_minute / 60.0,
+            check_every_n_seconds=0.1,
+            max_bucket_size=1,
+        )
 
     if base_url:
         kwargs["base_url"] = base_url
@@ -134,10 +154,45 @@ def _count_with_model_tokenizer(model: Any, text: str) -> int | None:
         return None
 
 
+_RETRYABLE_STATUS = {408, 409, 429, 500, 502, 503, 504}
+_RETRYABLE_NAMES = {"RateLimitError", "APIConnectionError", "APITimeoutError", "InternalServerError"}
+
+
+def _retry_delay(error: Exception, attempt: int, base_s: float) -> float | None:
+    """Seconds to wait before retrying `error`, or None if it is not transient."""
+    response = getattr(error, "response", None)
+    status = getattr(error, "status_code", None) or getattr(response, "status_code", None)
+    if status not in _RETRYABLE_STATUS and type(error).__name__ not in _RETRYABLE_NAMES:
+        return None
+    retry_after = getattr(response, "headers", {}).get("retry-after") if response is not None else None
+    try:
+        if retry_after is not None:
+            return float(retry_after)
+    except ValueError:
+        pass
+    # Exponential backoff with jitter so a pool of workers does not retry in step.
+    return base_s * (2**attempt) + random.uniform(0, base_s)
+
+
+def _invoke_with_backoff(model: Any, messages: Any, max_retries: int, base_s: float) -> Any:
+    for attempt in range(max_retries + 1):
+        try:
+            return model.invoke(messages)
+        except Exception as e:
+            delay = _retry_delay(e, attempt, base_s) if attempt < max_retries else None
+            if delay is None:
+                raise
+            logger.warning("LLM call failed (%s); retry %d/%d in %.1fs", e, attempt + 1, max_retries, delay)
+            time.sleep(delay)
+    raise AssertionError("unreachable")
+
+
 def invoke_and_count(
     model: Any,
     messages: Any,
     reports_usage: str = "auto",
+    max_retries: int | None = None,
+    backoff_base_s: float | None = None,
 ) -> tuple[Any, TokenUsage, str, float]:
     """The single accounting entry point — every model call goes through here.
 
@@ -148,8 +203,16 @@ def invoke_and_count(
     Returns:
         (response, tokens, token_source, latency_ms)
     """
+    if max_retries is None or backoff_base_s is None:
+        defaults = get_default_config()
+        max_retries = defaults.llm_max_retries if max_retries is None else max_retries
+        backoff_base_s = defaults.llm_backoff_base_s if backoff_base_s is None else backoff_base_s
+
     t0 = time.perf_counter()
-    response = model.invoke(messages)
+    # Rate-limit and transient errors are retried with exponential backoff
+    # (BUILD-PLAN: a 429 storm mid-run is the likeliest cause of a partial
+    # run); only the successful call's usage is counted.
+    response = _invoke_with_backoff(model, messages, max_retries, backoff_base_s)
     latency_ms = (time.perf_counter() - t0) * 1000.0
 
     raw_text = _response_text(response)

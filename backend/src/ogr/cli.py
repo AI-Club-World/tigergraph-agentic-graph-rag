@@ -44,6 +44,21 @@ def build_parser() -> argparse.ArgumentParser:
     batch_parser.add_argument("questions", type=str, help="Path to a Question JSONL file")
     batch_parser.add_argument("--out", type=str, required=True, help="Output BatchRecord JSONL path")
     batch_parser.add_argument("--run-id", type=str, default=None, help="Defaults to a UTC timestamp")
+    batch_parser.add_argument(
+        "--mode",
+        choices=["throughput", "timing"],
+        default=None,
+        help="throughput: pool of RUN_POOL_SIZE (accuracy/tokens); timing: pool 1 (latency figures). "
+        "Defaults to RUN_LATENCY_MODE",
+    )
+
+    build_parser_ = subparsers.add_parser(
+        "build", help="Chunk+embed the corpus, install schema, load the graph, install Q1-Q5"
+    )
+    build_parser_.add_argument("--corpus", type=str, default="data/corpus/corpus.jsonl")
+    build_parser_.add_argument(
+        "--vector-timeout", type=float, default=600.0, help="Seconds to wait for Ready_for_query"
+    )
 
     return parser
 
@@ -64,6 +79,40 @@ def _print_trace(record) -> None:
         if step.notes:
             print(f"      {step.notes}")
     print(f"  stop_reason: {record.stop_reason}")
+
+
+def _build(corpus: str, vector_timeout_s: float) -> int:
+    """The same stages as the API's POST /build, headless, for `make reproduce`.
+    Ends with the vector readiness gate (TECHNICAL-SPEC §11): a benchmark must
+    not start before the index reports Ready_for_query."""
+    from ogr.graph.schema import install_queries, install_schema
+    from ogr.graph.vector_status import VectorNotReadyError, wait_until_ready
+    from ogr.ingest.chunk_embed import chunk_and_embed_corpus
+    from ogr.ingest.infobox import parse_corpus
+    from ogr.ingest.load import load_graph
+
+    config = get_default_config()
+    client = TigerGraphClient(config)
+    client._ensure_connection()
+    if client.conn is None:
+        print("TigerGraph unreachable — set TG_HOST and credentials (run `verify`).", file=sys.stderr)
+        return 1
+    print(f"chunk+embed {corpus} with {config.embedding_model} ...")
+    chunks = chunk_and_embed_corpus(corpus, config.chunk_tokens, config.chunk_overlap)
+    print(f"  {len(chunks)} chunks; installing schema ...")
+    install_schema(client)
+    docs, _report = parse_corpus(corpus)
+    print(f"  loading {len(docs)} documents ...")
+    load_graph(client, docs, chunks)
+    print("  installing Q1-Q5 ...")
+    install_queries(client)
+    try:
+        wait_until_ready(config, timeout_s=vector_timeout_s)
+    except VectorNotReadyError as e:
+        print(str(e), file=sys.stderr)
+        return 1
+    print("Build complete; vector index Ready_for_query.")
+    return 0
 
 
 def main(argv=None) -> int:
@@ -94,11 +143,14 @@ def main(argv=None) -> int:
         from ogr.eval.batch_runner import (
             BatchIncompleteError,
             default_pipelines,
+            effective_pool_size,
             run_batch_sync,
             run_config_header,
         )
 
         config = get_default_config()
+        if args.mode:
+            config = config.model_copy(update={"latency_mode": args.mode})
         client = TigerGraphClient(config)
         started = datetime.now(UTC)
         run_id = args.run_id or started.strftime("%Y%m%dT%H%M%SZ")
@@ -114,13 +166,17 @@ def main(argv=None) -> int:
                     "dataset": Path(args.questions).stem,
                     "started_at": started.isoformat(),
                 },
-                pool_size=config.pool_size,
+                pool_size=effective_pool_size(config),
+                max_total_tokens=config.max_total_tokens,
             )
         except BatchIncompleteError as e:
             print(f"Batch {run_id} incomplete: {e}", file=sys.stderr)
             return 1
         print(f"Batch {run_id}: ran {count} question(s), wrote to {args.out}")
         return 0
+
+    if args.command == "build":
+        return _build(args.corpus, args.vector_timeout)
 
     if args.command == "ask":
         requested_pipelines = [p.strip().lower() for p in args.pipelines.split(",")]

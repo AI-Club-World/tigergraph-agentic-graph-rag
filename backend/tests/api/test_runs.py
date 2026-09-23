@@ -114,3 +114,18 @@ def test_import_then_list(client):
 
 def test_unknown_run_records_is_404(client):
     assert client.get("/batch/nope/records", headers=HEADERS).status_code == 404
+
+
+def test_timing_mode_is_recorded_in_the_run_header(client):
+    response = client.post(
+        "/batch", json={"dataset": "mini", "run_id": "run-t", "latency_mode": "timing"}, headers=HEADERS
+    )
+    assert response.status_code == 202
+    summary = _wait_complete(client, "run-t")
+    assert summary["run_config"]["latency_mode"] == "timing"
+    assert summary["run_config"]["pool_size"] == 1
+
+
+def test_unknown_latency_mode_is_rejected(client):
+    response = client.post("/batch", json={"dataset": "mini", "latency_mode": "fast"}, headers=HEADERS)
+    assert response.status_code == 422

@@ -6,7 +6,10 @@
   },
   "llm_config": {
     "completion_service": {
-      "model_kwargs": { "temperature": 0, "max_tokens": 1024 },
+      "model_kwargs": {
+        "temperature": 0,
+        "max_tokens": 1024
+      },
       "supports_tool_calling": "auto",
       "reports_token_usage": "auto"
     },
@@ -16,7 +19,12 @@
       "dimension": 384,
       "similarity": "COSINE"
     },
-    "rate_limit": { "max_concurrent": 2 }
+    "rate_limit": {
+      "max_concurrent": 2,
+      "requests_per_minute": 30,
+      "backoff_base_s": 2,
+      "max_retries": 5
+    }
   },
   "api_config": {
     "stream_token_ttl_s": 300
@@ -26,6 +34,9 @@
     "chunk_tokens": 300,
     "chunk_overlap": 50,
     "max_steps": 6,
-    "max_tokens_per_query": 20000
+    "max_tokens_per_query": 20000,
+    "max_total_tokens": 5000000,
+    "latency_mode": "throughput",
+    "seed": null
   }
 }

@@ -24,7 +24,7 @@ Status: **v0.3 — synchronised with implementation plans, 2026-09-21.** Superse
 | Backend | **Python 3.11 · FastAPI · `sse-starlette` · LangGraph/LangChain · pyTigerGraph ≥ 2.0** | `asyncio.gather` for concurrent invocation; the sync pipelines run in worker threads and share one `TigerGraphClient`, which is safe because pyTigerGraph ≥ 2.0 keeps one HTTP session per thread. Python is forced: `sentence-transformers` and `pyTigerGraph` are Python-only |
 | Frontend | **React + Vite**, native `EventSource` | Independent per-column async rendering + streaming trace |
 | Dev acceleration | TigerGraph MCP (optional, SHOULD) | Natural-language GSQL via Cursor/Copilot; 5 MCP tools, one per GSQL query (F-19) |
-| Reproduce target | `make reproduce` — single command, clean-clone to full run | Required for reproducibility rubric credit |
+| Reproduce target | `make reproduce` — single command, clean-clone to full run: `install` → `check` (lint + tests) → `verify` (endpoints) → `build` (`ogr.cli build`: chunk+embed, schema, load, Q1–Q5, vector-readiness gate) → `benchmark` (public, throughput) → `timing` (public, pool 1) → `holdout` (hidden set, once). Needs a filled-in `.env` | Required for reproducibility rubric credit |
 
 ## 2. Graph Schema
 
@@ -111,13 +111,13 @@ Returns full record per §6 Data Model, one object per pipeline.
 **Request** — names a question file in `data/questions/`; the server's own
 `RunConfig` is the run configuration (the model is pinned per run, §14.3).
 ```json
-{ "dataset": "eval_public", "run_id": "string (optional; default UTC timestamp)" }
+{ "dataset": "eval_public", "run_id": "string (optional; default UTC timestamp)", "latency_mode": "throughput|timing (optional; default RUN_LATENCY_MODE)" }
 ```
 Question file rows: `{ "qid", "question", "qtype", "answer": ["string"], "gold_doc_ids": ["string"] }`.
 
 The run header written to `out/{run_id}.jsonl` is the non-secret `run_config`:
 ```json
-{ "llm_provider": "string", "llm_model": "string", "llm_base_url": "string|null", "temperature": 0, "embedding_model": "BAAI/bge-small-en-v1.5", "embedding_backend": "sentence-transformers|hash_fallback", "k": 10, "chunk_tokens": 300, "chunk_overlap": 50, "max_steps": 6, "max_tokens_per_query": 20000, "pool_size": 2, "dataset": "string", "started_at": "ISO-8601" }
+{ "llm_provider": "string", "llm_model": "string", "llm_base_url": "string|null", "temperature": 0, "embedding_model": "BAAI/bge-small-en-v1.5", "embedding_backend": "sentence-transformers|hash_fallback", "k": 10, "chunk_tokens": 300, "chunk_overlap": 50, "max_steps": 6, "max_tokens_per_query": 20000, "max_total_tokens": 5000000, "pool_size": "number (1 in timing mode)", "latency_mode": "throughput|timing", "seed": "number|null", "requests_per_minute": 30, "dataset": "string", "started_at": "ISO-8601" }
 ```
 `embedding_backend` is `hash_fallback` when the embedding model failed to load —
 vector results in such a run are not semantic, and the header says so.
@@ -134,7 +134,11 @@ dataset, 409 existing `run_id`. Progress and results via §4.4 and `GET /runs`.
 (scoring, record construction, the store's secret check) is logged, the
 question is left unwritten, and the run ends with `BatchIncompleteError`
 naming it (`GET /runs` status `failed`, CLI exit 1). Rerunning resumes and
-retries only unwritten questions.
+retries only unwritten questions. The same applies when the run-level ceiling
+`max_total_tokens` (counted over the whole output file, so it holds across
+resumes) is reached: no further question starts, in-flight ones finish (a run
+can overshoot by at most `pool_size` questions), and the error names the
+ceiling.
 
 ### 4.4 `GET /batch/{run_id}/records`
 
@@ -353,7 +357,9 @@ No LLM sits in the scoring loop — deterministic and reproducible run-to-run; t
 | Concern | Implementation note |
 |---|---|
 | Concurrency | Dispatcher fires all 3 pipeline calls via `asyncio.gather`, not sequential await |
-| Latency comparability | 3 concurrent pipelines × a batch pool of 6 is up to 18 in-flight provider calls, and queuing inflates `latency_ms` unevenly. Two run modes: `--throughput` (pool 6) for accuracy and token metrics, which are pool-invariant, and `--timing` (pool 1) for the latency figures shown in the dashboard. The run header records which |
+| Latency comparability | 3 concurrent pipelines × a batch pool of N is up to 3N in-flight provider calls, and queuing inflates `latency_ms` unevenly. Two run modes (`ogr.cli batch --mode`, `POST /batch` `latency_mode`, default `RUN_LATENCY_MODE`): `throughput` (pool `RUN_POOL_SIZE`, default 2 per PLAT-08) for accuracy and token metrics, which are pool-invariant, and `timing` (pool 1) for latency figures. The run header records the mode and effective pool; the Benchmarks comparison shows both as configuration rows |
+| Rate limiting | Provider calls go through one `rate_limiter` per model client (`LLM_REQUESTS_PER_MINUTE`, 0 = off) and are retried on 429/408/409/5xx/connection errors with exponential backoff from `LLM_BACKOFF_BASE_S` (jitter; `Retry-After` honoured) up to `LLM_MAX_RETRIES` — one policy in `common/llm.invoke_and_count`, the SDK's own retries are off. Only the successful call's tokens are counted; `latency_ms` includes the waits |
+| Sampling seed | `RUN_SEED` is passed to the provider (`seed`) where supported and recorded in the run header; empty = none |
 | Fault isolation | Each pipeline call wrapped in try/catch at Dispatcher level; partial failure → other 2 records still returned |
 | Instrumentation | Token/latency capture wraps every LLM and retrieval call at the lowest invocation point, not estimated post-hoc. Σ `TraceStep.tokens` is **asserted** equal to the record total. Where the configured provider reports no usage — common for local servers — the model's tokenizer is used and `token_source` is set to `local_tokenizer` so the figure is labelled rather than silently zero |
 | Reproducibility | `run_config` (model, embedding_model, embedding_backend, budgets — §4.3) persisted alongside every batch record; local embedding removes provider-drift risk. Ingestion and queries both embed with the configured `EMBEDDING_MODEL`; changing it requires a `/build` re-embed |
@@ -409,7 +415,10 @@ batch record because it is part of the run's identity.
   },
   "llm_config": {
     "completion_service": {
-      "model_kwargs": { "temperature": 0, "max_tokens": 1024 },
+      "model_kwargs": {
+        "temperature": 0,
+        "max_tokens": 1024
+      },
       "supports_tool_calling": "auto",
       "reports_token_usage": "auto"
     },
@@ -419,7 +428,12 @@ batch record because it is part of the run's identity.
       "dimension": 384,
       "similarity": "COSINE"
     },
-    "rate_limit": { "max_concurrent": 2 }
+    "rate_limit": {
+      "max_concurrent": 2,
+      "requests_per_minute": 30,
+      "backoff_base_s": 2,
+      "max_retries": 5
+    }
   },
   "api_config": {
     "stream_token_ttl_s": 300
@@ -429,7 +443,10 @@ batch record because it is part of the run's identity.
     "chunk_tokens": 300,
     "chunk_overlap": 50,
     "max_steps": 6,
-    "max_tokens_per_query": 20000
+    "max_tokens_per_query": 20000,
+    "max_total_tokens": 5000000,
+    "latency_mode": "throughput",
+    "seed": null
   }
 }
 ```
@@ -457,6 +474,9 @@ LLM_PROVIDER=openai_compatible              # openai_compatible | openai | googl
 LLM_MODEL=qwen2.5:7b-instruct
 LLM_BASE_URL=http://localhost:11434/v1      # local server; leave blank for a hosted provider
 LLM_API_KEY=                                # blank for a local server that needs none
+LLM_REQUESTS_PER_MINUTE=30                  # free-tier guard; 0 for a local server
+RUN_LATENCY_MODE=throughput                 # throughput | timing
+RUN_SEED=                                   # optional sampling seed
 
 # ── This application's own API ────────────────────────────────
 OGR_API_KEY=                                # X-API-Key required on every route except /health

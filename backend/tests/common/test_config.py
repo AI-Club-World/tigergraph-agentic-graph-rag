@@ -34,3 +34,18 @@ def test_booleans_in_the_file_map_to_env_style_strings(monkeypatch):
     monkeypatch.delenv("TG_USE_CERT", raising=False)
     monkeypatch.setattr(config_module, "_SERVER_CONFIG", {"db_config": {"useCert": False}})
     assert RunConfig().tg_use_cert is False
+
+
+def test_run_level_settings_come_from_the_committed_file(monkeypatch):
+    for name in ("RUN_LATENCY_MODE", "RUN_MAX_TOTAL_TOKENS", "LLM_REQUESTS_PER_MINUTE", "RUN_SEED"):
+        monkeypatch.delenv(name, raising=False)
+    config = RunConfig()
+    assert config.latency_mode == "throughput"
+    assert config.max_total_tokens == 5_000_000
+    assert config.llm_requests_per_minute == 30
+    assert config.seed is None
+
+
+def test_seed_from_env(monkeypatch):
+    monkeypatch.setenv("RUN_SEED", "42")
+    assert RunConfig().seed == 42

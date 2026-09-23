@@ -31,12 +31,18 @@ _FILE_KEYS: dict[str, tuple[str, ...]] = {
     "EMBEDDING_MODEL": ("llm_config", "embedding_service", "model_name"),
     "EMBEDDING_DIM": ("llm_config", "embedding_service", "dimension"),
     "RUN_POOL_SIZE": ("llm_config", "rate_limit", "max_concurrent"),
+    "LLM_REQUESTS_PER_MINUTE": ("llm_config", "rate_limit", "requests_per_minute"),
+    "LLM_BACKOFF_BASE_S": ("llm_config", "rate_limit", "backoff_base_s"),
+    "LLM_MAX_RETRIES": ("llm_config", "rate_limit", "max_retries"),
     "OGR_STREAM_TOKEN_TTL_S": ("api_config", "stream_token_ttl_s"),
     "RUN_K": ("run_defaults", "k"),
     "RUN_CHUNK_TOKENS": ("run_defaults", "chunk_tokens"),
     "RUN_CHUNK_OVERLAP": ("run_defaults", "chunk_overlap"),
     "RUN_MAX_STEPS": ("run_defaults", "max_steps"),
     "RUN_MAX_TOKENS_PER_QUERY": ("run_defaults", "max_tokens_per_query"),
+    "RUN_MAX_TOTAL_TOKENS": ("run_defaults", "max_total_tokens"),
+    "RUN_LATENCY_MODE": ("run_defaults", "latency_mode"),
+    "RUN_SEED": ("run_defaults", "seed"),
 }
 
 
@@ -85,6 +91,17 @@ class RunConfig(BaseModel):
     llm_api_key: str | None = Field(default_factory=lambda: _env("LLM_API_KEY") or None)
     llm_temperature: float = Field(default_factory=lambda: float(_env("LLM_TEMPERATURE", "0.0")))
     llm_max_tokens: int = Field(default_factory=lambda: int(_env("LLM_MAX_TOKENS", "1024")))
+    # Sampling seed passed to the provider where supported; recorded in every
+    # run header (NFR-4). Empty = no seed.
+    seed: int | None = Field(default_factory=lambda: int(v) if (v := _env("RUN_SEED", "")) else None)
+    # Rate limiting (BUILD-PLAN risk table: free tiers 429 aggressively).
+    # requests_per_minute 0 disables the limiter; retries back off
+    # exponentially from backoff_base_s on 429/5xx/connection errors.
+    llm_requests_per_minute: float = Field(
+        default_factory=lambda: float(_env("LLM_REQUESTS_PER_MINUTE", "0"))
+    )
+    llm_backoff_base_s: float = Field(default_factory=lambda: float(_env("LLM_BACKOFF_BASE_S", "2")))
+    llm_max_retries: int = Field(default_factory=lambda: int(_env("LLM_MAX_RETRIES", "5")))
 
     # Embeddings
     embedding_model: str = Field(
@@ -137,6 +154,13 @@ class RunConfig(BaseModel):
     # Batch runner (EVAL-04). PLAT-08: default 2 concurrent on cloud free
     # tiers — a 429 storm mid-run is the likeliest cause of a partial run.
     pool_size: int = Field(default_factory=lambda: int(_env("RUN_POOL_SIZE", "2")))
+    # 'throughput' runs with pool_size for accuracy/token metrics (pool-
+    # invariant); 'timing' forces pool 1 so latency_ms is comparable
+    # (TECHNICAL-SPEC §11). Recorded in the run header.
+    latency_mode: str = Field(default_factory=lambda: _env("RUN_LATENCY_MODE", "throughput").lower())
+    # Run-level cost ceiling; the per-query budgets bound a query, this
+    # bounds a whole batch run. 0 disables it.
+    max_total_tokens: int = Field(default_factory=lambda: int(_env("RUN_MAX_TOTAL_TOKENS", "5000000")))
 
     # API-01. Required on every route except /health (TECHNICAL-SPEC §4.5).
     # Empty means "no key configured" — the API refuses every request rather

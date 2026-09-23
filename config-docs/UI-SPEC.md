@@ -234,7 +234,7 @@ must work identically against fixtures and against the real API.
 | Batch records | `GET /batch/{run_id}/records` | `BatchRecord[]` |
 | Run history | `GET /runs` | `RunSummary[]` (newest first) |
 | Datasets | `GET /datasets` | `string[]` |
-| Execute benchmark | `POST /batch` body `{ dataset }` | `202 {run_id, status}` |
+| Execute benchmark | `POST /batch` body `{ dataset }` (server also accepts optional `run_id`, `latency_mode`) | `202 {run_id, status}` |
 | Import run | `POST /runs/import` body `RunExport` or `BatchRecord[]` | `201 RunSummary` |
 
 The run picker on Dashboard and Eval table stays a free-text field (§10.1);

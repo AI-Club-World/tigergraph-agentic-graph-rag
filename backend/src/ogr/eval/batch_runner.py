@@ -45,7 +45,9 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "BatchIncompleteError",
+    "LATENCY_MODES",
     "default_pipelines",
+    "effective_pool_size",
     "load_questions",
     "run_batch",
     "run_batch_sync",
@@ -59,6 +61,18 @@ class BatchIncompleteError(RuntimeError):
     Every other question has already been written; rerunning the same
     command resumes and retries only the failed ones.
     """
+
+
+LATENCY_MODES = ("throughput", "timing")
+
+
+def effective_pool_size(config: RunConfig) -> int:
+    """TECHNICAL-SPEC §11: 'timing' runs one question at a time so latency_ms
+    is not inflated by provider-side queuing; 'throughput' uses pool_size
+    (accuracy and tokens are pool-invariant, latency is not)."""
+    if config.latency_mode not in LATENCY_MODES:
+        raise ValueError(f"latency_mode must be one of {LATENCY_MODES}, got {config.latency_mode!r}")
+    return 1 if config.latency_mode == "timing" else max(1, config.pool_size)
 
 
 def default_pipelines(config: RunConfig, client: Any) -> dict[str, Callable[[str], Any]]:
@@ -94,8 +108,27 @@ def run_config_header(config: RunConfig) -> dict[str, Any]:
         "chunk_overlap": config.chunk_overlap,
         "max_steps": config.max_steps,
         "max_tokens_per_query": config.max_tokens_per_query,
-        "pool_size": config.pool_size,
+        "max_total_tokens": config.max_total_tokens,
+        "pool_size": effective_pool_size(config),
+        "latency_mode": config.latency_mode,
+        "seed": config.seed,
+        "requests_per_minute": config.llm_requests_per_minute,
     }
+
+
+def _record_tokens(record: dict[str, Any]) -> int:
+    pipelines = (record.get("record") or {}).get("pipelines") or {}
+    return sum(int((p.get("tokens") or {}).get("total", 0)) for p in pipelines.values())
+
+
+def _written_tokens(path: str | Path) -> int:
+    """Tokens already spent by the records in an existing output file, so the
+    run-level ceiling holds across resumes."""
+    file_path = Path(path)
+    if not file_path.exists():
+        return 0
+    with file_path.open(encoding="utf-8") as handle:
+        return sum(_record_tokens(json.loads(line)) for line in handle if line.strip())
 
 
 def load_questions(path: str | Path) -> list[Question]:
@@ -117,6 +150,7 @@ async def run_batch(
     run_id: str,
     run_config: dict[str, Any],
     pool_size: int = 2,
+    max_total_tokens: int = 0,
 ) -> int:
     """Run every question in `questions_path` not already in `out_path`.
 
@@ -127,6 +161,12 @@ async def run_batch(
     check) is caught per question. Such a question is left unwritten, so a
     resume retries it, and the run ends with `BatchIncompleteError` naming it
     rather than reporting success (APPLICATION-SPEC §7: zero silent failures).
+
+    `max_total_tokens` (0 = off) is the run-level cost ceiling, counted over
+    the whole output file so it holds across resumes. Once reached, no further
+    question is started; questions already in flight finish, so a run can
+    overshoot by at most `pool_size` questions. Unstarted questions stay
+    unwritten and the run ends with `BatchIncompleteError`.
     """
     questions = load_questions(questions_path)
     already_written = read_written_qids(out_path)
@@ -135,6 +175,7 @@ async def run_batch(
         return 0
 
     store = BatchStore(out_path, run_config)
+    spent = _written_tokens(out_path)
     semaphore = asyncio.Semaphore(max(1, pool_size))
     write_lock = asyncio.Lock()
 
@@ -146,7 +187,11 @@ async def run_batch(
             failed[question.qid] = f"{type(e).__name__}: {e}"
 
     async def _record_one(question: Question) -> None:
+        nonlocal spent
         async with semaphore:
+            if max_total_tokens and spent >= max_total_tokens:
+                not_started.append(question.qid)
+                return
             records = await dispatch(question.question, pipelines)
 
         query_record = aggregate_query(
@@ -165,16 +210,27 @@ async def run_batch(
             gold_doc_ids=question.gold_doc_ids,
             record=query_record,
         )
+        dumped = batch_record.model_dump()
         async with write_lock:
-            store.append(batch_record.model_dump())
+            store.append(dumped)
+            spent += _record_tokens(dumped)
 
     failed: dict[str, str] = {}
+    not_started: list[str] = []
     await asyncio.gather(*(_run_one(q) for q in pending))
+    problems = []
     if failed:
-        raise BatchIncompleteError(
-            f"{len(failed)} of {len(pending)} question(s) not recorded (rerun to resume): "
+        problems.append(
+            f"{len(failed)} question(s) not recorded: "
             + "; ".join(f"{qid}: {err}" for qid, err in sorted(failed.items()))
         )
+    if not_started:
+        problems.append(
+            f"token ceiling max_total_tokens={max_total_tokens} reached ({spent} spent); "
+            f"{len(not_started)} question(s) not started"
+        )
+    if problems:
+        raise BatchIncompleteError(f"of {len(pending)} pending (rerun to resume): " + " | ".join(problems))
     return len(pending)
 
 
@@ -185,8 +241,9 @@ def run_batch_sync(
     run_id: str,
     run_config: dict[str, Any],
     pool_size: int = 2,
+    max_total_tokens: int = 0,
 ) -> int:
     """Blocking wrapper for the CLI and other non-async callers."""
     return asyncio.run(
-        run_batch(questions_path, out_path, pipelines, run_id, run_config, pool_size)
+        run_batch(questions_path, out_path, pipelines, run_id, run_config, pool_size, max_total_tokens)
     )

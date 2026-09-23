@@ -30,7 +30,7 @@ import logging
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Body, Depends, FastAPI, HTTPException
 from pydantic import BaseModel
@@ -40,7 +40,7 @@ from ogr.api.security import StreamTokenStore, get_config, require_api_key
 from ogr.common.config import RunConfig, get_default_config
 from ogr.common.contracts import PipelineRecord, QueryLevelRecord
 from ogr.eval.aggregator import aggregate_query
-from ogr.eval.batch_runner import default_pipelines, run_batch, run_config_header
+from ogr.eval.batch_runner import default_pipelines, effective_pool_size, run_batch, run_config_header
 from ogr.eval.dispatcher import error_record
 from ogr.eval.history import RUN_ID_RE, import_run, list_runs, read_run, summarize_run, view_record
 from ogr.graph.client import TigerGraphClient
@@ -235,7 +235,9 @@ async def _run_build(build_id: str, queue: asyncio.Queue, config: RunConfig) -> 
 
     progress.start("chunk_embed", all_pipelines)
     try:
-        chunks = await asyncio.to_thread(chunk_and_embed_corpus, CORPUS_PATH)
+        chunks = await asyncio.to_thread(
+            chunk_and_embed_corpus, CORPUS_PATH, config.chunk_tokens, config.chunk_overlap
+        )
     except Exception as e:  # noqa: BLE001
         progress.error("chunk_embed", all_pipelines, str(e))
         await queue.put(("done", None))
@@ -291,6 +293,8 @@ async def _stream_build_events(queue: asyncio.Queue):
 class BatchRequest(BaseModel):
     dataset: str
     run_id: str | None = None
+    # None = RUN_LATENCY_MODE. 'timing' runs pool 1 for comparable latency.
+    latency_mode: Literal["throughput", "timing"] | None = None
 
 
 def _datasets() -> list[str]:
@@ -325,6 +329,8 @@ async def post_batch(body: BatchRequest, config: RunConfig = Depends(get_config)
     out_path = OUT_DIR / f"{run_id}.jsonl"
     if out_path.exists() or run_id in _batch_tasks:
         raise HTTPException(status_code=409, detail=f"Run {run_id!r} already exists")
+    if body.latency_mode:
+        config = config.model_copy(update={"latency_mode": body.latency_mode})
 
     run_config = {
         # Off the event loop: the header records the embedding backend, which
@@ -340,7 +346,8 @@ async def post_batch(body: BatchRequest, config: RunConfig = Depends(get_config)
             pipelines=default_pipelines(config, _get_client(config)),
             run_id=run_id,
             run_config=run_config,
-            pool_size=config.pool_size,
+            pool_size=effective_pool_size(config),
+            max_total_tokens=config.max_total_tokens,
         )
     )
     return {"run_id": run_id, "status": "running"}
