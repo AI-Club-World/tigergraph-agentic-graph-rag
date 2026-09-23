@@ -11,7 +11,8 @@
         "max_tokens": 1024
       },
       "supports_tool_calling": "auto",
-      "reports_token_usage": "auto"
+      "reports_token_usage": "auto",
+      "thinking_level": "minimal"
     },
     "embedding_service": {
       "embedding_model_service": "local",

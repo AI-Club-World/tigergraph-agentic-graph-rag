@@ -81,3 +81,35 @@ class TestWaitUntilReady:
         # timeout_s <= 0 means the very first not-ready check hits the deadline.
         with pytest.raises(VectorNotReadyError):
             wait_until_ready(_config(), timeout_s=0, get=fake_get, sleep=lambda _s: None)
+
+
+
+class TestTigerGraph42StatusShape:
+    def test_empty_rebuild_list_is_ready(self):
+        class Conn:
+            def getVectorIndexStatus(self):
+                return {"NeedRebuildServers": []}
+
+        ready, data = check_vector_status(_config(), conn=Conn())
+        assert ready is True and data == {"NeedRebuildServers": []}
+
+    def test_servers_still_rebuilding_is_not_ready(self):
+        class Conn:
+            def getVectorIndexStatus(self):
+                return {"NeedRebuildServers": ["m1"]}
+
+        assert check_vector_status(_config(), conn=Conn())[0] is False
+
+    def test_wait_uses_the_authenticated_connection(self):
+        calls = []
+
+        class Conn:
+            def getVectorIndexStatus(self):
+                calls.append(1)
+                return {"NeedRebuildServers": []}
+
+        def no_http(*_a, **_k):
+            raise AssertionError("must not make an unauthenticated HTTP call")
+
+        wait_until_ready(_config(), get=no_http, sleep=lambda _s: None, conn=Conn())
+        assert calls == [1]

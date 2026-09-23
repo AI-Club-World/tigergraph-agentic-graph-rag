@@ -77,3 +77,11 @@ def test_wrapped_rate_limit_error_without_status_is_retried():
         pass
 
     assert llm._retry_delay(GoogleRateLimitError("429 RESOURCE_EXHAUSTED"), 0, 1.0) is not None
+
+
+def test_daily_quota_is_not_retried():
+    class GoogleRateLimitError(Exception):
+        pass
+
+    error = GoogleRateLimitError("429 ... quotaId: GenerateRequestsPerDayPerProjectPerModel-FreeTier")
+    assert llm._retry_delay(error, 0, 1.0) is None

@@ -41,6 +41,7 @@ def get_chat_model(config: RunConfig) -> Any:
         config.llm_max_tokens,
         config.seed,
         config.llm_requests_per_minute,
+        config.llm_thinking,
     )
     with _MODEL_CACHE_LOCK:
         if key not in _MODEL_CACHE:
@@ -102,6 +103,8 @@ def _build_chat_model(config: RunConfig) -> Any:
             kwargs["api_key"] = config.llm_api_key
         if config.seed is not None:
             kwargs["seed"] = config.seed
+        if config.llm_thinking:
+            kwargs["thinking_config"] = {"thinking_level": config.llm_thinking}
         if config.llm_base_url:
             logger.warning(
                 "LLM_BASE_URL is ignored for the native Gemini client; set LLM_PROVIDER=openai_compatible "
@@ -207,6 +210,10 @@ def _retry_delay(error: Exception, attempt: int, base_s: float) -> float | None:
     status = getattr(error, "status_code", None) or getattr(response, "status_code", None)
     if status is None and isinstance(getattr(error, "code", None), int):
         status = error.code
+    # A per-day quota does not recover within any backoff window; retrying
+    # only burns minutes per call. Fail fast so the run records the error.
+    if "PerDay" in str(error):
+        return None
     name = type(error).__name__
     # Provider wrappers rename these (e.g. langchain-google-genai's
     # GoogleRateLimitError carries no status code), so match on the name too.
@@ -230,7 +237,9 @@ def _invoke_with_backoff(model: Any, messages: Any, max_retries: int, base_s: fl
             delay = _retry_delay(e, attempt, base_s) if attempt < max_retries else None
             if delay is None:
                 raise
-            logger.warning("LLM call failed (%s); retry %d/%d in %.1fs", e, attempt + 1, max_retries, delay)
+            logger.warning(
+                "LLM call failed (%s); retry %d/%d in %.1fs", str(e)[:200], attempt + 1, max_retries, delay
+            )
             time.sleep(delay)
     raise AssertionError("unreachable")
 

@@ -26,6 +26,7 @@ _FILE_KEYS: dict[str, tuple[str, ...]] = {
     "TG_CERT_PATH": ("db_config", "certPath"),
     "LLM_TEMPERATURE": ("llm_config", "completion_service", "model_kwargs", "temperature"),
     "LLM_MAX_TOKENS": ("llm_config", "completion_service", "model_kwargs", "max_tokens"),
+    "LLM_THINKING": ("llm_config", "completion_service", "thinking_level"),
     "LLM_SUPPORTS_TOOL_CALLING": ("llm_config", "completion_service", "supports_tool_calling"),
     "LLM_REPORTS_TOKEN_USAGE": ("llm_config", "completion_service", "reports_token_usage"),
     "EMBEDDING_MODEL": ("llm_config", "embedding_service", "model_name"),
@@ -91,6 +92,11 @@ class RunConfig(BaseModel):
     llm_api_key: str | None = Field(default_factory=lambda: _env("LLM_API_KEY") or None)
     llm_temperature: float = Field(default_factory=lambda: float(_env("LLM_TEMPERATURE", "0.0")))
     llm_max_tokens: int = Field(default_factory=lambda: int(_env("LLM_MAX_TOKENS", "1024")))
+    # Gemini thinking level (minimal|low|medium|high; empty = provider
+    # default). 'minimal' by default: thinking tokens count against
+    # max_tokens and truncated the answer JSON in live runs, and the answer
+    # path is extraction/synthesis, not multi-step reasoning.
+    llm_thinking: str = Field(default_factory=lambda: (_env("LLM_THINKING", "minimal") or "").lower())
     # Sampling seed passed to the provider where supported; recorded in every
     # run header (NFR-4). Empty = no seed.
     seed: int | None = Field(default_factory=lambda: int(v) if (v := _env("RUN_SEED", "")) else None)

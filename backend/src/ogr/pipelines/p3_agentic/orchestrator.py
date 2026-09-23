@@ -92,11 +92,12 @@ def build_p3_graph(
     """
     from langgraph.graph import END, StateGraph
 
-    from ogr.common.contracts import Citation, PipelineRecord, TokenUsage
+    from ogr.common.contracts import Citation, PipelineRecord, TokenUsage, format_evidence_context
     from ogr.common.llm import invoke_llm_with_answer_contract, resolve_tool_calling_support
     from ogr.pipelines.p3_agentic.agents.agent_result import AgentResult
     from ogr.pipelines.p3_agentic.agents.aggregation import run_aggregation
     from ogr.pipelines.p3_agentic.agents.document_retrieval import run_document_retrieval
+    from ogr.pipelines.p3_agentic.agents.entity_linking import narrow_to_games
     from ogr.pipelines.p3_agentic.agents.graph_traversal import run_graph_traversal
     from ogr.pipelines.p3_agentic.agents.multi_hop import run_multi_hop
     from ogr.pipelines.p3_agentic.agents.similarity_search import run_similarity_search
@@ -227,7 +228,8 @@ def build_p3_graph(
             "event_id": getattr(anchors, "event_id", "") or "",
             "target_field": getattr(intent, "target_field", "") or "",
         }
-        raw = tg_client._run_query("q1_lookup", params)
+        raw = tg_client._run_query("q1_lookup", params) or []
+        raw = narrow_to_games(raw, getattr(anchors, "games", None))
         latency_ms = (time.perf_counter() - t0) * 1000.0
 
         result = AgentResult(
@@ -415,14 +417,8 @@ def build_p3_graph(
         path_taken = state.get("path_taken", [])
         recorder: TraceRecorder = _state_store.get("recorder")
 
-        # Build context from evidence
-        context_parts = []
-        for i, e in enumerate(evidence[:20], 1):
-            text = e.get("text", e.get("event_name", str(e.get("value", ""))))
-            doc_id = e.get("doc_id", e.get("event_id", ""))
-            chunk_id = e.get("chunk_id")
-            context_parts.append(f"[{i}] [Source: {doc_id}]\n{text}")
-        context = "\n\n".join(context_parts) or "No relevant evidence found."
+        # Same renderer as P2 (structured rows keep every field).
+        context = format_evidence_context(evidence[:20], empty="No relevant evidence found.")
 
         try:
             answer, explanation, tokens, token_source, latency_ms = invoke_llm_with_answer_contract(

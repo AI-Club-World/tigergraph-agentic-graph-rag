@@ -205,3 +205,18 @@ class EntityLinker:
         # AD-15: several venues match and none exactly — surface them, never
         # substitute a best guess.
         return None, candidates
+
+
+def narrow_to_games(rows: list[dict], games: str | None) -> list[dict]:
+    """Q1 matches an event name across every Games ("Women's RS:X" exists for
+    2008, 2012 and 2016). With a resolved Games anchor, keep only that
+    edition's rows — deterministic, no LLM needed to pick the year. Falls back
+    to all rows when none match, so a wrong anchor never empties the result."""
+    if not games or len(rows) < 2:
+        return rows
+    year = games.split("-")[0]
+    by_id = [r for r in rows if f"-{games}-" in str(r.get("event_id", ""))]
+    if by_id:
+        return by_id
+    by_year = [r for r in rows if str(r.get("date_year", "")) == year]
+    return by_year or rows

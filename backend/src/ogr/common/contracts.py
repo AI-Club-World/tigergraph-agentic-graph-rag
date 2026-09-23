@@ -169,4 +169,46 @@ def parse_answer_contract_json(raw_text: str) -> dict[str, str]:
     if match:
         return {"answer": match.group(1).strip(), "explanation": match.group(2).strip()}
 
+    # A reply cut off mid-JSON (e.g. an output-token limit) still usually
+    # carries a complete "answer" field; recover it rather than scoring the
+    # raw JSON text as the answer.
+    partial = re.search(r'"answer"\s*:\s*"((?:[^"\\]|\\.)*)"', cleaned)
+    if partial:
+        try:
+            answer = json.loads(f'"{partial.group(1)}"')
+        except ValueError:
+            answer = partial.group(1)
+        return {"answer": answer.strip(), "explanation": cleaned}
+
     return {"answer": cleaned, "explanation": cleaned}
+
+
+# Keys that identify a row rather than describe it; the doc id is shown in
+# the [Source: ...] header instead.
+_CONTEXT_SKIP = frozenset({"doc_id", "chunk_id", "source", "score", "seq", "vtype", "attributes", "v_id"})
+
+
+def format_evidence_item(item: dict) -> str:
+    """One evidence record as context text. Prose chunks keep their text;
+    structured graph rows (Q1-Q4) are rendered as every non-empty field, so
+    the attribute the question asks about actually reaches the model."""
+    if item.get("text"):
+        return str(item["text"]).strip()
+    fields = []
+    for key, value in item.items():
+        if key in _CONTEXT_SKIP or value is None or value == "" or isinstance(value, (dict, list)):
+            continue
+        if isinstance(value, str):
+            value = value.strip().rstrip(";").strip()
+        fields.append(f"{key}: {value}")
+    return "; ".join(fields)
+
+
+def format_evidence_context(evidence: list[dict], empty: str = "No relevant graph results found.") -> str:
+    """Shared by P2 and P3 so graph evidence is rendered identically."""
+    if not evidence:
+        return empty
+    return "\n\n".join(
+        f"[{i}] [Source: {e.get('doc_id') or e.get('event_id') or 'unknown'}]\n{format_evidence_item(e)}"
+        for i, e in enumerate(evidence, 1)
+    )
