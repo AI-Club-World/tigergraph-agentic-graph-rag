@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from typing import Any
 
 from ogr.common.config import RunConfig, get_default_config
@@ -13,6 +14,11 @@ logger = logging.getLogger(__name__)
 class TigerGraphClient:
     """Client for TigerGraph RESTPP and installed queries.
     Provides direct access to Q5 hybrid_search per TECHNICAL-SPEC §3 and AD-7.
+
+    Thread safety: one instance is shared by P1/P2/P3 running in worker
+    threads. pyTigerGraph >= 2.0 gives each calling thread its own
+    `requests.Session`, so concurrent calls on the shared connection do not
+    share sockets; the lazy connection setup is serialised by `_conn_lock`.
     """
 
     def __init__(
@@ -24,7 +30,14 @@ class TigerGraphClient:
         self.config = config or get_default_config()
         self.conn = conn
         self.mock_chunks = mock_chunks
+        # Test-only: the P1 guard test asserts on the last Q5 arguments. No
+        # production code reads it — under concurrent callers it is simply
+        # whichever call wrote last.
         self.last_query_args: dict[str, Any] = {}
+        self._conn_lock = threading.Lock()
+        # Games/Sport/Venue are static for the life of a loaded graph, so each
+        # is fetched once per client rather than once per query.
+        self._vocab_cache: dict[str, list[str]] = {}
 
     def _ensure_connection(self) -> None:
         """Initializes pyTigerGraph connection if not already created.
@@ -45,7 +58,11 @@ class TigerGraphClient:
         """
         if self.conn is not None:
             return
+        with self._conn_lock:
+            if self.conn is None:
+                self._connect()
 
+    def _connect(self) -> None:
         try:
             import pyTigerGraph as tg
 
@@ -261,6 +278,8 @@ class TigerGraphClient:
         """
         if self.mock_chunks is not None:
             return []
+        if vtype in self._vocab_cache:
+            return self._vocab_cache[vtype]
 
         self._ensure_connection()
         if self.conn is None:
@@ -270,7 +289,7 @@ class TigerGraphClient:
             vertices = self.conn.getVertices(vtype)
             attr_map = {"Games": "games_id", "Sport": "sport_name", "Venue": "venue_name"}
             attr = attr_map.get(vtype, "name")
-            return [
+            vocab = [
                 v.get("attributes", {}).get(attr, v.get("v_id", ""))
                 for v in (vertices or [])
                 if v.get("attributes", {}).get(attr) or v.get("v_id")
@@ -278,4 +297,8 @@ class TigerGraphClient:
         except Exception as e:
             logger.warning("Failed to load vocabulary for %s: %s", vtype, e)
             return []
+        # An empty result is not cached, so a graph loaded later is picked up.
+        if vocab:
+            self._vocab_cache[vtype] = vocab
+        return vocab
 

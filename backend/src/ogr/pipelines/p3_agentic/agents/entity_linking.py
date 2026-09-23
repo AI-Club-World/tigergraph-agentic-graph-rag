@@ -69,6 +69,16 @@ class ResolvedAnchors:
     unresolved_fields: list[str] = field(default_factory=list)
     disambiguation_candidates: dict[str, list[str]] = field(default_factory=dict)
 
+    @property
+    def needs_disambiguation(self) -> bool:
+        """ARCHITECTURE-SPEC §13: sport and event name are the real
+        discriminators for an ambiguous venue. With neither supplied there is
+        nothing to narrow the candidates by, so a disambiguation request is
+        returned instead of an answer (AD-15)."""
+        return bool(self.disambiguation_candidates) and not (
+            self.sport or self.title or self.event_id
+        )
+
 
 class EntityLinker:
     """Longest-match entity linker over closed Olympic vocabularies.
@@ -188,10 +198,10 @@ class EntityLinker:
             return None, []
         if len(candidates) == 1:
             return candidates[0], []
-        # Multiple matches: return longest (most specific)
-        best = max(candidates, key=len)
         # If query exactly matches one, prefer that
         exact = [c for c in candidates if c.lower() == q_lower]
         if exact:
             return exact[0], []
-        return best, candidates  # Return best + all candidates for disambiguation
+        # AD-15: several venues match and none exactly — surface them, never
+        # substitute a best guess.
+        return None, candidates

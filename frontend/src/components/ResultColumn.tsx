@@ -82,6 +82,11 @@ export function ResultColumn({ pipeline, state }: { pipeline: PipelineId; state:
               Token counts came from the local tokenizer — the configured provider reported no usage.
             </p>
           )}
+          {record.token_source === 'estimated' && (
+            <p className="note">
+              Token counts are estimates (about 4 characters per token) — the provider reported no usage and the model has no tokenizer.
+            </p>
+          )}
 
           {record.stop_reason && (
             <p className="stop-reason">

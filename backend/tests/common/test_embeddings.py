@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
-from ogr.common.embeddings import embed_query, embed_texts
+import logging
+import sys
+
+from ogr.common import embeddings as embeddings_module
+from ogr.common.embeddings import embed_query, embed_texts, embedding_backend, get_embedding_model
 
 
 class TestEmbedTexts:
@@ -22,3 +26,24 @@ class TestEmbedTexts:
         single_vector = embed_query("a fixed piece of text")
         assert len(batch_vector) == len(single_vector)
         assert all(abs(a - b) < 1e-6 for a, b in zip(batch_vector, single_vector, strict=True))
+
+
+class TestModelLoadFailure:
+    def test_failed_load_is_logged_and_reported_as_fallback(self, monkeypatch, caplog):
+        monkeypatch.setitem(sys.modules, "sentence_transformers", None)  # import now fails
+        monkeypatch.setattr(embeddings_module, "_MODELS", {})
+        with caplog.at_level(logging.ERROR, logger="ogr.common.embeddings"):
+            assert embedding_backend("some/model") == "hash_fallback"
+        assert "some/model" in caplog.text and "NOT semantic" in caplog.text
+
+    def test_cache_is_keyed_by_model_name(self, monkeypatch):
+        class _Fake:
+            def __init__(self, name):
+                self.name = name
+
+        monkeypatch.setitem(sys.modules, "sentence_transformers", type(sys)("sentence_transformers"))
+        sys.modules["sentence_transformers"].SentenceTransformer = _Fake
+        monkeypatch.setattr(embeddings_module, "_MODELS", {})
+        assert get_embedding_model("model-a").name == "model-a"
+        assert get_embedding_model("model-b").name == "model-b"
+        assert get_embedding_model("model-a") is get_embedding_model("model-a")

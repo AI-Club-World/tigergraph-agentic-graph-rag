@@ -11,7 +11,10 @@ from __future__ import annotations
 import json
 
 from ogr.common.contracts import Citation, PipelineRecord, TokenUsage
-from ogr.eval.batch_runner import load_questions, run_batch_sync
+import pytest
+
+from ogr.eval import store as store_module
+from ogr.eval.batch_runner import BatchIncompleteError, load_questions, run_batch_sync
 from ogr.eval.store import read_written_qids
 
 
@@ -128,3 +131,33 @@ class TestRunBatch:
         record = json.loads(out_path.read_text(encoding="utf-8").splitlines()[1])
         assert record["record"]["pipelines"]["graphrag"]["status"] == "error"
         assert record["record"]["pipelines"]["rag"]["status"] == "done"
+
+
+class TestPostDispatchFailureIsolation:
+    """A failure after dispatch (record construction, the store's secret
+    check) must not cancel the other in-flight questions, and must not be
+    silent either."""
+
+    def test_one_unrecordable_question_does_not_abort_the_run(self, tmp_path, monkeypatch):
+        questions_path = tmp_path / "q.jsonl"
+        _write_questions(questions_path, [
+            {"qid": f"pub-00{i}", "question": f"Q{i}", "answer": ["5"]} for i in range(1, 5)
+        ])
+        out_path = tmp_path / "run.jsonl"
+
+        real_append = store_module.BatchStore.append
+
+        def _append(self, record):
+            if record["question_id"] == "pub-002":
+                raise store_module.SecretLeakError("simulated")
+            real_append(self, record)
+
+        monkeypatch.setattr(store_module.BatchStore, "append", _append)
+        with pytest.raises(BatchIncompleteError, match="pub-002"):
+            run_batch_sync(questions_path, out_path, _stub_pipelines(), "run-a", {}, pool_size=2)
+        assert read_written_qids(out_path) == {"pub-001", "pub-003", "pub-004"}
+
+        # Resume retries only the unrecorded question.
+        monkeypatch.setattr(store_module.BatchStore, "append", real_append)
+        assert run_batch_sync(questions_path, out_path, _stub_pipelines(), "run-a", {}) == 1
+        assert read_written_qids(out_path) == {"pub-001", "pub-002", "pub-003", "pub-004"}

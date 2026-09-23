@@ -29,7 +29,7 @@ def run_similarity_search(
     client: TigerGraphClient,
     query: str,
     k: int = 10,
-    embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2",
+    embedding_model: str | None = None,
     embedding_dim: int = 384,
     candidate_set: list[str] | None = None,
     triggered_by: str = "scope_coverage_fail",

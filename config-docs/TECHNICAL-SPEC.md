@@ -19,7 +19,7 @@ Status: **v0.3 — synchronised with implementation plans, 2026-09-21.** Superse
 | Layer | Choice | Notes |
 |---|---|---|
 | Graph + vector store | TigerGraph Savanna (Community Edition fallback) | 384-dim embeddings fit either |
-| Embedding model | all-MiniLM-L6-v2, 384-dim, local via `sentence-transformers`, COSINE similarity | Provider-swappable via config; local = deterministic, zero API cost, no rate limits, removes an external dependency from the reproduce path |
+| Embedding model | BAAI/bge-small-en-v1.5, 384-dim, local via `sentence-transformers`, COSINE similarity | Provider-swappable via config; local = deterministic, zero API cost, no rate limits, removes an external dependency from the reproduce path |
 | LLM | **Pluggable — local (Ollama/llama.cpp/vLLM via OpenAI-compatible `base_url`) or free-tier cloud.** One boundary: `common/llm.py`. Pinned within a run, swappable between runs | No LLM in the scoring loop. A capability probe selects native tool-calling or a JSON-schema fallback (§14) |
 | Backend | **Python 3.11 · FastAPI · `sse-starlette` · LangGraph/LangChain · pyTigerGraph (async)** | `asyncio.gather` for concurrent invocation. Python is forced: `sentence-transformers` and `pyTigerGraph` are Python-only |
 | Frontend | **React + Vite**, native `EventSource` | Independent per-column async rendering + streaming trace |
@@ -119,7 +119,7 @@ Returns full record per §6 Data Model, one object per pipeline.
 ```json
 {
   "questions": [ { "qid": "string", "question": "string", "qtype": "lookup|multi_hop|temporal|aggregation|superlative", "answer": ["string"], "gold_doc_ids": ["string"] } ],
-  "run_config": { "llm_provider": "string", "llm_model": "string", "llm_base_url": "string|null", "temperature": 0, "embedding_model": "all-MiniLM-L6-v2", "seed": "string|null", "k": 10, "latency_mode": "throughput|timing", "max_total_tokens": "number" }
+  "run_config": { "llm_provider": "string", "llm_model": "string", "llm_base_url": "string|null", "temperature": 0, "embedding_model": "BAAI/bge-small-en-v1.5", "seed": "string|null", "k": 10, "latency_mode": "throughput|timing", "max_total_tokens": "number" }
 }
 ```
 **Corrected in v0.3**: v0.2 specified `question_id`/`text` plus an F-14 adapter
@@ -195,7 +195,7 @@ browser `EventSource` is GET-only. `POST /query` returns
   "chunks_returned": "number",
   "citations_count": "number",
   "tokens": { "input": "number", "output": "number", "total": "number" },
-  "token_source": "provider|local_tokenizer",
+  "token_source": "provider|local_tokenizer|estimated  (estimated = chars/4, only when the provider reports no usage and the model has no tokenizer)",
   "latency_ms": "number",
   "trace": "TraceStep[] | null",
   "strategy_changed": "boolean | null",
@@ -366,7 +366,7 @@ No open technical decisions remain. Full rationale and rejected alternatives in
 | Frontend framework | **Closed** — React + Vite |
 | Streaming transport | **Closed** — SSE; `POST → 202`, `GET …/stream?token=` |
 | Ground-truth scoring | **Closed** — deterministic EM/F1, no LLM judge |
-| Embedding model | **Closed** — all-MiniLM-L6-v2, 384-dim, local encoder; **vectors stored in TigerGraph** |
+| Embedding model | **Closed** — BAAI/bge-small-en-v1.5, 384-dim, local encoder; **vectors stored in TigerGraph** |
 | LLM provider | **Closed** — pluggable (local or free cloud), one boundary, pinned per run |
 | Batch output storage | **Closed** — append-only JSONL per run, `run_config` header |
 | Trace-as-graph write-back | **Cut from Round 1** |
@@ -388,36 +388,25 @@ batch record because it is part of the run's identity.
 ```json
 {
   "db_config": {
-    "hostname": "${TG_HOST}",
     "graphname": "OlympicGraphRAG",
-    "restppPort": "14240",
-    "gsPort": "14240",
-    "default_timeout": 300,
-    "default_mem_threshold": 5000,
-    "default_thread_limit": 8,
     "useCert": true,
     "certPath": null
   },
   "llm_config": {
     "completion_service": {
-      "llm_service": "${LLM_PROVIDER}",
-      "llm_model": "${LLM_MODEL}",
-      "base_url": "${LLM_BASE_URL}",
       "model_kwargs": { "temperature": 0, "max_tokens": 1024 },
       "supports_tool_calling": "auto",
       "reports_token_usage": "auto"
     },
     "embedding_service": {
       "embedding_model_service": "local",
-      "model_name": "sentence-transformers/all-MiniLM-L6-v2",
+      "model_name": "BAAI/bge-small-en-v1.5",
       "dimension": 384,
       "similarity": "COSINE"
     },
-    "rate_limit": { "max_concurrent": 2, "requests_per_minute": 30, "backoff_base_s": 2, "max_retries": 5 }
+    "rate_limit": { "max_concurrent": 2 }
   },
   "api_config": {
-    "host": "127.0.0.1",
-    "port": 8000,
     "stream_token_ttl_s": 300
   },
   "run_defaults": {
@@ -425,13 +414,12 @@ batch record because it is part of the run's identity.
     "chunk_tokens": 300,
     "chunk_overlap": 50,
     "max_steps": 6,
-    "max_tokens_per_query": 20000,
-    "max_total_tokens": 5000000,
-    "latency_mode": "throughput",
-    "parse_confidence_threshold": 0.9
+    "max_tokens_per_query": 20000
   }
 }
 ```
+
+As implemented: every value is the default for one `RunConfig` field; precedence is environment (`.env`) > this file > code default (`common/config.py`). Hosts, provider, model, base URL and every credential come only from the environment, so they are not in the file.
 
 `supports_tool_calling` and `reports_token_usage` accept `auto` (probe at
 startup), `true` or `false`. `auto` is the default because the whole point of a

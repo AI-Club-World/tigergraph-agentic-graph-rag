@@ -12,21 +12,21 @@ const RUNS: Record<string, BatchRecord[]> = {
   hidden: hiddenRecords as unknown as BatchRecord[],
 }
 
-/** Keyword routing from a free-text query to a fixture scenario. */
+/**
+ * Keyword routing from a free-text query to a fixture scenario, in the fixed
+ * evaluation order of UI-SPEC §5.3. The wordings overlap, so the more specific
+ * patterns are tested first and the first hit with a fixture wins.
+ */
 const MATCHERS: Array<[string, RegExp]> = [
-  ['aggregation', /\bhow many\b|\bcount\b|\bnumber of\b|\btotal\b/i],
-  ['superlative', /\bmost\b|\bfewest\b|\blargest\b|\bhighest\b|\bbiggest\b/i],
   ['multi_hop', /\bbefore\b|\bafter\b|\bpreceding\b|\bimmediately\b|\bfollowed\b/i],
+  ['superlative', /\bmost\b|\bfewest\b|\blargest\b|\bhighest\b|\bbiggest\b/i],
+  ['aggregation', /\bhow many\b|\bcount\b|\bnumber of\b|\btotal\b/i],
   ['lookup', /\bwho\b|\bwhich nation\b|\bgold\b|\bsilver\b|\bbronze\b/i],
 ]
 
 export function scenarioFor(query: string): QueryLevelRecord {
-  // Superlative and multi_hop share the aggregation/lookup wording, so the more
-  // specific patterns are tested first and the first hit wins.
-  const ordered = ['multi_hop', 'superlative', 'aggregation', 'lookup']
-  for (const id of ordered) {
-    const matcher = MATCHERS.find(([mid]) => mid === id)
-    if (matcher && matcher[1].test(query) && SCENARIOS[id]) return SCENARIOS[id]
+  for (const [id, pattern] of MATCHERS) {
+    if (pattern.test(query) && SCENARIOS[id]) return SCENARIOS[id]
   }
   return SCENARIOS.default
 }

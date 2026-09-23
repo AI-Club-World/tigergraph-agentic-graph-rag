@@ -4,6 +4,7 @@ Built on LangChain's ChatOpenAI / provider abstractions per PLAT-08 / LLM-01.
 
 from __future__ import annotations
 
+import threading
 import time
 from typing import Any
 
@@ -15,11 +16,33 @@ from ogr.common.contracts import (
     parse_answer_contract_json,
 )
 
+_MODEL_CACHE: dict[tuple, Any] = {}
+_MODEL_CACHE_LOCK = threading.Lock()
+
 
 def get_chat_model(config: RunConfig) -> Any:
-    """Return an initialized LangChain chat model based on run_config.
-    Supports local OpenAI-compatible servers (Ollama, llama.cpp, vLLM) and cloud providers.
+    """Return the LangChain chat model for this configuration.
+
+    One instance per distinct model configuration, reused across pipelines,
+    queries and batch items: P1/P2/P3 therefore share the very same client
+    (one LLM for all three, TECHNICAL-SPEC §14.3), and a query no longer pays
+    for constructing a new one.
     """
+    key = (
+        config.llm_model,
+        config.llm_base_url,
+        config.llm_api_key,
+        config.llm_temperature,
+        config.llm_max_tokens,
+    )
+    with _MODEL_CACHE_LOCK:
+        if key not in _MODEL_CACHE:
+            _MODEL_CACHE[key] = _build_chat_model(config)
+        return _MODEL_CACHE[key]
+
+
+def _build_chat_model(config: RunConfig) -> Any:
+    """Supports local OpenAI-compatible servers (Ollama, llama.cpp, vLLM) and cloud providers."""
     try:
         from langchain_openai import ChatOpenAI
     except ImportError:

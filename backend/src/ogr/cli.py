@@ -91,25 +91,34 @@ def main(argv=None) -> int:
         from datetime import UTC, datetime
         from pathlib import Path
 
-        from ogr.eval.batch_runner import default_pipelines, run_batch_sync, run_config_header
+        from ogr.eval.batch_runner import (
+            BatchIncompleteError,
+            default_pipelines,
+            run_batch_sync,
+            run_config_header,
+        )
 
         config = get_default_config()
         client = TigerGraphClient(config)
         started = datetime.now(UTC)
         run_id = args.run_id or started.strftime("%Y%m%dT%H%M%SZ")
 
-        count = run_batch_sync(
-            questions_path=args.questions,
-            out_path=args.out,
-            pipelines=default_pipelines(config, client),
-            run_id=run_id,
-            run_config={
-                **run_config_header(config),
-                "dataset": Path(args.questions).stem,
-                "started_at": started.isoformat(),
-            },
-            pool_size=config.pool_size,
-        )
+        try:
+            count = run_batch_sync(
+                questions_path=args.questions,
+                out_path=args.out,
+                pipelines=default_pipelines(config, client),
+                run_id=run_id,
+                run_config={
+                    **run_config_header(config),
+                    "dataset": Path(args.questions).stem,
+                    "started_at": started.isoformat(),
+                },
+                pool_size=config.pool_size,
+            )
+        except BatchIncompleteError as e:
+            print(f"Batch {run_id} incomplete: {e}", file=sys.stderr)
+            return 1
         print(f"Batch {run_id}: ran {count} question(s), wrote to {args.out}")
         return 0
 
@@ -118,24 +127,33 @@ def main(argv=None) -> int:
         config = get_default_config()
         client = TigerGraphClient(config)
 
+        from ogr.eval.dispatcher import error_record
+        from ogr.pipelines.p2_graphrag import run_p2_graphrag
+        from ogr.pipelines.p3_agentic.orchestrator import run_p3_agentic
+
+        runners = {
+            "rag": ("rag", lambda: run_p1_rag(query=args.query, client=client, config=config)),
+            "graphrag": ("graphrag", lambda: run_p2_graphrag(query=args.query, client=client, config=config)),
+            "agentic_graphrag": (
+                "agentic_graphrag",
+                lambda: run_p3_agentic(query=args.query, tg_client=client, config=config),
+            ),
+        }
+        runners["graph"] = runners["graphrag"]
+        runners["agentic"] = runners["agentic_graphrag"]
+
         records = {}
         for p in requested_pipelines:
-            if p == "rag":
-                records["rag"] = run_p1_rag(query=args.query, client=client, config=config)
-            elif p in ("graphrag", "graph"):
-                from ogr.pipelines.p2_graphrag import run_p2_graphrag
-
-                records["graphrag"] = run_p2_graphrag(
-                    query=args.query, client=client, config=config
-                )
-            elif p in ("agentic", "agentic_graphrag"):
-                from ogr.pipelines.p3_agentic.orchestrator import run_p3_agentic
-
-                records["agentic_graphrag"] = run_p3_agentic(
-                    query=args.query, tg_client=client, config=config
-                )
-            else:
+            if p not in runners:
                 print(f"Pipeline '{p}' is not yet implemented in this milestone.", file=sys.stderr)
+                continue
+            name, run = runners[p]
+            # Same fault isolation as dispatcher.py / api/main.py: one
+            # pipeline's exception must not discard the others' output.
+            try:
+                records[name] = run()
+            except Exception as e:  # noqa: BLE001
+                records[name] = error_record(name, str(e))
 
         if args.json:
             print(json.dumps({k: v.model_dump() for k, v in records.items()}, indent=2))

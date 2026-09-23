@@ -44,6 +44,24 @@ class TestBatchStore:
             BatchStore(path, {"llm_api_key": "sk-abcdefghijklmnopqrstuvwxyz0123456789"})
 
 
+    def test_refuses_a_jwt(self, tmp_path):
+        store = BatchStore(tmp_path / "run.jsonl", {})
+        jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0aWdlcmdyYXBoIn0.c2lnbmF0dXJl"
+        with pytest.raises(SecretLeakError):
+            store.append({"note": jwt})
+
+    def test_refuses_the_configured_tigergraph_secret_whatever_its_shape(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("TG_SECRET", "q8k2m4n6p0r1t3v5")
+        store = BatchStore(tmp_path / "run.jsonl", {})
+        with pytest.raises(SecretLeakError, match="TG_SECRET"):
+            store.append({"note": "leaked q8k2m4n6p0r1t3v5 here"})
+
+    def test_ordinary_record_is_not_blocked(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("TG_SECRET", "q8k2m4n6p0r1t3v5")
+        store = BatchStore(tmp_path / "run.jsonl", {})
+        store.append({"question_id": "pub-001", "answer": "Q12345_c3", "token_source": "provider"})
+
+
 class TestReadWrittenQids:
     def test_missing_file_is_an_empty_set(self, tmp_path):
         assert read_written_qids(tmp_path / "absent.jsonl") == set()

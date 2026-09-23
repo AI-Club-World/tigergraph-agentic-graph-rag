@@ -123,6 +123,24 @@ class TestRetryOnceOnInvalidSchema:
         assert model.invoke.call_count == 2  # exactly one retry
         assert result.operation == "COUNT"
 
+    def test_retry_feeds_the_validation_error_back(self):
+        """The retry must differ from the first attempt — an identical prompt
+        at temperature 0 reproduces the same failure."""
+        model = MagicMock()
+        bad_resp = MagicMock()
+        bad_resp.content = "NOT VALID JSON {"
+        bad_resp.tool_calls = []
+        good_resp = MagicMock()
+        good_resp.content = '{"operation": "COUNT", "anchor": {}}'
+        good_resp.tool_calls = []
+        model.invoke.side_effect = [bad_resp, good_resp]
+
+        IntentParser(model, supports_tool_calling=False).parse("How many sailing events?")
+
+        first, second = (call.args[0] for call in model.invoke.call_args_list)
+        assert len(second) == len(first) + 1
+        assert "rejected" in second[-1].content
+
     def test_fallback_to_traverse_on_double_failure(self):
         """After two failures, parser falls back to TRAVERSE (safe default for loop routing)."""
         model = MagicMock()

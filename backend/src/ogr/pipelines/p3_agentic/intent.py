@@ -165,6 +165,14 @@ JSON_SCHEMA_USER_PROMPT = "Question: {question}\n\nJSON:"
 # Parser implementation
 # ---------------------------------------------------------------------------
 
+
+def _correction_message(error: Exception) -> str:
+    # Validation errors can be long; the first few hundred chars name the field.
+    return (
+        f"Your previous output was rejected: {str(error)[:300]}. "
+        "Return only output that matches the schema exactly."
+    )
+
 class IntentParser:
     """Intent parser with dual extraction paths and one schema validation + retry.
 
@@ -187,15 +195,20 @@ class IntentParser:
     def parse(self, question: str) -> IntentSchema:
         """Parse question into IntentSchema with one retry on schema failure."""
         self.last_tokens = TokenUsage()
+        correction: str | None = None
         for attempt in range(2):  # exactly one retry
             try:
-                raw = self._extract(question)
+                raw = self._extract(question, correction)
                 schema = self._validate(raw)
                 return schema
             except (ValidationError, ValueError, TypeError) as e:
                 if attempt == 0:
+                    # The retry carries the validation error back to the model;
+                    # an identical prompt at temperature 0 would just reproduce
+                    # the same failure and waste the call.
+                    correction = _correction_message(e)
                     logger.warning(
-                        "Intent parse attempt 1 failed (%s); retrying with explicit correction prompt.",
+                        "Intent parse attempt 1 failed (%s); retrying with the validation error fed back.",
                         e,
                     )
                 else:
@@ -204,12 +217,12 @@ class IntentParser:
                     return IntentSchema(operation="TRAVERSE")
         return IntentSchema(operation="TRAVERSE")
 
-    def _extract(self, question: str) -> dict[str, Any]:
+    def _extract(self, question: str, correction: str | None = None) -> dict[str, Any]:
         if self.supports_tool_calling:
-            return self._extract_tool_calling(question)
-        return self._extract_json_schema(question)
+            return self._extract_tool_calling(question, correction)
+        return self._extract_json_schema(question, correction)
 
-    def _extract_tool_calling(self, question: str) -> dict[str, Any]:
+    def _extract_tool_calling(self, question: str, correction: str | None = None) -> dict[str, Any]:
         """Native function-calling path."""
         try:
             from langchain_core.messages import HumanMessage
@@ -217,14 +230,15 @@ class IntentParser:
             from langchain.schema import HumanMessage
 
         model_with_tools = self.model.bind_tools([INTENT_TOOL_DEFINITION])
-        response = self._invoke_counted(model_with_tools, [HumanMessage(content=question)])
+        content = f"{question}\n\n{correction}" if correction else question
+        response = self._invoke_counted(model_with_tools, [HumanMessage(content=content)])
         tool_calls = getattr(response, "tool_calls", [])
         if tool_calls:
             return tool_calls[0].get("args", {})
         # Fallback if tool_calls empty
         return self._parse_json_from_text(getattr(response, "content", "{}"))
 
-    def _extract_json_schema(self, question: str) -> dict[str, Any]:
+    def _extract_json_schema(self, question: str, correction: str | None = None) -> dict[str, Any]:
         """JSON-schema prompting fallback for local models."""
         try:
             from langchain_core.messages import HumanMessage, SystemMessage
@@ -235,6 +249,8 @@ class IntentParser:
             SystemMessage(content=JSON_SCHEMA_SYSTEM_PROMPT),
             HumanMessage(content=JSON_SCHEMA_USER_PROMPT.format(question=question)),
         ]
+        if correction:
+            messages.append(HumanMessage(content=correction))
         response = self._invoke_counted(self.model, messages)
         raw_text = response.content if hasattr(response, "content") else str(response)
         if isinstance(raw_text, list):

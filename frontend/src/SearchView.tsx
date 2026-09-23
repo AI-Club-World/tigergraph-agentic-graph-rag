@@ -75,10 +75,22 @@ export function SearchView() {
   }
 
   const agentic = columns.agentic_graphrag
+  const settled = PIPELINE_IDS.filter((p) => ['done', 'error'].includes(columns[p].status)).length
+  // Concise status for screen readers; only changes when a pipeline settles, a
+  // trace step arrives, or the verdict lands.
+  const announcement = result
+    ? 'All three pipelines complete. Verdict ready.'
+    : inFlight
+      ? `${settled} of 3 pipelines complete, ${trace.length} trace ${trace.length === 1 ? 'step' : 'steps'}.`
+      : ''
 
   return (
     <div className="view search-view">
       <QueryInput onSubmit={runQuery} disabled={inFlight} />
+
+      <p className="sr-only" aria-live="polite" role="status">
+        {announcement}
+      </p>
 
       {submitError && <p className="error-box pad">{submitError}</p>}
 

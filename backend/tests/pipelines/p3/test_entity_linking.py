@@ -113,10 +113,22 @@ class TestUnresolvedVenueReturnsNone:
         linker = _make_linker(venues=["Olympic Oval", "Olympic Stadium", "Olympic Aquatic Centre"])
         intent = _make_intent("LOOKUP", venue="Olympic")
         result = linker.resolve(intent)
-        # May or may not resolve fully, but if ambiguous returns candidates
-        if result.venue is None:
-            # Disambiguation candidates available for surfacing
-            assert len(result.disambiguation_candidates.get("venue", [])) >= 1
+        # AD-15: ambiguous multi-match is surfaced, never substituted by a guess.
+        assert result.venue is None
+        assert "venue" in result.unresolved_fields
+        assert sorted(result.disambiguation_candidates["venue"]) == [
+            "Olympic Aquatic Centre", "Olympic Oval", "Olympic Stadium",
+        ]
+        assert result.needs_disambiguation
+
+    def test_sport_discriminator_means_no_disambiguation_request(self):
+        """ARCHITECTURE-SPEC §13: sport is a real discriminator, so an
+        ambiguous venue alongside a resolved sport does not stop the run."""
+        linker = _make_linker(venues=["Olympic Oval", "Olympic Stadium"], sports=["Sailing"])
+        result = linker.resolve(_make_intent("LOOKUP", venue="Olympic", sport="Sailing"))
+        assert result.venue is None
+        assert result.disambiguation_candidates["venue"]
+        assert not result.needs_disambiguation
 
     def test_unresolved_sport_returns_none(self):
         linker = _make_linker(sports=["Sailing", "Swimming"])

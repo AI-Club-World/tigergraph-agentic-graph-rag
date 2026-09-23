@@ -31,7 +31,7 @@ def require_api_key(
 ) -> None:
     if not config.ogr_api_key:
         raise HTTPException(status_code=503, detail="OGR_API_KEY is not configured")
-    if not x_api_key or x_api_key != config.ogr_api_key:
+    if not x_api_key or not secrets.compare_digest(x_api_key.encode(), config.ogr_api_key.encode()):
         raise HTTPException(status_code=401, detail="Missing or invalid X-API-Key")
 
 

@@ -37,7 +37,7 @@ from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
 from ogr.api.security import StreamTokenStore, get_config, require_api_key
-from ogr.common.config import RunConfig
+from ogr.common.config import RunConfig, get_default_config
 from ogr.common.contracts import PipelineRecord, QueryLevelRecord
 from ogr.eval.aggregator import aggregate_query
 from ogr.eval.batch_runner import default_pipelines, run_batch, run_config_header
@@ -57,9 +57,14 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="OGR API")
 router = APIRouter(dependencies=[Depends(require_api_key)])
 
-_stream_tokens = StreamTokenStore()
+_stream_tokens = StreamTokenStore(ttl_s=get_default_config().ogr_stream_token_ttl_s)
 _queries: dict[str, dict[str, Any]] = {}
 _builds: dict[str, dict[str, Any]] = {}
+# Finished query/build entries kept for result reads; older ones are dropped.
+_MAX_RETAINED = 100
+# One client for the process: its vocabulary cache and connection are reused
+# by every query and batch run instead of being rebuilt per request.
+_tg_client: TigerGraphClient | None = None
 # Also keeps each background run's task referenced so it is not garbage-collected.
 _batch_tasks: dict[str, asyncio.Task] = {}
 
@@ -76,6 +81,23 @@ class QueryRequest(BaseModel):
     query: str
 
 
+def _get_client(config: RunConfig) -> TigerGraphClient:
+    global _tg_client
+    if _tg_client is None:
+        _tg_client = TigerGraphClient(config)
+    return _tg_client
+
+
+def _evict_finished(store: dict[str, dict[str, Any]]) -> None:
+    """Keep `store` bounded: drop the oldest finished entries beyond _MAX_RETAINED."""
+    excess = len(store) - _MAX_RETAINED
+    if excess <= 0:
+        return
+    finished = [key for key, entry in store.items() if (task := entry.get("task")) is None or task.done()]
+    for key in finished[:excess]:
+        del store[key]
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -86,6 +108,7 @@ def health() -> dict[str, str]:
 
 @router.post("/query", status_code=202)
 async def post_query(body: QueryRequest, config: RunConfig = Depends(get_config)) -> dict[str, str]:
+    _evict_finished(_queries)
     query_id = str(uuid.uuid4())
     token = _stream_tokens.issue(query_id)
     queue: asyncio.Queue = asyncio.Queue()
@@ -100,7 +123,7 @@ async def _run_query(query_id: str, query: str, queue: asyncio.Queue, config: Ru
     pipeline's record the moment it finishes and every agentic TraceStep as
     it is produced, then the aggregated verdict.
     """
-    client = TigerGraphClient(config)
+    client = _get_client(config)
     records: dict[str, PipelineRecord] = {}
 
     async def _rag() -> None:
@@ -183,6 +206,7 @@ async def _stream_events(queue: asyncio.Queue):
 
 @router.post("/build", status_code=202)
 async def post_build(config: RunConfig = Depends(get_config)) -> dict[str, str]:
+    _evict_finished(_builds)
     build_id = str(uuid.uuid4())
     token = _stream_tokens.issue(build_id)
     queue: asyncio.Queue = asyncio.Queue()
@@ -219,7 +243,7 @@ async def _run_build(build_id: str, queue: asyncio.Queue, config: RunConfig) -> 
     progress.finish("chunk_embed", all_pipelines, items_done=len(chunks))
     progress.ready(["rag"], note="chunk+embed done — Q5 must still be installed for a live index")
 
-    client = TigerGraphClient(config)
+    client = _get_client(config)
     client._ensure_connection()
     graph_pipelines = ["graphrag", "agentic_graphrag"]
     if client.conn is None:
@@ -233,6 +257,7 @@ async def _run_build(build_id: str, queue: asyncio.Queue, config: RunConfig) -> 
             docs, _report = await asyncio.to_thread(parse_corpus, CORPUS_PATH)
             await asyncio.to_thread(load_graph, client, docs, chunks)
             await asyncio.to_thread(install_queries, client)
+            client._vocab_cache.clear()  # the reload may have changed Games/Sport/Venue
             progress.finish("schema_and_load", graph_pipelines, items_done=len(docs))
             progress.ready(graph_pipelines)
         except Exception as e:  # noqa: BLE001
@@ -310,7 +335,7 @@ async def post_batch(body: BatchRequest, config: RunConfig = Depends(get_config)
         run_batch(
             questions_path=QUESTIONS_DIR / f"{body.dataset}.jsonl",
             out_path=out_path,
-            pipelines=default_pipelines(config, TigerGraphClient(config)),
+            pipelines=default_pipelines(config, _get_client(config)),
             run_id=run_id,
             run_config=run_config,
             pool_size=config.pool_size,

@@ -128,7 +128,7 @@ interface PipelineRecord {
   chunks_returned: number
   citations_count: number
   tokens: TokenUsage
-  token_source: 'provider' | 'local_tokenizer'
+  token_source: 'provider' | 'local_tokenizer' | 'estimated'
   latency_ms: number
   trace: TraceStep[] | null    // non-null only for agentic_graphrag
   strategy_changed: boolean | null
@@ -407,6 +407,8 @@ badge.
    - `citations_count`, label `citations`
 4. **Token-source note** — when `token_source === 'local_tokenizer'`:
    `Token counts came from the local tokenizer — the configured provider reported no usage.`
+   When `token_source === 'estimated'`:
+   `Token counts are estimates (about 4 characters per token) — the provider reported no usage and the model has no tokenizer.`
    (Honesty about provenance; do not drop it.)
 5. **Stop reason** — when present: label `Stopped because` + the raw
    `stop_reason` in monospace.

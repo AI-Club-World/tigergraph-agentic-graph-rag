@@ -36,13 +36,29 @@ from typing import Any
 
 from ogr.common.config import RunConfig
 from ogr.common.contracts import BatchRecord, Question
+from ogr.common.embeddings import embedding_backend
 from ogr.eval.aggregator import aggregate_query
 from ogr.eval.dispatcher import dispatch
 from ogr.eval.store import BatchStore, read_written_qids
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["default_pipelines", "load_questions", "run_batch", "run_batch_sync", "run_config_header"]
+__all__ = [
+    "BatchIncompleteError",
+    "default_pipelines",
+    "load_questions",
+    "run_batch",
+    "run_batch_sync",
+    "run_config_header",
+]
+
+
+class BatchIncompleteError(RuntimeError):
+    """Raised after a batch finishes if any question could not be recorded.
+
+    Every other question has already been written; rerunning the same
+    command resumes and retries only the failed ones.
+    """
 
 
 def default_pipelines(config: RunConfig, client: Any) -> dict[str, Callable[[str], Any]]:
@@ -72,6 +88,7 @@ def run_config_header(config: RunConfig) -> dict[str, Any]:
         "llm_base_url": config.llm_base_url,
         "temperature": config.llm_temperature,
         "embedding_model": config.embedding_model,
+        "embedding_backend": embedding_backend(config.embedding_model),
         "k": config.k,
         "chunk_tokens": config.chunk_tokens,
         "chunk_overlap": config.chunk_overlap,
@@ -104,9 +121,12 @@ async def run_batch(
     """Run every question in `questions_path` not already in `out_path`.
 
     Returns the number of questions actually run (0 if the file was already
-    complete). Never raises on a per-question failure — `dispatch()` already
-    turns a pipeline exception into an error record, and one question's
-    failure must not halt the rest of a 100-question run (NFR-2).
+    complete). A per-question failure never cancels the rest of the run
+    (NFR-2): `dispatch()` turns a pipeline exception into an error record, and
+    a failure after that (scoring, record construction, the store's secret
+    check) is caught per question. Such a question is left unwritten, so a
+    resume retries it, and the run ends with `BatchIncompleteError` naming it
+    rather than reporting success (APPLICATION-SPEC §7: zero silent failures).
     """
     questions = load_questions(questions_path)
     already_written = read_written_qids(out_path)
@@ -119,6 +139,13 @@ async def run_batch(
     write_lock = asyncio.Lock()
 
     async def _run_one(question: Question) -> None:
+        try:
+            await _record_one(question)
+        except Exception as e:  # noqa: BLE001 - one question must not cancel the others
+            logger.exception("Batch %s: question %s was not recorded", run_id, question.qid)
+            failed[question.qid] = f"{type(e).__name__}: {e}"
+
+    async def _record_one(question: Question) -> None:
         async with semaphore:
             records = await dispatch(question.question, pipelines)
 
@@ -141,7 +168,13 @@ async def run_batch(
         async with write_lock:
             store.append(batch_record.model_dump())
 
+    failed: dict[str, str] = {}
     await asyncio.gather(*(_run_one(q) for q in pending))
+    if failed:
+        raise BatchIncompleteError(
+            f"{len(failed)} of {len(pending)} question(s) not recorded (rerun to resume): "
+            + "; ".join(f"{qid}: {err}" for qid, err in sorted(failed.items()))
+        )
     return len(pending)
 
 

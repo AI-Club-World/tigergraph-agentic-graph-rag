@@ -103,6 +103,18 @@ class TestStopReasonInClosedVocabulary:
         assert reason == "no_further_action_available"
         assert reason in CLOSED_STOP_REASONS
 
+    def test_no_further_action_reachable_with_loop_tools_only(self):
+        """lookup/aggregation never enter the loop, so the reason must fire on
+        the tools a loop run can actually try."""
+        stop, reason = should_stop(
+            evaluation=_insufficient_eval(),
+            step_count=3,
+            tokens_used=1000,
+            tools_tried=["traversal", "similarity_search", "document_retrieval"],
+        )
+        assert stop is True
+        assert reason == "no_further_action_available"
+
     def test_continue_when_not_stopping(self):
         """Loop continues when nothing triggers a stop."""
         stop, _ = should_stop(

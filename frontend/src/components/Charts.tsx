@@ -106,6 +106,31 @@ export function ScatterPlot({
           </span>
         ))}
       </figcaption>
+      <details className="chart-data">
+        <summary>Show data table</summary>
+        <table className="matrix">
+          <thead>
+            <tr>
+              <th scope="col">Series</th>
+              <th scope="col">Point</th>
+              <th scope="col">{xLabel}</th>
+              <th scope="col">{yLabel}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {series.flatMap((s) =>
+              s.points.map((p, i) => (
+                <tr key={`${s.name}-${i}`}>
+                  <th scope="row">{s.name}</th>
+                  <td>{p.label}</td>
+                  <td>{p.x.toLocaleString('en-US')}</td>
+                  <td>{p.y.toFixed(2)}</td>
+                </tr>
+              )),
+            )}
+          </tbody>
+        </table>
+      </details>
     </figure>
   )
 }

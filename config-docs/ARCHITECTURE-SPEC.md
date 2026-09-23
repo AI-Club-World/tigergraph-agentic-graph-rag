@@ -18,7 +18,7 @@ Status: **v0.3 — synchronised with implementation plans, 2026-09-21.** Superse
 | Batch runner | Submits question list programmatically, consumes structured records |
 | TigerGraph Savanna | Graph store + vector store; five installed GSQL queries; vector index async, must poll `/restpp/vector/status` before benchmark runs |
 | LLM provider API | Function-calling intent parsing, generation, evidence evaluation — no provider dependency in embeddings or scoring |
-| Local embedding model | all-MiniLM-L6-v2 (384-dim, sentence-transformers) — deterministic, no external call |
+| Local embedding model | BAAI/bge-small-en-v1.5 (384-dim, sentence-transformers) — deterministic, no external call |
 | Olympic Wikipedia corpus | 2,951 docs ingested at setup; 100 known + 50 hidden question sets as query inputs |
 
 ```
@@ -155,7 +155,7 @@ Cut from schema: Person/NOC vertices and `WON_MEDAL` edges — no question type 
 | AD-3 | Orchestrator owns stopping criteria via evidence sufficiency + budget, not a fixed step count | Brief requires the system to "decide when enough evidence exists" | Fixed N-step loop — rejected, not agentic per hackathon definition |
 | AD-4 | Ground-truth accuracy scoring: deterministic EM/F1, no LLM judge in the loop | Verified gold answers exist; reference-free LLM judges are for the *absence* of ground truth, not a weaker substitute when labels exist | LLM-judged scoring — rejected, non-deterministic and less credible to judges |
 | AD-5 | Necessity routing by parsed operation type, not a trained classifier | A classifier trained on 100 questions overfits and is indefensible in Q&A; a stated rule is stronger, not weaker | Trained necessity classifier — rejected |
-| AD-6 | Local embedding model (all-MiniLM-L6-v2, 384-dim), provider-swappable via config | Deterministic, zero API cost, no rate limits/drift; removes an external dependency from the reproduce path | Provider embedding API — kept as config option only |
+| AD-6 | Local embedding model (BAAI/bge-small-en-v1.5, 384-dim), provider-swappable via config | Deterministic, zero API cost, no rate limits/drift; removes an external dependency from the reproduce path | Provider embedding API — kept as config option only |
 | AD-7 | Exactly five installed GSQL queries; prototype via `INTERPRET QUERY`, install once near the end | Installation blocks concurrent operations (~1 min each); a small parameterized library avoids repeated install cost during iteration | Larger ad hoc query set — rejected |
 | AD-8 | Person/NOC vertices and `WON_MEDAL` edges cut from schema | No question type traverses person→events; only 2/100 answers contain concatenated multi-person names | Full person-entity graph — rejected as unused complexity |
 | AD-9 | P1 (RAG) receives no type filtering, and **all 2,951 documents are embedded**, not only the Olympic subset | Its ceiling must be visible, not masked. Embedding only Olympic documents would type-filter P1 *by ingestion* and quietly rig the comparison | Filtered/optimized P1 — rejected |

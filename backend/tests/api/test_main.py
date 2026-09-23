@@ -177,3 +177,17 @@ class TestBatchRecords:
         records = response.json()
         assert len(records) == 1
         assert records[0]["question_id"] == "pub-001"
+
+
+class TestStateHardening:
+    def test_stream_token_ttl_comes_from_config(self):
+        from ogr.common.config import get_default_config
+
+        assert api_main._stream_tokens.ttl_s == get_default_config().ogr_stream_token_ttl_s
+
+    def test_finished_queries_are_evicted_beyond_the_cap(self, client):
+        for i in range(api_main._MAX_RETAINED + 20):
+            api_main._queries[f"old-{i}"] = {"queue": None, "record": None}
+        client.post("/query", json={"query": "q"}, headers=HEADERS)
+        assert len(api_main._queries) <= api_main._MAX_RETAINED + 1
+        assert "old-0" not in api_main._queries

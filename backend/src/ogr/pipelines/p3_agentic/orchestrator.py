@@ -98,7 +98,7 @@ def build_p3_graph(
     from ogr.pipelines.p3_agentic.agents.graph_traversal import run_graph_traversal
     from ogr.pipelines.p3_agentic.agents.multi_hop import run_multi_hop
     from ogr.pipelines.p3_agentic.agents.similarity_search import run_similarity_search
-    from ogr.pipelines.p3_agentic.evidence import evaluate_evidence
+    from ogr.pipelines.p3_agentic.evidence import EvidenceEvaluation, evaluate_evidence
     from ogr.pipelines.p3_agentic.intent import IntentParser
     from ogr.pipelines.p3_agentic.router import route
     from ogr.pipelines.p3_agentic.stopping import should_stop
@@ -157,6 +157,61 @@ def build_p3_graph(
             return {}
         anchors = entity_linker.resolve(intent)
         return {"resolved_anchors": anchors}
+
+    def node_disambiguate(state: dict) -> dict:
+        """AD-15: an ambiguous venue with no sport/event discriminator ends the
+        run with the candidates named. Deterministic — no retrieval and no
+        generation call, because no model output can pick the right venue."""
+        anchors = state.get("resolved_anchors")
+        recorder: TraceRecorder = _state_store.get("recorder")
+        candidates = anchors.disambiguation_candidates.get("venue", [])
+        shown = ", ".join(candidates[:10])
+        if len(candidates) > 10:
+            shown += f" (+{len(candidates) - 10} more)"
+
+        _, stop_reason = should_stop(
+            evaluation=EvidenceEvaluation(
+                is_sufficient=False,
+                scope_coverage_pass=False,
+                groundedness_pass=False,
+                fallback_trigger="none",
+                notes="not evaluated: anchor ambiguous",
+            ),
+            step_count=0,
+            tokens_used=state.get("tokens_used", 0),
+            has_disambiguation_candidates=True,
+        )
+        if recorder:
+            recorder.record(
+                "entity_linking",
+                "entity_linker",
+                AgentResult(notes=f"venue ambiguous: {len(candidates)} candidates"),
+            )
+        trace_steps = recorder.finalize() if recorder else []
+        tokens = recorder.cumulative_tokens() if recorder else TokenUsage()
+        if recorder:
+            recorder.reconcile_assert(tokens.total)
+
+        _state_store["pipeline_record"] = PipelineRecord(
+            pipeline="agentic_graphrag",
+            answer=f"Which venue did you mean: {shown}?",
+            explanation=(
+                f"The venue in the question matches {len(candidates)} venues and the question names "
+                "no sport or event to tell them apart, so no answer was guessed (AD-15)."
+            ),
+            citations=[],
+            chunks_returned=0,
+            citations_count=0,
+            tokens=TokenUsage(input=tokens.input, output=tokens.output, total=tokens.total),
+            token_source=getattr(intent_parser, "last_token_source", "provider"),
+            latency_ms=0.0,
+            trace=trace_steps,
+            strategy_changed=False,
+            stop_reason=stop_reason,
+            status="done",
+            error_detail=None,
+        )
+        return {"stop_reason": stop_reason}
 
     def node_lookup_direct(state: dict) -> dict:
         """Direct Q1 lookup — NO loop, ZERO loop edges traversed."""
@@ -445,6 +500,9 @@ def build_p3_graph(
 
     def route_after_parse(state: dict) -> str:
         """Conditional edge from link_entities to the correct path node."""
+        anchors = state.get("resolved_anchors")
+        if anchors is not None and anchors.needs_disambiguation:
+            return "disambiguate"
         decision = state.get("route_initial") or "loop"
         logger.debug("route_after_parse: → %s", decision)
         return decision
@@ -476,6 +534,7 @@ def build_p3_graph(
 
     graph.add_node("parse_intent", node_parse_intent)
     graph.add_node("link_entities", node_link_entities)
+    graph.add_node("disambiguate", node_disambiguate)
     graph.add_node("lookup_direct", node_lookup_direct)
     graph.add_node("scoped_aggregate", node_scoped_aggregate)
     graph.add_node("loop_traversal", node_loop_traversal)
@@ -493,6 +552,7 @@ def build_p3_graph(
             "lookup_direct": "lookup_direct",
             "scoped_aggregate": "scoped_aggregate",
             "loop": "loop_traversal",
+            "disambiguate": "disambiguate",
         },
     )
 
@@ -512,6 +572,7 @@ def build_p3_graph(
     )
 
     graph.add_edge("generate", END)
+    graph.add_edge("disambiguate", END)
 
     return graph.compile(), _state_store
 
