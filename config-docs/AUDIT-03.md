@@ -6,19 +6,21 @@
 
 This is iteration 3 of the audit record (`AUDIT.md` = iteration 1/2, covering P1/P3 plus a follow-on pass). This file does not replace it — it is an independent second read, scoped to code quality/architecture/spec-compliance/judging-criteria rather than task-by-task PLAN-00x conformance.
 
-**Resolution pass (2026-09-23):** every finding below is annotated inline. Scorecard reflects the pre-fix snapshot and was not re-scored. Also in this pass (technical directive, not an audit finding): default embedding model switched to `BAAI/bge-small-en-v1.5` (same 384-dim, free/local) — requires a `/build` re-embed of an existing index.
+**Resolution pass (2026-09-23):** every finding below is annotated inline; the Scorecard adds a post-fix column. Also in this pass (technical directive, not an audit finding): default embedding model switched to `BAAI/bge-small-en-v1.5` (same 384-dim, free/local) — requires a `/build` re-embed of an existing index. Follow-up pass: scatter x-tick key collisions (`Charts.tsx`), unbounded `StreamTokenStore` (`api/security.py`), and per-iteration groundedness LLM calls (`evidence.py` deterministic pre-check, `orchestrator.py` verdict reuse) fixed; specs resynced to code.
 
 ---
 
 ## Scorecard
 
-| Dimension | Score | Justification |
-|---|---|---|
-| Code quality | 3/5 | Solid structure, typed dataclasses, mostly-good error isolation — but a Critical `asyncio.gather` bug can abort an entire 100-question batch run, plus a silently-swallowed embedding-model load failure and a non-constant-time API-key check. |
-| Architecture | 4/5 | Genuine three-way ablation (P1 removes graph, P2 removes loop, P3 has both), shared answer contract enforced by construction, GSQL kept to 5 parameterized queries. Undercut by an unimplemented `server_config.json` split and no caching of per-query graph/LLM client construction. |
-| Spec compliance | 2/5 | Majority of FR/AD items independently verified as implemented correctly, but two Critical deviations: `POST /batch` (FR-13, TECHNICAL-SPEC §4.3) does not exist in the API, and the AD-15 disambiguation path — the named mitigation for 23% venue ambiguity — is dead code end-to-end. `AUDIT.md`'s self-reported "every item DONE" does not hold under independent tracing. |
-| Agentic/RAG design | 4/5 | Two-LLM-touchpoint design (intent parse + one groundedness check) is disciplined and well-justified; routing is deterministic per DP-1 as specified. Marred by dead code (`no_further_action_available` is structurally unreachable) and a retry in the intent parser that never actually varies its input despite claiming to. |
-| Token efficiency | 3/5 | LLM call count per run is minimal by design and correctly reconciled (Σ trace tokens == total, per DP-5). But every query rebuilds the LLM client and re-fetches all three graph vocabularies from TigerGraph from scratch (no caching across requests/batch items), and a failed batch record can abort accumulated spend on the whole run. |
+| Dimension | Score | Post-fix | Justification | Post-fix rationale |
+|---|---|---|---|---|
+| Code quality | 3/5 | 4/5 | Solid structure, typed dataclasses, mostly-good error isolation — but a Critical `asyncio.gather` bug can abort an entire 100-question batch run, plus a silently-swallowed embedding-model load failure and a non-constant-time API-key check. | All three named defects fixed with regression tests (backend 311 → 341 tests, frontend 5 → 20). Not 5: the fixes are unit-tested against mocks only — no live TigerGraph/LLM run in this pass. |
+| Architecture | 4/5 | 5/5 | Genuine three-way ablation (P1 removes graph, P2 removes loop, P3 has both), shared answer contract enforced by construction, GSQL kept to 5 parameterized queries. Undercut by an unimplemented `server_config.json` split and no caching of per-query graph/LLM client construction. | Both undercutting items fixed: `config/server_config.json` with env > file > default; per-client vocab cache, one shared LLM instance, one process-wide TigerGraph client. |
+| Spec compliance | 2/5 | 4/5 | Majority of FR/AD items independently verified as implemented correctly, but two Critical deviations: `POST /batch` (FR-13, TECHNICAL-SPEC §4.3) does not exist in the API, and the AD-15 disambiguation path — the named mitigation for 23% venue ambiguity — is dead code end-to-end. `AUDIT.md`'s self-reported "every item DONE" does not hold under independent tracing. | Both Criticals closed; specs resynced to code. Not 5: spec items still without code — run `seed`, `--throughput`/`--timing` latency modes, `max_total_tokens` run cap, `rate_limit` rpm/backoff (TECHNICAL-SPEC §11, §14.1), `make reproduce` (NFR-4). |
+| Agentic/RAG design | 4/5 | 5/5 | Two-LLM-touchpoint design (intent parse + one groundedness check) is disciplined and well-justified; routing is deterministic per DP-1 as specified. Marred by dead code (`no_further_action_available` is structurally unreachable) and a retry in the intent parser that never actually varies its input despite claiming to. | Dead stop reason reachable, retry feeds the error back, AD-15 disambiguation live and deterministic. |
+| Token efficiency | 3/5 | 4/5 | LLM call count per run is minimal by design and correctly reconciled (Σ trace tokens == total, per DP-5). But every query rebuilds the LLM client and re-fetches all three graph vocabularies from TigerGraph from scratch (no caching across requests/batch items), and a failed batch record can abort accumulated spend on the whole run. | Caching as above; ambiguous-venue runs make 1 LLM call (intent) instead of ≥ 2; groundedness call skipped when a deterministic pre-check fails or evidence is unchanged; loop stops once all loop tools are tried. Not 5: savings shown by tests, not measured on a benchmark run. |
+
+Post-fix scores are a self-assessment by the agent that made the fixes, not an independent re-review.
 
 ---
 

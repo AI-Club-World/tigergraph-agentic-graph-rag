@@ -8,6 +8,8 @@ Verification Plan Group 4:
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock
+
 import pytest
 
 from ogr.pipelines.p3_agentic.evidence import EvidenceEvaluation, evaluate_evidence
@@ -266,3 +268,54 @@ class TestEvidenceEvaluation:
             question="How many events?",
         )
         assert result.scope_coverage_pass is True
+
+
+class TestDeterministicGroundednessPreCheck:
+    def _model(self):
+        model = MagicMock()
+        resp = MagicMock()
+        resp.content = "YES"
+        resp.usage_metadata = {"input_tokens": 20, "output_tokens": 1, "total_tokens": 21}
+        resp.response_metadata = {}
+        model.invoke.return_value = resp
+        return model
+
+    def test_prose_without_overlap_fails_without_an_llm_call(self):
+        from ogr.pipelines.p3_agentic.agents.entity_linking import ResolvedAnchors
+        model = self._model()
+        result = evaluate_evidence(
+            evidence=[{"text": "Bananas are yellow fruit.", "source": "similarity_search"}],
+            intent_operation="TRAVERSE",
+            anchors=ResolvedAnchors(),
+            model=model,
+            question="Which nation won gold in sailing in 2016?",
+        )
+        assert result.fallback_trigger == "groundedness_fail"
+        assert model.invoke.call_count == 0
+        assert result.tokens_input == 0
+
+    def test_prose_with_overlap_still_gets_the_llm_check(self):
+        from ogr.pipelines.p3_agentic.agents.entity_linking import ResolvedAnchors
+        model = self._model()
+        result = evaluate_evidence(
+            evidence=[{"text": "Great Britain won gold in sailing in 2016.", "source": "similarity_search"}],
+            intent_operation="TRAVERSE",
+            anchors=ResolvedAnchors(),
+            model=model,
+            question="Which nation won gold in sailing in 2016?",
+        )
+        assert model.invoke.call_count == 1
+        assert result.is_sufficient is True
+
+    def test_structured_graph_value_is_never_rejected_lexically(self):
+        from ogr.pipelines.p3_agentic.agents.entity_linking import ResolvedAnchors
+        model = self._model()
+        result = evaluate_evidence(
+            evidence=[{"value": "United States", "event_id": "E1", "source": "multi_hop"}],
+            intent_operation="TRAVERSE",
+            anchors=ResolvedAnchors(),
+            model=model,
+            question="Which nation won the event after the 1996 final?",
+        )
+        assert model.invoke.call_count == 1
+        assert result.is_sufficient is True

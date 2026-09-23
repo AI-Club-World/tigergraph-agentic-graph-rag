@@ -327,7 +327,9 @@ async def post_batch(body: BatchRequest, config: RunConfig = Depends(get_config)
         raise HTTPException(status_code=409, detail=f"Run {run_id!r} already exists")
 
     run_config = {
-        **run_config_header(config),
+        # Off the event loop: the header records the embedding backend, which
+        # loads the embedding model on first use.
+        **(await asyncio.to_thread(run_config_header, config)),
         "dataset": body.dataset,
         "started_at": started.isoformat(),
     }

@@ -7,7 +7,14 @@ Two-stage evaluation per DP-4 Option A:
   Stage 1 (deterministic): Scope-coverage gate — did retrieval cover the
            anchor's required scope? Cheap and fully reproducible.
   Stage 2 (LLM): One groundedness check — does the evidence support the
-           claim being made? Clearly labelled as an LLM call.
+           claim being made? Clearly labelled as an LLM call. For prose-only
+           evidence it runs only after a deterministic token-overlap
+           pre-check passes: chunks sharing fewer than two content words with
+           the question fail groundedness without an LLM call
+           (deterministic-first). Structured graph results (traversal,
+           multi-hop, aggregation) always go to the LLM — an exact graph value
+           such as a medal-winning nation need not share words with the
+           question.
 
 NFR-6 note: The LLM groundedness call is a RETRIEVAL DECISION, not a score.
 The scoring loop (EM/F1) remains fully deterministic. This is not a contradiction
@@ -38,6 +45,10 @@ FallbackTrigger = Literal[
     "empty_anchor",
     "none",
 ]
+
+
+# Evidence produced by exact graph queries rather than retrieved prose.
+STRUCTURED_SOURCES = frozenset({"graph_traversal", "multi_hop", "aggregation_count", "aggregation_argmax"})
 
 
 @dataclass
@@ -91,15 +102,18 @@ def evaluate_evidence(
             notes="No evidence retrieved",
         )
 
-    # Stage 2: LLM groundedness check (DP-4 Option A — labelled as LLM call)
+    # Stage 2: deterministic overlap pre-check (DP-4 Option B) for prose-only
+    # evidence, then the LLM groundedness check (DP-4 Option A). A failed
+    # pre-check already decides the fallback, so the LLM call is skipped.
     tokens_in = tokens_out = 0
-    if model is not None and question:
+    structured = any(e.get("source") in STRUCTURED_SOURCES for e in evidence)
+    groundedness_pass, ground_notes = _check_groundedness_deterministic(evidence, question)
+    if (groundedness_pass or structured) and model is not None and question:
         groundedness_pass, ground_notes, tokens_in, tokens_out = _check_groundedness_llm(
             evidence, question, model
         )
-    else:
-        # Deterministic fallback: check token overlap (DP-4 Option B)
-        groundedness_pass, ground_notes = _check_groundedness_deterministic(evidence, question)
+    elif model is not None:
+        ground_notes += " (LLM check skipped)"
 
     if not groundedness_pass:
         return EvidenceEvaluation(

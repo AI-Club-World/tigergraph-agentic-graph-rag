@@ -28,8 +28,10 @@ LOOKUP must traverse ZERO loop edges — verified by test_routing_lookup_direct.
 
 from __future__ import annotations
 
+import json
 import logging
 import time
+from dataclasses import replace
 from typing import Annotated, Any
 
 from typing_extensions import TypedDict
@@ -317,13 +319,28 @@ def build_p3_graph(
         question = state.get("question", "")
         recorder: TraceRecorder = _state_store.get("recorder")
 
-        eval_result = evaluate_evidence(
-            evidence=evidence,
-            intent_operation=getattr(intent, "operation", "TRAVERSE"),
-            anchors=anchors,
-            model=llm_model,
-            question=question,
-        )
+        # A loop iteration that added no new evidence would get the same
+        # temperature-0 verdict again, so the previous one is reused instead
+        # of paying for another groundedness call.
+        evidence_key = frozenset(json.dumps(e, sort_keys=True, default=str) for e in evidence)
+        previous = _state_store.get("last_eval")
+        if previous is not None and _state_store.get("last_eval_key") == evidence_key:
+            reused = "; evidence unchanged, verdict reused"
+            eval_result = replace(
+                previous,
+                tokens_input=0,
+                tokens_output=0,
+                notes=previous.notes if previous.notes.endswith(reused) else previous.notes + reused,
+            )
+        else:
+            eval_result = evaluate_evidence(
+                evidence=evidence,
+                intent_operation=getattr(intent, "operation", "TRAVERSE"),
+                anchors=anchors,
+                model=llm_model,
+                question=question,
+            )
+        _state_store["last_eval_key"] = evidence_key
 
         # Trigger fallbacks if needed (DP-2 Option A). Only the additions are
         # returned; the reducer appends them to the accumulated state.
