@@ -47,7 +47,7 @@ swatches, chart series and citation ref-type tags (§12).
 
 ## 2. Information architecture
 
-Client-side routing, four screens plus a not-found:
+Client-side routing, five screens plus a not-found:
 
 | Route | Screen | Purpose |
 |---|---|---|
@@ -55,6 +55,7 @@ Client-side routing, four screens plus a not-found:
 | `/build` | **Build** | Run the ingestion build, watch each pipeline become answerable |
 | `/dashboard` | **Dashboard** | Aggregate benchmark over one batch run |
 | `/eval` | **Eval table** | Per-question results for one batch run, with drill-down |
+| `/benchmarks` | **Benchmarks** | Run history: execute, import/export and compare benchmark runs |
 | anything else | Not found | Renders the text `Not found.` |
 
 `/dashboard` and `/eval` read the run id from the query string: `?run=<run_id>`.
@@ -231,9 +232,14 @@ must work identically against fixtures and against the real API.
 | Start build | `POST /build` body `{}` | `202 {build_id, stream_token}` |
 | Build stream | `GET /build/{build_id}/stream?token=…` | SSE |
 | Batch records | `GET /batch/{run_id}/records` | `BatchRecord[]` |
+| Run history | `GET /runs` | `RunSummary[]` (newest first) |
+| Datasets | `GET /datasets` | `string[]` |
+| Execute benchmark | `POST /batch` body `{ dataset }` | `202 {run_id, status}` |
+| Import run | `POST /runs/import` body `RunExport` or `BatchRecord[]` | `201 RunSummary` |
 
-There is **no list-runs endpoint** — this is why the run picker is a free-text
-field, not a dropdown (§10.1). Do not invent a dropdown of runs.
+The run picker on Dashboard and Eval table stays a free-text field (§10.1);
+browsing and choosing runs is the Benchmarks screen's job, which links into
+both with `?run=`.
 
 ### 5.2 SSE
 

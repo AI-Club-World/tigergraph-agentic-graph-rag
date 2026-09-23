@@ -8,7 +8,8 @@ Routes match exactly what `frontend/src/services/*.ts` already expects
 {query_id, stream_token}`, `GET /query/{id}/stream` (SSE), `GET
 /query/{id}/result`, `POST /build` -> `202 {build_id, stream_token}`, `GET
 /build/{id}/stream` (SSE), `GET /batch/{run_id}/records`, plus the
-unauthenticated `GET /health`.
+unauthenticated `GET /health`. Benchmark history: `GET /datasets`, `POST
+/batch` (execute a benchmark), `GET /runs`, `POST /runs/import`.
 
 `X-API-Key` is a router-level dependency (`require_api_key`), so a new route
 is protected by default rather than by someone remembering. The two SSE
@@ -27,10 +28,11 @@ import asyncio
 import json
 import logging
 import uuid
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Depends, FastAPI, HTTPException
+from fastapi import APIRouter, Body, Depends, FastAPI, HTTPException
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
@@ -38,7 +40,9 @@ from ogr.api.security import StreamTokenStore, get_config, require_api_key
 from ogr.common.config import RunConfig
 from ogr.common.contracts import PipelineRecord, QueryLevelRecord
 from ogr.eval.aggregator import aggregate_query
+from ogr.eval.batch_runner import default_pipelines, run_batch, run_config_header
 from ogr.eval.dispatcher import error_record
+from ogr.eval.history import RUN_ID_RE, import_run, list_runs, read_run, summarize_run, view_record
 from ogr.graph.client import TigerGraphClient
 from ogr.ingest.chunk_embed import chunk_and_embed_corpus
 from ogr.ingest.infobox import parse_corpus
@@ -56,12 +60,15 @@ router = APIRouter(dependencies=[Depends(require_api_key)])
 _stream_tokens = StreamTokenStore()
 _queries: dict[str, dict[str, Any]] = {}
 _builds: dict[str, dict[str, Any]] = {}
+# Also keeps each background run's task referenced so it is not garbage-collected.
+_batch_tasks: dict[str, asyncio.Task] = {}
 
 # Resolved relative to this file, not the process CWD — a long-running
 # service should not depend on which directory it happened to be started
 # from (unlike the CLI, whose defaults already assume the repo root).
 _REPO_ROOT = Path(__file__).resolve().parents[4]
 CORPUS_PATH = _REPO_ROOT / "data" / "corpus" / "corpus.jsonl"
+QUESTIONS_DIR = _REPO_ROOT / "data" / "questions"
 OUT_DIR = _REPO_ROOT / "out"
 
 
@@ -253,29 +260,94 @@ async def _stream_build_events(queue: asyncio.Queue):
             yield {"event": "build", "data": json.dumps(payload.__dict__)}
 
 
-# ---------------------------------------------------------------- /batch ---
+# ------------------------------------------------------ /batch and /runs ---
+
+
+class BatchRequest(BaseModel):
+    dataset: str
+    run_id: str | None = None
+
+
+def _datasets() -> list[str]:
+    return sorted(p.stem for p in QUESTIONS_DIR.glob("*.jsonl")) if QUESTIONS_DIR.exists() else []
+
+
+def _run_statuses() -> dict[str, str]:
+    return {
+        run_id: "running" if not task.done() else "failed" if task.exception() else "complete"
+        for run_id, task in _batch_tasks.items()
+        if not task.cancelled()
+    }
+
+
+@router.get("/datasets")
+async def get_datasets() -> list[str]:
+    return _datasets()
+
+
+@router.post("/batch", status_code=202)
+async def post_batch(body: BatchRequest, config: RunConfig = Depends(get_config)) -> dict[str, str]:
+    """Execute a benchmark over a named question set in `data/questions/`.
+    Records append to `out/{run_id}.jsonl`, which makes the run part of the
+    history as soon as its first question completes.
+    """
+    if body.dataset not in _datasets():
+        raise HTTPException(status_code=404, detail=f"Unknown dataset {body.dataset!r}")
+    started = datetime.now(UTC)
+    run_id = body.run_id or started.strftime("%Y%m%dT%H%M%SZ")
+    if not RUN_ID_RE.match(run_id):
+        raise HTTPException(status_code=400, detail=f"Invalid run id {run_id!r}")
+    out_path = OUT_DIR / f"{run_id}.jsonl"
+    if out_path.exists() or run_id in _batch_tasks:
+        raise HTTPException(status_code=409, detail=f"Run {run_id!r} already exists")
+
+    run_config = {
+        **run_config_header(config),
+        "dataset": body.dataset,
+        "started_at": started.isoformat(),
+    }
+    _batch_tasks[run_id] = asyncio.create_task(
+        run_batch(
+            questions_path=QUESTIONS_DIR / f"{body.dataset}.jsonl",
+            out_path=out_path,
+            pipelines=default_pipelines(config, TigerGraphClient(config)),
+            run_id=run_id,
+            run_config=run_config,
+            pool_size=config.pool_size,
+        )
+    )
+    return {"run_id": run_id, "status": "running"}
+
+
+@router.get("/runs")
+async def get_runs() -> list[dict[str, Any]]:
+    """Benchmark history: one summary per stored run, newest first."""
+    return await asyncio.to_thread(list_runs, OUT_DIR, _run_statuses())
+
+
+@router.post("/runs/import", status_code=201)
+async def post_run_import(payload: Any = Body(...)) -> dict[str, Any]:
+    """Store a previously executed run from its JSON export."""
+    try:
+        run_id = import_run(OUT_DIR, payload)
+    except FileExistsError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    run_config, records = read_run(OUT_DIR / f"{run_id}.jsonl")
+    return summarize_run(run_id, run_config, records)
 
 
 @router.get("/batch/{run_id}/records")
 async def get_batch_records(run_id: str) -> list[dict[str, Any]]:
-    """Reads `out/{run_id}.jsonl` written by EVAL-04's batch runner. The
-    first line (the run_config header) is not a record and is skipped.
+    """Reads `out/{run_id}.jsonl` written by EVAL-04's batch runner, as the
+    scored view records the dashboard and eval table consume.
     """
     path = OUT_DIR / f"{run_id}.jsonl"
-    if not path.exists():
-        raise HTTPException(status_code=404, detail=f"No run found at {path}")
-
-    records: list[dict[str, Any]] = []
-    with path.open(encoding="utf-8") as handle:
-        for i, line in enumerate(handle):
-            line = line.strip()
-            if not line:
-                continue
-            data = json.loads(line)
-            if i == 0 and "run_config" in data:
-                continue
-            records.append(data)
-    return records
+    if not RUN_ID_RE.match(run_id) or not path.exists():
+        raise HTTPException(status_code=404, detail=f"No run {run_id!r}")
+    _run_config, records = read_run(path)
+    return [view_record(r) for r in records]
 
 
 app.include_router(router)

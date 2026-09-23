@@ -42,7 +42,21 @@ from ogr.eval.store import BatchStore, read_written_qids
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["load_questions", "run_batch", "run_batch_sync", "run_config_header"]
+__all__ = ["default_pipelines", "load_questions", "run_batch", "run_batch_sync", "run_config_header"]
+
+
+def default_pipelines(config: RunConfig, client: Any) -> dict[str, Callable[[str], Any]]:
+    """The three pipelines as batch callables — one definition shared by the
+    CLI and the API, so batch mode has no duplicated invocation logic."""
+    from ogr.pipelines.p1_rag import run_p1_rag
+    from ogr.pipelines.p2_graphrag import run_p2_graphrag
+    from ogr.pipelines.p3_agentic.orchestrator import run_p3_agentic
+
+    return {
+        "rag": lambda q: run_p1_rag(query=q, client=client, config=config),
+        "graphrag": lambda q: run_p2_graphrag(query=q, client=client, config=config),
+        "agentic_graphrag": lambda q: run_p3_agentic(query=q, tg_client=client, config=config),
+    }
 
 
 def run_config_header(config: RunConfig) -> dict[str, Any]:

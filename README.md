@@ -128,6 +128,7 @@ defaults to `true`.
 | `/build` | Three-column ingestion build with per-pipeline readiness | PLAN-004 Group 4, DP-6 A, DP-7 A |
 | `/dashboard` | Aggregate benchmark view over one batch run | TECHNICAL-SPEC §10 |
 | `/eval` | Every question × three pipelines, with drill-down | FR-20, PLAN-004 Group 5 |
+| `/benchmarks` | Benchmark history: run a benchmark, import/export past runs as JSON, compare runs side by side | FR-13, FR-15 |
 
 `/dashboard` and `/eval` read a run id from `?run=` (default `latest`). The mock
 transport ships two runs: `latest` (20 scored questions) and `hidden` (8
@@ -196,6 +197,10 @@ boundary. The real branch is already written against the spec'd endpoints:
 | `startBuild` | `POST /build` → `202 {build_id, stream_token}` |
 | `openBuildStream` | `GET /build/{id}/stream?token=…` (SSE) |
 | `getBatchRecords` | `GET /batch/{run_id}/records` |
+| `listRuns` | `GET /runs` — one summary per stored run: `run_config` metadata plus per-pipeline EM/F1/P/R, tokens, latency, errors, F1 per 1k tokens |
+| `listDatasets` | `GET /datasets` — question files in `data/questions/` |
+| `startBenchmark` | `POST /batch` `{dataset}` → `202 {run_id}`; records append to `out/{run_id}.jsonl` as questions complete |
+| `importRun` | `POST /runs/import` — a run's JSON export (`{run_id, run_config, records}`), a bare record list, or its native JSONL file; an existing run id is refused (409) |
 
 `X-API-Key` goes on every request. The SSE endpoints take the short-lived
 single-use `stream_token` as `?token=` instead, because browser `EventSource`

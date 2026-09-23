@@ -39,6 +39,11 @@ export function mockRun(runId: string): BatchRecord[] | undefined {
   return RUNS[runId]
 }
 
+/** Imported or mock-executed runs join the fixture runs for this session. */
+export function registerMockRun(runId: string, records: BatchRecord[]): void {
+  RUNS[runId] = records
+}
+
 const scaled = (ms: number) => Math.max(0, ms * config.mockLatencyScale)
 
 /**

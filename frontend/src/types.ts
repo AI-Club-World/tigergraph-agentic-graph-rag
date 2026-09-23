@@ -141,3 +141,38 @@ export interface BuildAccepted {
   build_id: string
   stream_token: string
 }
+
+/** One pipeline's aggregate over a benchmark run (GET /runs). Accuracy is null without ground truth. */
+export interface PipelineSummary {
+  em: number | null
+  f1: number | null
+  precision: number | null
+  recall: number | null
+  mean_tokens: number | null
+  median_tokens: number | null
+  total_tokens: number
+  mean_latency_ms: number | null
+  errors: number
+  f1_per_1k_tokens: number | null
+}
+
+export type RunConfigValue = string | number | boolean | null
+
+/** One benchmark execution in the history (GET /runs). */
+export interface RunSummary {
+  run_id: string
+  status: 'running' | 'complete' | 'failed'
+  started_at: string
+  dataset: string | null
+  run_config: Record<string, RunConfigValue>
+  n_questions: number
+  scored: boolean
+  pipelines: Partial<Record<PipelineId, PipelineSummary>>
+}
+
+/** The JSON a run is exported as, and accepted back by POST /runs/import. */
+export interface RunExport {
+  run_id: string
+  run_config: Record<string, RunConfigValue>
+  records: BatchRecord[]
+}

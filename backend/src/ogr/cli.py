@@ -89,26 +89,25 @@ def main(argv=None) -> int:
 
     if args.command == "batch":
         from datetime import UTC, datetime
+        from pathlib import Path
 
-        from ogr.eval.batch_runner import run_batch_sync, run_config_header
-        from ogr.pipelines.p2_graphrag import run_p2_graphrag
-        from ogr.pipelines.p3_agentic.orchestrator import run_p3_agentic
+        from ogr.eval.batch_runner import default_pipelines, run_batch_sync, run_config_header
 
         config = get_default_config()
         client = TigerGraphClient(config)
-        run_id = args.run_id or datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+        started = datetime.now(UTC)
+        run_id = args.run_id or started.strftime("%Y%m%dT%H%M%SZ")
 
-        pipelines = {
-            "rag": lambda q: run_p1_rag(query=q, client=client, config=config),
-            "graphrag": lambda q: run_p2_graphrag(query=q, client=client, config=config),
-            "agentic_graphrag": lambda q: run_p3_agentic(query=q, tg_client=client, config=config),
-        }
         count = run_batch_sync(
             questions_path=args.questions,
             out_path=args.out,
-            pipelines=pipelines,
+            pipelines=default_pipelines(config, client),
             run_id=run_id,
-            run_config=run_config_header(config),
+            run_config={
+                **run_config_header(config),
+                "dataset": Path(args.questions).stem,
+                "started_at": started.isoformat(),
+            },
             pool_size=config.pool_size,
         )
         print(f"Batch {run_id}: ran {count} question(s), wrote to {args.out}")
