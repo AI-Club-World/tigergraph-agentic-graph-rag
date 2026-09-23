@@ -6,7 +6,7 @@
 
 This is iteration 3 of the audit record (`AUDIT.md` = iteration 1/2, covering P1/P3 plus a follow-on pass). This file does not replace it — it is an independent second read, scoped to code quality/architecture/spec-compliance/judging-criteria rather than task-by-task PLAN-00x conformance.
 
-**Resolution pass (2026-09-23):** every finding below is annotated inline; the Scorecard adds a post-fix column. Also in this pass (technical directive, not an audit finding): default embedding model switched to `BAAI/bge-small-en-v1.5` (same 384-dim, free/local) — requires a `/build` re-embed of an existing index. Follow-up pass: scatter x-tick key collisions (`Charts.tsx`), unbounded `StreamTokenStore` (`api/security.py`), and per-iteration groundedness LLM calls (`evidence.py` deterministic pre-check, `orchestrator.py` verdict reuse) fixed; specs resynced to code.
+**Resolution pass (2026-09-23):** every finding below is annotated inline; the Scorecard adds a post-fix column. Also in this pass (technical directive, not an audit finding): default embedding model switched to `BAAI/bge-small-en-v1.5` (same 384-dim, free/local) — requires a `/build` re-embed of an existing index. Measured on the public set (P1-equivalent unfiltered top-10 over all 16,669 chunks, doc-level vs `gold_doc_ids`): recall@10 0.602 → 0.709, hit@10 0.820 → 0.850; gains on lookup/temporal/aggregation/superlative, loss on multi_hop (recall 0.536 → 0.464); corpus encode ~4× slower on CPU (one-time ingest cost). Follow-up pass: scatter x-tick key collisions (`Charts.tsx`), unbounded `StreamTokenStore` (`api/security.py`), and per-iteration groundedness LLM calls (`evidence.py` deterministic pre-check, `orchestrator.py` verdict reuse) fixed; specs resynced to code.
 
 ---
 
