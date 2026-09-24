@@ -33,6 +33,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import APIRouter, Body, Depends, FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
@@ -55,6 +56,20 @@ from ogr.pipelines.p3_agentic.orchestrator import astream_p3_agentic
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="OGR API")
+
+# The frontend runs on a different origin (Vite dev server, or a deployed
+# static host) and calls this API directly from the browser — without this,
+# every fetch fails at the CORS preflight before X-API-Key is ever checked.
+# Origins come from OGR_CORS_ORIGINS (config.py); `allow_credentials=False`
+# because auth is a header/query token, not a cookie.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=get_default_config().ogr_cors_origins,
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 router = APIRouter(dependencies=[Depends(require_api_key)])
 
 _stream_tokens = StreamTokenStore(ttl_s=get_default_config().ogr_stream_token_ttl_s)

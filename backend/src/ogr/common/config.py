@@ -169,6 +169,18 @@ class RunConfig(BaseModel):
     ogr_stream_token_ttl_s: int = Field(
         default_factory=lambda: int(_env("OGR_STREAM_TOKEN_TTL_S", "300"))
     )
+    # CORS. Comma-separated browser origins allowed to call this API; the
+    # Vite dev server (5173) is included by default so `npm run dev` works
+    # against a locally running backend with no extra configuration.
+    ogr_cors_origins: list[str] = Field(
+        default_factory=lambda: [
+            origin.strip()
+            for origin in _env(
+                "OGR_CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"
+            ).split(",")
+            if origin.strip()
+        ]
+    )
 
 
 

@@ -71,6 +71,13 @@ export function App() {
           <Route path="*" element={<p className="pad">Not found.</p>} />
         </Routes>
       </main>
+
+      <footer className="app-foot">
+        <span>
+          Telemetry framework<strong>Standard RAG · GraphRAG · Agentic GraphRAG</strong>
+        </span>
+        <span>Deterministic Benchmark Cockpit</span>
+      </footer>
     </div>
   )
 }

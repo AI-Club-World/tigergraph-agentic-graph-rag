@@ -35,7 +35,7 @@ function column(pipeline: PipelineId): HTMLElement {
 }
 
 function metric(col: HTMLElement, label: string): string {
-  return within(col).getByText(label).previousElementSibling?.textContent ?? ''
+  return within(col).getByText(label).nextElementSibling?.textContent ?? ''
 }
 
 async function start() {
@@ -96,20 +96,20 @@ describe('BuildView reducer', () => {
     await emit(event({ stage: 'parse_infoboxes', items_done: 30, items_total: 100 }))
 
     const rag = column('rag')
-    expect(metric(rag, 'documents')).toBe('50')
+    expect(metric(rag, 'Documents')).toBe('50')
     expect(within(rag).getByText('30 / 100 items')).toBeInTheDocument()
 
     // chunk_documents and embed_chunks share the chunks counter.
     await emit(event({ stage: 'chunk_documents', items_done: 800, items_total: 800 }))
     await emit(event({ stage: 'embed_chunks', items_done: 200, items_total: 800 }))
-    expect(metric(column('rag'), 'chunks')).toBe('800')
+    expect(metric(column('rag'), 'Chunks')).toBe('800')
 
     // A stage outside the map owns no counter.
     await emit(event({ stage: 'vector_index', items_done: 9999, items_total: 9999 }))
-    expect(metric(column('rag'), 'documents')).toBe('50')
-    expect(metric(column('rag'), 'chunks')).toBe('800')
-    expect(metric(column('rag'), 'vertices')).toBe('0')
-    expect(metric(column('rag'), 'edges')).toBe('0')
+    expect(metric(column('rag'), 'Documents')).toBe('50')
+    expect(metric(column('rag'), 'Chunks')).toBe('800')
+    expect(metric(column('rag'), 'Vertices')).toBe('0')
+    expect(metric(column('rag'), 'Edges')).toBe('0')
   })
 
   it('accumulates tokens and logs every event', async () => {
