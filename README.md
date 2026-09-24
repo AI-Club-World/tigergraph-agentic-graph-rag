@@ -5,10 +5,14 @@
 > today, what does not and why, what you need to supply, and the ordered list
 > of what to build next.
 >
-> **Current state in one line:** three pipelines and the UI are implemented and
-> unit-tested (185 backend tests green), but the system has **never run
-> end to end** — there is no ingestion code, there are no GSQL queries, and
-> there is no HTTP API, so the frontend runs on fixtures.
+> **Current state in one line:** three pipelines, the GSQL query library, the
+> ingestion path, the FastAPI service and the UI are all implemented and can
+> run end to end against a real TigerGraph workspace and a real LLM — see
+> [Getting started](#getting-started) below. Without those two credentials
+> supplied, the frontend still runs on its own against fixture data
+> (`VITE_USE_MOCK_API` defaults to `true`). [`config-docs/AUDIT.md`](config-docs/AUDIT.md)
+> and [`config-docs/AUDIT-03.md`](config-docs/AUDIT-03.md) record what was
+> checked and how.
 
 Three pipelines — RAG, GraphRAG and Agentic GraphRAG — answering the same
 questions over the same corpus, benchmarked to determine when a multi-step
@@ -16,14 +20,122 @@ agentic investigation beats simpler retrieval and when it is overkill once
 token and complexity cost are counted.
 
 This is the integration branch. It holds the `backend/` module (record
-contracts, all three pipelines, the deterministic scorer, dispatcher and
-aggregator), the `frontend/` module (three-column comparison UI, build view,
-dashboard and per-question eval table), and the `scripts/` vector spike.
+contracts, all three pipelines, ingestion, the GSQL query library, the
+deterministic scorer/dispatcher/aggregator and the FastAPI service), the
+`frontend/` module (three-column comparison UI, build view, dashboard and
+per-question eval table), and the `scripts/` vector spike.
 
-The frontend still runs against fixture data by default — `VITE_USE_MOCK_API`
-defaults to `true` — because the FastAPI service that joins the two modules
-(`API-01`) is not built yet. [`config-docs/AUDIT.md`](config-docs/AUDIT.md)
-records what is implemented and what is not.
+## Getting started
+
+Two independent pieces run here: the **backend** (FastAPI + the three
+pipelines + TigerGraph) and the **frontend** (the React UI). The frontend
+works on its own with no backend at all — it defaults to fixture data — but
+to see real answers from a real graph and a real LLM, both need to be running
+at once, in two terminals, pointed at each other.
+
+### Prerequisites
+
+| Needed | Version | Why |
+|---|---|---|
+| Python | 3.11+ | Backend (FastAPI, the pipelines, ingestion) |
+| Node.js | 20+ | Frontend (Vite, React) |
+| A TigerGraph workspace | Savanna (cloud) or Community Edition 4.2+ | Vectors *and* the graph both live there — no FAISS/Chroma/pgvector substitute |
+| An LLM endpoint | any OpenAI-compatible API | Intent parsing, generation, groundedness checks |
+
+The TigerGraph workspace and LLM endpoint are only required to run the
+**backend** for real. Skip both and just run the frontend (below) to explore
+the UI on illustrative fixture data.
+
+### 1. Configure the backend
+
+From the repo root:
+
+```bash
+cp env.example .env
+```
+
+Fill in `.env`:
+
+| Variable(s) | What to put there |
+|---|---|
+| `TG_HOST` | Your workspace endpoint (Savanna: workspace page → **Connect**) |
+| `TG_TOKEN`, or `TG_USERNAME`/`TG_PASSWORD`, or `TG_SECRET`, or `TG_JWT_TOKEN` | Whichever credential style your workspace issues, in that order of preference — see the comment above `_connect()` in `backend/src/ogr/graph/client.py` if more than one is set |
+| `LLM_PROVIDER`, `LLM_MODEL`, `LLM_API_KEY` (and `LLM_BASE_URL` for anything that isn't `api.openai.com`) | Any OpenAI-compatible endpoint — a paid key, a free-tier key, or a local server (Ollama, llama.cpp, vLLM) |
+| `OGR_API_KEY` | Any string of 8+ characters. Required — the API refuses every request (except `/health`) until this is set. Generate one with `python -c "import secrets; print(secrets.token_urlsafe(24))"` |
+
+`OGR_CORS_ORIGINS` already defaults to the Vite dev server's origins
+(`http://localhost:5173`), so it needs no change for local development.
+
+`.env` is git-ignored. Never commit real values, and never put a secret in a
+`VITE_`-prefixed variable — those are compiled into the browser bundle (see
+"Swapping mock → real API" under Frontend, below).
+
+### 2. Install and start the backend
+
+```bash
+pip install -e "backend[dev]"          # installs FastAPI, the pipelines, pytest, ruff
+python -m ogr.cli verify               # confirms the LLM and TigerGraph endpoints are reachable
+```
+
+`verify` checks credentials without spending more than a few tokens or
+touching the graph. If it reports the five GSQL queries (`q1_lookup` …
+`q5_hybrid_search`) are **not** installed, run the one-time build first — it
+chunks and embeds the corpus, installs the schema, loads the graph and
+installs the queries (idempotent; safe to re-run):
+
+```bash
+python -m ogr.cli build                # only needed once per TigerGraph workspace
+```
+
+Then start the API:
+
+```bash
+python -m uvicorn ogr.api.main:app --app-dir backend/src --host 127.0.0.1 --port 8000
+```
+
+Confirm it's up: `curl http://127.0.0.1:8000/health` → `{"status":"ok"}`.
+Leave this running in its own terminal.
+
+### 3. Install and start the frontend
+
+In a second terminal:
+
+```bash
+cd frontend
+npm install
+cp .env.example .env
+```
+
+Edit `frontend/.env` to point at the backend you just started:
+
+```bash
+VITE_USE_MOCK_API=false
+VITE_API_BASE_URL=http://127.0.0.1:8000
+VITE_API_KEY=<the same value as OGR_API_KEY in the backend's .env>
+```
+
+```bash
+npm run dev
+```
+
+Open **http://localhost:5173**. Submit a query on the Search screen — all
+three pipeline columns, the trace panel and the verdict strip should fill in
+with real data.
+
+To skip all of this and just look at the UI, leave `frontend/.env` unset (or
+`VITE_USE_MOCK_API=true`) and run only step 3 — no backend, no credentials,
+no TigerGraph.
+
+### Troubleshooting
+
+| Symptom | Likely cause |
+|---|---|
+| Frontend shows a `MOCK DATA` badge in the header | `VITE_USE_MOCK_API` is `true` (or unset) in `frontend/.env` — restart `npm run dev` after changing it, Vite only reads `.env` at startup |
+| Every backend request gets `401 Unauthorized` | `OGR_API_KEY` is unset on the backend, or doesn't match `VITE_API_KEY` on the frontend |
+| Backend requests fail in the browser console with a CORS error | The frontend isn't running on an origin listed in `OGR_CORS_ORIGINS` (defaults to `localhost:5173`/`127.0.0.1:5173`) — add yours and restart the backend |
+| `ogr.cli verify` fails on TigerGraph | Check `TG_HOST` is the full `https://…` workspace URL, and that exactly one credential style is filled in correctly |
+| `ogr.cli verify` fails on the LLM with a `429`/quota error | The configured key has no remaining credit — swap in a different provider or a local server (`LLM_BASE_URL=http://localhost:11434/v1` for Ollama, no key needed) |
+| A query pipeline returns "not mentioned" / empty citations for every question | `ogr.cli verify` passes but the five GSQL queries aren't installed yet, or the graph is empty — run `python -m ogr.cli build` |
 
 ## Documentation
 
@@ -51,6 +163,30 @@ Source files cite these documents by name in their docstrings (for example
 the directory moved.
 
 # Backend
+
+## Run it
+
+See [Getting started](#getting-started) above for the full setup (`.env`,
+TigerGraph, an LLM endpoint). Once configured:
+
+```bash
+pip install -e "backend[dev]"
+python -m uvicorn ogr.api.main:app --app-dir backend/src --host 127.0.0.1 --port 8000
+```
+
+| Command | What it does |
+|---|---|
+| `python -m ogr.cli verify` | Checks the LLM and TigerGraph endpoints are reachable, and whether Q1–Q5 are installed. Spends only a few tokens, changes nothing |
+| `python -m ogr.cli build` | One-time per workspace: chunk + embed the corpus, install the schema, load the graph, install Q1–Q5. Idempotent |
+| `python -m ogr.cli ask "<question>" --pipelines rag,graphrag,agentic_graphrag` | Answer one question from the terminal, without the API or frontend |
+| `python -m ogr.cli batch <questions.jsonl> --out out/run.jsonl` | Run a full question set through all three pipelines (`EVAL-04`) |
+| `python -m uvicorn ogr.api.main:app --app-dir backend/src --port 8000` | Start the HTTP API the frontend talks to |
+| `cd backend && pytest -q` | Run the test suite |
+| `cd backend && ruff check src tests` | Lint |
+
+Or, from a clean clone with `.env` filled in, `make reproduce` runs
+`install → check → verify → build → benchmark → timing → holdout` in one go
+(see `Makefile`).
 
 ## P1 Baseline (Honest Unfiltered RAG)
 
@@ -110,7 +246,8 @@ cd frontend && npm install && cp .env.example .env && npm run dev
 ```
 
 Then open http://localhost:5173. No backend is required — `VITE_USE_MOCK_API`
-defaults to `true`.
+defaults to `true`. To run this against a real backend instead of fixtures,
+see [Getting started](#getting-started) above.
 
 | Command | What it does |
 |---|---|

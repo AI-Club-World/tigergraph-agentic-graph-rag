@@ -37,7 +37,7 @@ Status: **v0.3 — synchronised with implementation plans, 2026-09-21.** Superse
 | Decision | Resolution | Basis |
 |---|---|---|
 | Gold documents outside Olympic subset? | No — 547/547 gold references are Olympic infoboxes | Verified against eval_public.jsonl × corpus.jsonl |
-| Embedding model | all-MiniLM-L6-v2, 384-dim, local via sentence-transformers; provider models config-swappable | Deterministic, zero API cost, no rate limits, removes an external dependency from the reproduce path |
+| Embedding model | BAAI/bge-small-en-v1.5, 384-dim, local via sentence-transformers; provider models config-swappable | Deterministic, zero API cost, no rate limits, removes an external dependency from the reproduce path |
 | TigerGraph deployment | Savanna | Guidebook-recommended, credits provided, removes ops burden in a short build window; 384-dim fits either option so this is reversible |
 | Venue modeling | Venue as vertex, not secondary index | 303 distinct venues; 23% of venue+date pairs non-unique — multi-hop requires traverse-then-disambiguate |
 | Person/NOC vertices + WON_MEDAL edges | Cut — medalists are string attributes on the event | No question type traverses person→events; only 2/100 answers contain concatenated multi-person names |
@@ -115,7 +115,7 @@ Status: **v0.3 — synchronised with implementation plans, 2026-09-21.** Superse
 |---|---|
 | TigerGraph Savanna (or Community Edition fallback) | Graph + vector backend; 384-dim embedding fits either |
 | LLM API (any provider) | Intent parsing (function-calling), generation, evidence evaluation |
-| Local embedding model | all-MiniLM-L6-v2, 384-dim, sentence-transformers — provider-swappable via config |
+| Local embedding model | BAAI/bge-small-en-v1.5, 384-dim, sentence-transformers — provider-swappable via config |
 | Provided dataset | Corpus (corpus.jsonl) + 100 known (eval_public.jsonl) + 50 hidden (eval_hidden.jsonl, field name is `qid` not `question_id`) questions |
 
 ## 9. Open Questions

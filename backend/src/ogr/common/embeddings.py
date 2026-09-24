@@ -1,25 +1,61 @@
 """Embedding utilities for OGR pipelines.
-Generates 384-dimensional query embeddings using sentence-transformers/all-MiniLM-L6-v2.
+Generates 384-dimensional embeddings with the configured local
+sentence-transformers model (`EMBEDDING_MODEL`, default BAAI/bge-small-en-v1.5).
+Ingestion and every pipeline's query path call this one module, so the index
+and the queries are always embedded by the same model.
 """
 
 from __future__ import annotations
 
 import hashlib
+import logging
 import math
+import threading
 
-_MODEL_INSTANCE = None
+logger = logging.getLogger(__name__)
+
+# model_name -> loaded model, or None when loading failed (not retried).
+_MODELS: dict[str, object | None] = {}
+_MODELS_LOCK = threading.Lock()
 
 
-def get_embedding_model(model_name: str = "sentence-transformers/all-MiniLM-L6-v2"):
-    """Loads and caches the local embedding model."""
-    global _MODEL_INSTANCE
-    if _MODEL_INSTANCE is None:
-        try:
-            from sentence_transformers import SentenceTransformer
-            _MODEL_INSTANCE = SentenceTransformer(model_name)
-        except Exception:
-            _MODEL_INSTANCE = None
-    return _MODEL_INSTANCE
+def _configured_model() -> str:
+    from ogr.common.config import get_default_config
+
+    return get_default_config().embedding_model
+
+
+def get_embedding_model(model_name: str | None = None):
+    """Loads and caches the local embedding model, one instance per model name."""
+    model_name = model_name or _configured_model()
+    with _MODELS_LOCK:
+        if model_name not in _MODELS:
+            try:
+                from sentence_transformers import SentenceTransformer
+
+                try:
+                    # Cached weights first: an online check on every process
+                    # start hits Hugging Face rate limits (90 s waits observed).
+                    _MODELS[model_name] = SentenceTransformer(model_name, local_files_only=True)
+                except Exception:
+                    _MODELS[model_name] = SentenceTransformer(model_name)
+            except Exception as e:
+                # Every embedding after this is a hash pseudo-vector, so
+                # semantic search runs against noise. Say so loudly, once.
+                logger.error(
+                    "Embedding model %r failed to load (%s); using the hash fallback — "
+                    "vector search results are NOT semantic",
+                    model_name,
+                    e,
+                )
+                _MODELS[model_name] = None
+        return _MODELS[model_name]
+
+
+def embedding_backend(model_name: str | None = None) -> str:
+    """'sentence-transformers' or 'hash_fallback' — recorded in each batch
+    run's header so a degraded run is visible in its results (NFR-4)."""
+    return "sentence-transformers" if get_embedding_model(model_name) is not None else "hash_fallback"
 
 
 def _fallback_vector(text: str, dim: int) -> list[float]:
@@ -33,7 +69,7 @@ def _fallback_vector(text: str, dim: int) -> list[float]:
 
 def embed_query(
     text: str,
-    model_name: str = "sentence-transformers/all-MiniLM-L6-v2",
+    model_name: str | None = None,
     dim: int = 384,
 ) -> list[float]:
     """Generates a normalized embedding vector for query text.
@@ -48,7 +84,7 @@ def embed_query(
 
 def embed_texts(
     texts: list[str],
-    model_name: str = "sentence-transformers/all-MiniLM-L6-v2",
+    model_name: str | None = None,
     dim: int = 384,
     batch_size: int = 64,
 ) -> list[list[float]]:

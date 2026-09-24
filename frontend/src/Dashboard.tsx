@@ -44,11 +44,13 @@ export function Dashboard() {
       const rows = scored.filter((r) => r.qtype === qtype)
       const emGap =
         mean(scoresBy(rows, 'agentic_graphrag', 'em')) - mean(scoresBy(rows, 'rag', 'em'))
+      // Mean of per-question ratios; a question with zero RAG tokens has no
+      // defined ratio and is left out rather than folding Infinity/NaN in.
       const multiplier = mean(
-        rows.map(
-          (r) =>
-            r.record.pipelines.agentic_graphrag.tokens.total / r.record.pipelines.rag.tokens.total,
-        ),
+        rows.flatMap((r) => {
+          const ragTokens = r.record.pipelines.rag.tokens.total
+          return ragTokens ? [r.record.pipelines.agentic_graphrag.tokens.total / ragTokens] : []
+        }),
       )
       return { qtype, n: rows.length, rows, emGap, multiplier }
     })
@@ -114,12 +116,12 @@ export function Dashboard() {
         <RunPicker runId={runId} onChange={setRunId} />
       </header>
 
-      {loading && <p className="muted pad">Loading run “{runId}”…</p>}
+      {loading && <p className="muted pad">Loading run "{runId}"…</p>}
       {error && <p className="error-box pad">{error}</p>}
 
       {records && !scored.length && (
         <p className="note pad">
-          Run “{runId}” carries no ground truth, so no accuracy metrics can be shown. Token, latency
+          Run "{runId}" carries no ground truth, so no accuracy metrics can be shown. Token, latency
           and trace aggregations below still apply.
         </p>
       )}

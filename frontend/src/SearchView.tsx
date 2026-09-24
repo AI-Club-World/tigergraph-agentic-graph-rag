@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { Icon } from './components/Icon'
 import { QueryInput } from './components/QueryInput'
 import { ResultColumn, type ColumnState } from './components/ResultColumn'
 import { VerdictStrip } from './components/VerdictStrip'
@@ -75,17 +76,56 @@ export function SearchView() {
   }
 
   const agentic = columns.agentic_graphrag
+  const settled = PIPELINE_IDS.filter((p) => ['done', 'error'].includes(columns[p].status)).length
+  // Concise status for screen readers; only changes when a pipeline settles, a
+  // trace step arrives, or the verdict lands.
+  const announcement = result
+    ? 'All three pipelines complete. Verdict ready.'
+    : inFlight
+      ? `${settled} of 3 pipelines complete, ${trace.length} trace ${trace.length === 1 ? 'step' : 'steps'}.`
+      : ''
+
+  const consoleState = inFlight ? 'running' : result ? 'complete' : 'idle'
+  const consoleLabel = {
+    idle: 'Awaiting query',
+    running: `Synchronized run · ${settled}/3 settled`,
+    complete: 'Synchronized benchmark complete',
+  }[consoleState]
 
   return (
     <div className="view search-view">
-      <QueryInput onSubmit={runQuery} disabled={inFlight} />
+      <section className="panel-x console">
+        <header className="panel-x-head">
+          <h2 className="panel-x-title">
+            <Icon name="scan" size={20} className="accent" />
+            Synchronous Execution Console
+          </h2>
+          <span className={`live-flag ${consoleState}`}>
+            <span className="dot" aria-hidden="true" />
+            {consoleLabel}
+          </span>
+        </header>
+        <QueryInput onSubmit={runQuery} disabled={inFlight} />
+      </section>
+
+      <p className="sr-only" aria-live="polite" role="status">
+        {announcement}
+      </p>
 
       {submitError && <p className="error-box pad">{submitError}</p>}
 
       {result ? (
         <VerdictStrip verdict={result.verdict} />
       ) : (
-        <section className="verdict placeholder">
+        <section className="panel-x verdict placeholder">
+          <header className="panel-x-head">
+            <h3 className="panel-x-title">
+              <span className="icon-box">
+                <Icon name="checkCircle" size={16} />
+              </span>
+              Verdict: pending
+            </h3>
+          </header>
           <p className="muted">
             The verdict strip renders once all three pipelines have completed.
           </p>

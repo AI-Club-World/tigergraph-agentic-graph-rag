@@ -54,7 +54,10 @@ export function ScatterPlot({
   const sy = (y: number) => pad.top + plotH - y * plotH
 
   const yTicks = [0, 0.25, 0.5, 0.75, 1]
-  const xTicks = [0, 0.25, 0.5, 0.75, 1].map((f) => Math.round((xMax * f) / 100) * 100)
+  // Hundreds, per UI-SPEC; below a max of 400 hundreds would collapse ticks
+  // onto each other, so the unit drops to the largest power of ten <= max/4.
+  const unit = Math.min(100, Math.max(1, 10 ** Math.floor(Math.log10(xMax / 4))))
+  const xTicks = [...new Set([0, 0.25, 0.5, 0.75, 1].map((f) => Math.round((xMax * f) / unit) * unit))]
 
   return (
     <figure className="scatter">
@@ -106,6 +109,31 @@ export function ScatterPlot({
           </span>
         ))}
       </figcaption>
+      <details className="chart-data">
+        <summary>Show data table</summary>
+        <table className="matrix">
+          <thead>
+            <tr>
+              <th scope="col">Series</th>
+              <th scope="col">Point</th>
+              <th scope="col">{xLabel}</th>
+              <th scope="col">{yLabel}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {series.flatMap((s) =>
+              s.points.map((p, i) => (
+                <tr key={`${s.name}-${i}`}>
+                  <th scope="row">{s.name}</th>
+                  <td>{p.label}</td>
+                  <td>{p.x.toLocaleString('en-US')}</td>
+                  <td>{p.y.toFixed(2)}</td>
+                </tr>
+              )),
+            )}
+          </tbody>
+        </table>
+      </details>
     </figure>
   )
 }

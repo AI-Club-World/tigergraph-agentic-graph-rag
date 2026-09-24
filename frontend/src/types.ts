@@ -70,7 +70,7 @@ export interface PipelineRecord {
   chunks_returned: number
   citations_count: number
   tokens: TokenUsage
-  token_source: 'provider' | 'local_tokenizer'
+  token_source: 'provider' | 'local_tokenizer' | 'estimated'
   latency_ms: number
   trace: TraceStep[] | null
   strategy_changed: boolean | null

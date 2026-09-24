@@ -29,7 +29,7 @@ import time
 from typing import Any
 
 from ogr.common.config import RunConfig, get_default_config
-from ogr.common.contracts import Citation, PipelineRecord, TokenUsage
+from ogr.common.contracts import Citation, PipelineRecord, TokenUsage, format_evidence_context
 from ogr.common.llm import (
     get_chat_model,
     invoke_llm_with_answer_contract,
@@ -38,7 +38,7 @@ from ogr.common.llm import (
 from ogr.graph.client import TigerGraphClient
 from ogr.pipelines.p3_agentic.agents.agent_result import AgentResult
 from ogr.pipelines.p3_agentic.agents.aggregation import run_aggregation
-from ogr.pipelines.p3_agentic.agents.entity_linking import EntityLinker, ResolvedAnchors
+from ogr.pipelines.p3_agentic.agents.entity_linking import EntityLinker, ResolvedAnchors, narrow_to_games
 from ogr.pipelines.p3_agentic.agents.graph_traversal import run_graph_traversal
 from ogr.pipelines.p3_agentic.intent import IntentParser, IntentSchema
 from ogr.pipelines.p3_agentic.router import route
@@ -70,7 +70,7 @@ def _run_lookup(client: TigerGraphClient, intent: IntentSchema, anchors: Resolve
         "event_id": anchors.event_id or "",
         "target_field": intent.target_field or "",
     }
-    raw = client._run_query("q1_lookup", params) or []
+    raw = narrow_to_games(client._run_query("q1_lookup", params) or [], anchors.games)
     return AgentResult(
         evidence=raw,
         chunks_returned=len(raw),
@@ -82,19 +82,7 @@ def _run_lookup(client: TigerGraphClient, intent: IntentSchema, anchors: Resolve
 
 def format_evidence_into_context(evidence: list[dict[str, Any]]) -> str:
     """Render graph evidence as the context block for the shared prompt."""
-    if not evidence:
-        return "No relevant graph results found."
-
-    parts: list[str] = []
-    for index, item in enumerate(evidence, 1):
-        source = item.get("doc_id") or item.get("event_id") or "unknown"
-        body = (
-            item.get("text")
-            or item.get("event_name")
-            or str(item.get("count", item.get("value", "")))
-        )
-        parts.append(f"[{index}] [Source: {source}]\n{body}")
-    return "\n\n".join(parts)
+    return format_evidence_context(evidence)
 
 
 def _citations_from(evidence: list[dict[str, Any]]) -> list[Citation]:

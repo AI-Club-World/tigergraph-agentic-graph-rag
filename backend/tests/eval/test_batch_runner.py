@@ -11,7 +11,10 @@ from __future__ import annotations
 import json
 
 from ogr.common.contracts import Citation, PipelineRecord, TokenUsage
-from ogr.eval.batch_runner import load_questions, run_batch_sync
+import pytest
+
+from ogr.eval import store as store_module
+from ogr.eval.batch_runner import BatchIncompleteError, load_questions, run_batch_sync
 from ogr.eval.store import read_written_qids
 
 
@@ -128,3 +131,76 @@ class TestRunBatch:
         record = json.loads(out_path.read_text(encoding="utf-8").splitlines()[1])
         assert record["record"]["pipelines"]["graphrag"]["status"] == "error"
         assert record["record"]["pipelines"]["rag"]["status"] == "done"
+
+
+class TestPostDispatchFailureIsolation:
+    """A failure after dispatch (record construction, the store's secret
+    check) must not cancel the other in-flight questions, and must not be
+    silent either."""
+
+    def test_one_unrecordable_question_does_not_abort_the_run(self, tmp_path, monkeypatch):
+        questions_path = tmp_path / "q.jsonl"
+        _write_questions(questions_path, [
+            {"qid": f"pub-00{i}", "question": f"Q{i}", "answer": ["5"]} for i in range(1, 5)
+        ])
+        out_path = tmp_path / "run.jsonl"
+
+        real_append = store_module.BatchStore.append
+
+        def _append(self, record):
+            if record["question_id"] == "pub-002":
+                raise store_module.SecretLeakError("simulated")
+            real_append(self, record)
+
+        monkeypatch.setattr(store_module.BatchStore, "append", _append)
+        with pytest.raises(BatchIncompleteError, match="pub-002"):
+            run_batch_sync(questions_path, out_path, _stub_pipelines(), "run-a", {}, pool_size=2)
+        assert read_written_qids(out_path) == {"pub-001", "pub-003", "pub-004"}
+
+        # Resume retries only the unrecorded question.
+        monkeypatch.setattr(store_module.BatchStore, "append", real_append)
+        assert run_batch_sync(questions_path, out_path, _stub_pipelines(), "run-a", {}) == 1
+        assert read_written_qids(out_path) == {"pub-001", "pub-002", "pub-003", "pub-004"}
+
+
+class TestRunLevelControls:
+    def test_token_ceiling_stops_starting_questions_and_holds_across_resume(self, tmp_path):
+        from ogr.eval.batch_runner import BatchIncompleteError
+
+        questions_path = tmp_path / "q.jsonl"
+        _write_questions(questions_path, [
+            {"qid": f"pub-00{i}", "question": f"Q{i}", "answer": ["5"]} for i in range(1, 6)
+        ])
+        out_path = tmp_path / "run.jsonl"
+        # Each question costs 100 + 200 + 400 = 700 tokens; serial pool.
+        with pytest.raises(BatchIncompleteError, match="token ceiling"):
+            run_batch_sync(questions_path, out_path, _stub_pipelines(), "run-a", {}, pool_size=1, max_total_tokens=1400)
+        assert len(read_written_qids(out_path)) == 2
+        # Resume under the same ceiling starts nothing: the file already spent it.
+        with pytest.raises(BatchIncompleteError, match="5 pending|3 pending"):
+            run_batch_sync(questions_path, out_path, _stub_pipelines(), "run-a", {}, pool_size=1, max_total_tokens=1400)
+        assert len(read_written_qids(out_path)) == 2
+        # Raising the ceiling finishes the run.
+        assert run_batch_sync(questions_path, out_path, _stub_pipelines(), "run-a", {}, pool_size=1) == 3
+
+    def test_timing_mode_runs_one_question_at_a_time(self):
+        from ogr.common.config import RunConfig
+        from ogr.eval.batch_runner import effective_pool_size, run_config_header
+
+        assert effective_pool_size(RunConfig(pool_size=4, latency_mode="timing")) == 1
+        assert effective_pool_size(RunConfig(pool_size=4, latency_mode="throughput")) == 4
+        with pytest.raises(ValueError):
+            effective_pool_size(RunConfig(latency_mode="fast"))
+
+    def test_header_records_mode_seed_and_ceiling(self, monkeypatch):
+        from ogr.common.config import RunConfig
+        from ogr.eval import batch_runner
+
+        monkeypatch.setattr(batch_runner, "embedding_backend", lambda _m: "sentence-transformers")
+        header = batch_runner.run_config_header(
+            RunConfig(latency_mode="timing", seed=7, max_total_tokens=99, pool_size=4)
+        )
+        assert header["latency_mode"] == "timing"
+        assert header["pool_size"] == 1
+        assert header["seed"] == 7
+        assert header["max_total_tokens"] == 99

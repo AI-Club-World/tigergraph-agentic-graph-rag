@@ -128,7 +128,7 @@ interface PipelineRecord {
   chunks_returned: number
   citations_count: number
   tokens: TokenUsage
-  token_source: 'provider' | 'local_tokenizer'
+  token_source: 'provider' | 'local_tokenizer' | 'estimated'
   latency_ms: number
   trace: TraceStep[] | null    // non-null only for agentic_graphrag
   strategy_changed: boolean | null
@@ -234,7 +234,7 @@ must work identically against fixtures and against the real API.
 | Batch records | `GET /batch/{run_id}/records` | `BatchRecord[]` |
 | Run history | `GET /runs` | `RunSummary[]` (newest first) |
 | Datasets | `GET /datasets` | `string[]` |
-| Execute benchmark | `POST /batch` body `{ dataset }` | `202 {run_id, status}` |
+| Execute benchmark | `POST /batch` body `{ dataset }` (server also accepts optional `run_id`, `latency_mode`) | `202 {run_id, status}` |
 | Import run | `POST /runs/import` body `RunExport` or `BatchRecord[]` | `201 RunSummary` |
 
 The run picker on Dashboard and Eval table stays a free-text field (§10.1);
@@ -407,6 +407,8 @@ badge.
    - `citations_count`, label `citations`
 4. **Token-source note** — when `token_source === 'local_tokenizer'`:
    `Token counts came from the local tokenizer — the configured provider reported no usage.`
+   When `token_source === 'estimated'`:
+   `Token counts are estimates (about 4 characters per token) — the provider reported no usage and the model has no tokenizer.`
    (Honesty about provenance; do not drop it.)
 5. **Stop reason** — when present: label `Stopped because` + the raw
    `stop_reason` in monospace.
@@ -686,7 +688,8 @@ Two chart primitives today, both dependency-free (no chart library):
 - **ScatterPlot** — multi-series, 640×300 viewBox, padding
   `{top 16, right 16, bottom 44, left 52}`; x scaled to `1.05 × max(x)`; y fixed
   0–1; y gridlines and ticks at `0, .25, .5, .75, 1`; x ticks at the same
-  fractions of the max, rounded to hundreds; points r=5 at 70% fill opacity,
+  fractions of the max, rounded to hundreds (below a max of 400: to the
+  largest power of ten <= max/4), duplicates dropped; points r=5 at 70% fill opacity,
   each with a hover title; axis labels on both axes; legend of series swatches.
   Empty → `No data.`
 
@@ -800,13 +803,18 @@ Present today, to be kept or improved:
   `colSpan`/`rowSpan` for the grouped headers.
 - Form controls are associated with labels (the run picker uses `htmlFor`).
 
-Known gaps — fix in the rebuild rather than reproduce:
+Former gaps, now implemented (AUDIT-03) — keep them in any rebuild:
 
-- The expandable eval rows are clickable `<tr>` elements with no keyboard
-  handler and no `aria-expanded`. Make them keyboard-operable.
-- Nothing is announced to screen readers when a pipeline settles or a trace step
-  arrives. An `aria-live="polite"` region would be a genuine improvement.
-- Chart tooltips are SVG `<title>` only (hover). Consider a data-table fallback.
+- Expandable eval rows are focusable (`tabIndex=0`), toggle on Enter/Space
+  (Space's default prevented), carry `aria-expanded`, and while open point
+  `aria-controls` at the drill-down row (`id="eval-detail-{qid}"`).
+- Search view has a visually hidden `role="status"` `aria-live="polite"`
+  region: `"{k} of 3 pipelines complete, {n} trace step(s)."` while running,
+  `"All three pipelines complete. Verdict ready."` once the result lands,
+  empty otherwise.
+- Every ScatterPlot has a `<details>` "Show data table" fallback listing
+  Series, Point, x and y for each plotted point. BarChart already prints its
+  values as text.
 
 ---
 

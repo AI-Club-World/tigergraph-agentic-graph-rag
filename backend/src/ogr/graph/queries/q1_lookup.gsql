@@ -67,7 +67,11 @@ FOR GRAPH OlympicGraphRAG SYNTAX V2 {
     PRINT @@rows AS results;
   ELSE IF title != "" THEN
     // Fall back to a direct Document-title match (a lookup naming a page,
-    // not a specific event).
+    // not a specific event). NOTE: shape divergence — this branch prints
+    // Document vertices ({v_id, attributes: {doc_id, title, url, ...}}) under
+    // the same `results` alias the branches above use for EventRow tuples.
+    // client._run_query and the agents read results generically by key, which
+    // is why both shapes work; a consumer that assumes EventRow must check.
     DocMatches = SELECT d FROM Document:d WHERE d.title == title;
     PRINT DocMatches AS results;
   ELSE

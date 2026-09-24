@@ -39,4 +39,4 @@ Third-party dependencies are declared in `backend/pyproject.toml` and
 LangChain and LangGraph (MIT), pyTigerGraph (Apache-2.0),
 sentence-transformers (Apache-2.0), React (MIT), Vite (MIT).
 
-The embedding model `sentence-transformers/all-MiniLM-L6-v2` is Apache-2.0.
+The embedding model `BAAI/bge-small-en-v1.5` is MIT-licensed.

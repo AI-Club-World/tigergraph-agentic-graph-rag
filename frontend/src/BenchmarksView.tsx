@@ -45,6 +45,11 @@ const CONFIG_KEYS: Array<[string, string]> = [
   ['max_steps', 'Max steps'],
   ['max_tokens_per_query', 'Token budget'],
   ['temperature', 'Temperature'],
+  ['seed', 'Seed'],
+  // Latency is only comparable across 'timing' runs (pool 1); 'throughput'
+  // runs are for accuracy and tokens.
+  ['latency_mode', 'Latency mode'],
+  ['pool_size', 'Pool size'],
 ]
 
 const value = (run: RunSummary, pipeline: (typeof PIPELINE_IDS)[number], key: keyof PipelineSummary) =>

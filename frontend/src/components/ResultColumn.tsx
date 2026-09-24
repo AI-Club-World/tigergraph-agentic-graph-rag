@@ -1,7 +1,8 @@
 import { CitationList } from './CitationList'
+import { Icon } from './Icon'
 import { StatusBadge } from './StatusBadge'
 import { ms, num } from '../format'
-import { PIPELINE_LABELS, type PipelineId, type PipelineRecord } from '../types'
+import { PIPELINE_IDS, PIPELINE_LABELS, type PipelineId, type PipelineRecord } from '../types'
 
 export interface ColumnState {
   status: 'idle' | 'running' | 'done' | 'error'
@@ -15,86 +16,113 @@ const SUBTITLES: Record<PipelineId, string> = {
   agentic_graphrag: 'Intent parse, necessity routing, evidence check, optional re-query',
 }
 
+function Stat({ label, value, sub, title }: { label: string; value: string; sub?: string; title?: string }) {
+  return (
+    <div className="stat" title={title}>
+      <span className="stat-label">{label}</span>
+      <span className="stat-value">{value}</span>
+      {sub && <span className="stat-sub">{sub}</span>}
+    </div>
+  )
+}
+
 export function ResultColumn({ pipeline, state }: { pipeline: PipelineId; state: ColumnState }) {
   const { record } = state
+  const index = String(PIPELINE_IDS.indexOf(pipeline) + 1).padStart(2, '0')
 
   return (
-    <section className="column" data-pipeline={pipeline} data-status={state.status}>
-      <header className="column-head">
+    <section className="pcard" data-pipeline={pipeline} data-status={state.status}>
+      <header className="pcard-head">
         <div>
-          <h3>{PIPELINE_LABELS[pipeline]}</h3>
-          <p className="muted">{SUBTITLES[pipeline]}</p>
+          <h3 className="pcard-title">
+            <span className="pipe-tag">Pipeline {index}</span>
+            <span className="pipe-name">{PIPELINE_LABELS[pipeline]}</span>
+          </h3>
+          <p className="pcard-sub">{SUBTITLES[pipeline]}</p>
         </div>
         <StatusBadge status={state.status} />
       </header>
 
-      {state.status === 'idle' && <p className="muted pad">Submit a query to start.</p>}
+      {state.status === 'idle' && <p className="muted pcard-pad">Submit a query to start.</p>}
 
       {state.status === 'running' && (
-        <div className="pad">
-          <div className="skeleton" />
-          <div className="skeleton short" />
-          <p className="muted">Waiting on this pipeline only — the other columns render independently.</p>
+        <div className="pcard-pad">
+          <div className="output-box">
+            <span className="output-label">Synthesized output</span>
+            <div className="skeleton tall" />
+            <div className="skeleton" />
+            <div className="skeleton short" />
+          </div>
+          <p className="muted small">Waiting on this pipeline only — the other columns render independently.</p>
         </div>
       )}
 
       {state.status === 'error' && (
-        <div className="pad error-box">
-          <strong>Pipeline failed</strong>
-          <p>{state.error ?? record?.error_detail ?? 'Unknown error'}</p>
-          <p className="muted">The other two columns are unaffected.</p>
+        <div className="pcard-pad">
+          <div className="error-box pad">
+            <strong>Pipeline failed</strong>
+            <p>{state.error ?? record?.error_detail ?? 'Unknown error'}</p>
+            <p className="muted">The other two columns are unaffected.</p>
+          </div>
         </div>
       )}
 
       {state.status === 'done' && record && (
         <>
-          <div className="answer">
-            <span className="label">Answer</span>
-            <p className="answer-text">{record.answer}</p>
+          <div className="pcard-pad">
+            <div className="output-box">
+              <span className="output-label">Synthesized output</span>
+              <p className="answer-text">{record.answer}</p>
+              <p className="explanation">{record.explanation}</p>
+
+              {record.token_source === 'local_tokenizer' && (
+                <p className="callout warn">
+                  <Icon name="warning" size={13} />
+                  <span>Token counts came from the local tokenizer — the configured provider reported no usage.</span>
+                </p>
+              )}
+              {record.token_source === 'estimated' && (
+                <p className="callout warn">
+                  <Icon name="warning" size={13} />
+                  <span>
+                    Token counts are estimates (about 4 characters per token) — the provider reported no usage and
+                    the model has no tokenizer.
+                  </span>
+                </p>
+              )}
+
+              {record.stop_reason && (
+                <p className="callout accent">
+                  <Icon name="flag" size={13} />
+                  <span>
+                    Stopped because: <code>{record.stop_reason}</code>
+                  </span>
+                </p>
+              )}
+
+              {record.strategy_changed && (
+                <p className="callout strategy">
+                  <Icon name="fork" size={13} />
+                  <span>The orchestrator deviated from its initial plan at least once.</span>
+                </p>
+              )}
+            </div>
           </div>
 
-          <p className="explanation">{record.explanation}</p>
-
-          <div className="metrics">
-            <div
-              className="metric"
-              title={`input ${num(record.tokens.input)} / output ${num(record.tokens.output)} — source: ${record.token_source}`}
-            >
-              <span className="metric-value">{num(record.tokens.total)}</span>
-              <span className="metric-label">tokens</span>
-            </div>
-            <div className="metric">
-              <span className="metric-value">{ms(record.latency_ms)}</span>
-              <span className="metric-label">latency</span>
-            </div>
-            <div className="metric">
-              <span className="metric-value">{num(record.chunks_returned)}</span>
-              <span className="metric-label">chunks</span>
-            </div>
-            <div className="metric">
-              <span className="metric-value">{num(record.citations_count)}</span>
-              <span className="metric-label">citations</span>
-            </div>
+          <div className="stat-grid">
+            <Stat
+              label="Total Tokens"
+              value={num(record.tokens.total)}
+              sub={`in ${num(record.tokens.input)} / out ${num(record.tokens.output)}`}
+              title={`source: ${record.token_source}`}
+            />
+            <Stat label="Latency" value={ms(record.latency_ms)} />
+            <Stat label="Retrieved Chunks" value={num(record.chunks_returned)} />
+            <Stat label="Citations" value={num(record.citations_count)} />
           </div>
-
-          {record.token_source === 'local_tokenizer' && (
-            <p className="note">
-              Token counts came from the local tokenizer — the configured provider reported no usage.
-            </p>
-          )}
-
-          {record.stop_reason && (
-            <p className="stop-reason">
-              <span className="label">Stopped because</span> <code>{record.stop_reason}</code>
-            </p>
-          )}
-
-          {record.strategy_changed && (
-            <p className="note strategy">The orchestrator deviated from its initial plan at least once.</p>
-          )}
 
           <div className="citations-block">
-            <span className="label">Citations</span>
+            <span className="section-label">Provenance citations</span>
             <CitationList citations={record.citations} />
           </div>
         </>

@@ -18,7 +18,7 @@ Status: **v0.3 — synchronised with implementation plans, 2026-09-21.** Superse
 | Batch runner | Submits question list programmatically, consumes structured records |
 | TigerGraph Savanna | Graph store + vector store; five installed GSQL queries; vector index async, must poll `/restpp/vector/status` before benchmark runs |
 | LLM provider API | Function-calling intent parsing, generation, evidence evaluation — no provider dependency in embeddings or scoring |
-| Local embedding model | all-MiniLM-L6-v2 (384-dim, sentence-transformers) — deterministic, no external call |
+| Local embedding model | BAAI/bge-small-en-v1.5 (384-dim, sentence-transformers) — deterministic, no external call |
 | Olympic Wikipedia corpus | 2,951 docs ingested at setup; 100 known + 50 hidden question sets as query inputs |
 
 ```
@@ -51,11 +51,11 @@ Runner  │            │──────▶┌──────────
 
 | Component | Responsibility |
 |---|---|
-| Intent Parser | LLM function-calling → constrained schema `{operation, anchor, constraints, target_field}`, schema-validated with one retry. No question-template regex anywhere in this path |
+| Intent Parser | LLM function-calling → constrained schema `{operation, anchor, constraints, target_field}`, schema-validated with one retry that feeds the validation error back. No question-template regex anywhere in this path |
 | Necessity Router | Maps parsed `operation` to a path per the rule in §5 below — replaces a trained classifier |
 | Tool Router | Maps routed operation → GSQL query (Q1–Q4) or specialised agent invocation |
-| Evidence Evaluator | Deterministic check: did the retrieved set cover the required scope? Plus one groundedness check |
-| Stopping-Criteria Evaluator | Stops on sufficient evidence or hard step/token budget; emits `stop_reason` |
+| Evidence Evaluator | Deterministic check: did the retrieved set cover the required scope? Plus one groundedness check — gated by a deterministic overlap pre-check for prose-only evidence, and skipped (verdict reused) when an iteration adds no new evidence |
+| Stopping-Criteria Evaluator | Stops on sufficient evidence, hard step/token budget, all loop tools exhausted, or an ambiguous anchor needing disambiguation; emits `stop_reason` |
 | Strategy-Change Detector | Flags when the router's path deviates from its initial routing decision (e.g., re-query after evidence check fails) |
 | Trace Recorder | Emits step records (agent type, tool, tokens, latency, notes) to Result Aggregator in real time; optionally writes a minimal trace-as-graph (Run vertex, N ordered Step vertices) — SHOULD, no trace analytics |
 
@@ -69,7 +69,7 @@ Runner  │            │──────▶┌──────────
 | Document retrieval | `HAS_CHUNK` expansion for prose fallback |
 | Aggregation | Q2 (`count_where`) / Q3 (`argmax`) |
 | Multi-hop reasoning | Planner chaining Q4 → Q1 |
-| Evidence evaluation | Deterministic scope-coverage check + one groundedness check |
+| Evidence evaluation | Deterministic scope-coverage check + one groundedness check (deterministic pre-check first for prose-only evidence) |
 
 Several agents are a single query or single prompt — stated explicitly as the correct amount of machinery for five question types, not an implementation shortfall.
 
@@ -112,8 +112,10 @@ Cut from schema: Person/NOC vertices and `WON_MEDAL` edges — no question type 
 1. UI submits query → Query Dispatcher
 2. Dispatcher fires concurrently:
      a. P1 RAG:      Q5 vector top-k, no filtering → single generation
-     b. P2 GraphRAG:  static rule table → Q1/Q4/Q5, single-shot → single generation
-     c. P3 Agentic:   Intent Parser → Necessity Router → routed path:
+     b. P2 GraphRAG:  P3's Intent Parser → exactly one query (Q1 | Q2/Q3 | Q4), no loop → single generation
+     c. P3 Agentic:   Intent Parser → Entity Linker → Necessity Router → routed path:
+                        - ambiguous venue, no sport/event discriminator
+                              → disambiguation request (candidates), no retrieval, no generation
                         - LOOKUP  → Q1 direct, no loop
                         - COUNT/ARGMAX → Q2/Q3, one scoped query
                         - TRAVERSE/underspecified → agentic loop:
@@ -131,7 +133,7 @@ Cut from schema: Person/NOC vertices and `WON_MEDAL` edges — no question type 
 1. Batch Runner reads question list (100 known / 50 hidden — hidden set's ID field is `qid`)
 2. For each question: same Dispatcher → 3 pipelines → Aggregator path as interactive mode
 3. Aggregator output scored: EM, F1, Recall@k, Precision@k, Completeness (|retrieved ∩ gold| / |gold|)
-4. Records appended to structured store (TECHNICAL-SPEC §4.4)
+4. Records appended to structured store (TECHNICAL-SPEC §4.4); a question that fails after dispatch is left unwritten, the run ends with `BatchIncompleteError`, and a rerun resumes only unwritten questions
 5. Metrics Dashboard Generator produces per-qtype matrix, accuracy-vs-tokens scatter, drill-down, trace viewer
 ```
 
@@ -140,9 +142,9 @@ Cut from schema: Person/NOC vertices and `WON_MEDAL` edges — no question type 
 | Concern | Approach |
 |---|---|
 | Concurrency | Async/parallel invocation at Dispatcher level; no sequential awaits across pipelines |
-| Fault isolation | Each pipeline call wrapped independently; one failure does not block others (UI) or halt the batch run |
+| Fault isolation | Each pipeline call wrapped independently (dispatcher, API, `cli ask`); one failure does not block others (UI). Each batch question is isolated too: a failure never cancels in-flight questions and is reported, not swallowed |
 | Observability | Trace Recorder + per-step token/latency capture built into orchestrator from v0.1 |
-| Reproducibility | Local embedding **encoder** (no provider drift; vectors stored in TigerGraph) + deterministic EM/F1 + full `run_config` logged per run (provider, model, base URL, temperature, seed, `k`, chunking, budgets, latency mode) + pinned dependency lockfile; single `make reproduce` target |
+| Reproducibility | Local embedding **encoder** (no provider drift; vectors stored in TigerGraph) + deterministic EM/F1 + full `run_config` logged per run (provider, model, base URL, temperature, seed, embedding model and backend, `k`, chunking, budgets, latency mode) + pinned dependency lockfile; single `make reproduce` target |
 | Explainability | Every answer path carries citations scorable as a set against `gold_doc_ids`; Agentic path additionally carries full step trace |
 | Anti-overfitting | No question-template regex in the answer path; routing goes through the constrained intent schema only; ~15-question hand-authored paraphrase set validates generalization |
 
@@ -155,7 +157,7 @@ Cut from schema: Person/NOC vertices and `WON_MEDAL` edges — no question type 
 | AD-3 | Orchestrator owns stopping criteria via evidence sufficiency + budget, not a fixed step count | Brief requires the system to "decide when enough evidence exists" | Fixed N-step loop — rejected, not agentic per hackathon definition |
 | AD-4 | Ground-truth accuracy scoring: deterministic EM/F1, no LLM judge in the loop | Verified gold answers exist; reference-free LLM judges are for the *absence* of ground truth, not a weaker substitute when labels exist | LLM-judged scoring — rejected, non-deterministic and less credible to judges |
 | AD-5 | Necessity routing by parsed operation type, not a trained classifier | A classifier trained on 100 questions overfits and is indefensible in Q&A; a stated rule is stronger, not weaker | Trained necessity classifier — rejected |
-| AD-6 | Local embedding model (all-MiniLM-L6-v2, 384-dim), provider-swappable via config | Deterministic, zero API cost, no rate limits/drift; removes an external dependency from the reproduce path | Provider embedding API — kept as config option only |
+| AD-6 | Local embedding model (BAAI/bge-small-en-v1.5, 384-dim), provider-swappable via config | Deterministic, zero API cost, no rate limits/drift; removes an external dependency from the reproduce path | Provider embedding API — kept as config option only |
 | AD-7 | Exactly five installed GSQL queries; prototype via `INTERPRET QUERY`, install once near the end | Installation blocks concurrent operations (~1 min each); a small parameterized library avoids repeated install cost during iteration | Larger ad hoc query set — rejected |
 | AD-8 | Person/NOC vertices and `WON_MEDAL` edges cut from schema | No question type traverses person→events; only 2/100 answers contain concatenated multi-person names | Full person-entity graph — rejected as unused complexity |
 | AD-9 | P1 (RAG) receives no type filtering, and **all 2,951 documents are embedded**, not only the Olympic subset | Its ceiling must be visible, not masked. Embedding only Olympic documents would type-filter P1 *by ingestion* and quietly rig the comparison | Filtered/optimized P1 — rejected |

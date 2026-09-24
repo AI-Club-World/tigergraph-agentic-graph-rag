@@ -80,7 +80,7 @@ export function EvalTable() {
         <RunPicker runId={runId} onChange={setRunId} />
       </header>
 
-      {loading && <p className="muted pad">Loading run “{runId}”…</p>}
+      {loading && <p className="muted pad">Loading run "{runId}"…</p>}
       {error && <p className="error-box pad">{error}</p>}
 
       {records && (
@@ -137,7 +137,7 @@ export function EvalTable() {
 
           {!hasGold && (
             <p className="note pad">
-              Run “{runId}” supplies no gold answers, so the gold and score columns are hidden.
+              Run "{runId}" supplies no gold answers, so the gold and score columns are hidden.
             </p>
           )}
 
@@ -170,11 +170,23 @@ export function EvalTable() {
               <tbody>
                 {rows.map((row) => {
                   const isOpen = expanded === row.qid
+                  const detailId = `eval-detail-${row.qid}`
+                  const toggle = () => setExpanded(isOpen ? null : row.qid)
                   return (
                     <Fragment key={row.qid}>
                       <tr
                         className={`eval-row ${isOpen ? 'open' : ''}`}
-                        onClick={() => setExpanded(isOpen ? null : row.qid)}
+                        tabIndex={0}
+                        aria-expanded={isOpen}
+                        aria-controls={isOpen ? detailId : undefined}
+                        onClick={toggle}
+                        onKeyDown={(e) => {
+                          if (e.target !== e.currentTarget) return
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault()
+                            toggle()
+                          }
+                        }}
                       >
                         <th scope="row" className="question-cell">
                           <code>{row.qid}</code>
@@ -220,7 +232,7 @@ export function EvalTable() {
                         })}
                       </tr>
                       {isOpen && (
-                        <tr className="drilldown">
+                        <tr id={detailId} className="drilldown">
                           <td colSpan={1 + (hasGold ? 1 : 0) + shownPipelines.length * (hasGold ? 7 : 4)}>
                             <div className="drilldown-body">
                               <div className="retrieved">

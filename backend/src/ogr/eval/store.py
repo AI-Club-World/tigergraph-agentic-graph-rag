@@ -15,16 +15,30 @@ attention."
 from __future__ import annotations
 
 import json
+import os
 import re
 from pathlib import Path
 from typing import Any
 
 __all__ = ["SecretLeakError", "BatchStore", "read_written_qids"]
 
-# OpenAI-style keys (sk-...), and any long base64/hex-ish token assigned to a
-# *_key/*_token/*_secret/*_password-looking field. Deliberately loose: a
-# false positive here just blocks a write, which is the safe failure mode.
-_SECRET_LIKE = re.compile(r"sk-[A-Za-z0-9_-]{16,}")
+# Two checks. (1) Known credential shapes: OpenAI/Anthropic (sk-), Groq,
+# Google, Hugging Face, GitHub, and JWTs (TigerGraph Savanna TG_JWT_TOKEN).
+# (2) The configured secrets themselves: TigerGraph secrets/tokens and
+# passwords have no recognisable shape, so the actual values from the
+# environment are searched for. Deliberately loose: a false positive here just
+# blocks a write, which is the safe failure mode.
+_SECRET_LIKE = re.compile(
+    r"sk-[A-Za-z0-9_-]{16,}"
+    r"|gsk_[A-Za-z0-9]{20,}"
+    r"|AIza[0-9A-Za-z_-]{35}"
+    r"|hf_[A-Za-z0-9]{30,}"
+    r"|gh[pousr]_[A-Za-z0-9]{36,}"
+    r"|eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]+"
+)
+_SECRET_ENV_VARS = ("LLM_API_KEY", "TG_PASSWORD", "TG_SECRET", "TG_TOKEN", "TG_JWT_TOKEN", "OGR_API_KEY")
+# Shorter configured values are too likely to occur in ordinary answer text.
+_MIN_SECRET_LEN = 8
 
 
 class SecretLeakError(ValueError):
@@ -35,6 +49,10 @@ def _assert_no_secret(obj: Any) -> None:
     text = json.dumps(obj, default=str)
     if _SECRET_LIKE.search(text):
         raise SecretLeakError("Refusing to persist a record containing what looks like an API key")
+    for name in _SECRET_ENV_VARS:
+        value = os.environ.get(name, "")
+        if len(value) >= _MIN_SECRET_LEN and value in text:
+            raise SecretLeakError(f"Refusing to persist a record containing the value of {name}")
 
 
 class BatchStore:

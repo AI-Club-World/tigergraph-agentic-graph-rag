@@ -31,7 +31,7 @@ def require_api_key(
 ) -> None:
     if not config.ogr_api_key:
         raise HTTPException(status_code=503, detail="OGR_API_KEY is not configured")
-    if not x_api_key or x_api_key != config.ogr_api_key:
+    if not x_api_key or not secrets.compare_digest(x_api_key.encode(), config.ogr_api_key.encode()):
         raise HTTPException(status_code=401, detail="Missing or invalid X-API-Key")
 
 
@@ -39,7 +39,6 @@ def require_api_key(
 class _Entry:
     scope_id: str
     expires_at: float
-    used: bool = False
 
 
 class StreamTokenStore:
@@ -50,6 +49,10 @@ class StreamTokenStore:
         self._entries: dict[str, _Entry] = {}
 
     def issue(self, scope_id: str) -> str:
+        # Expired tokens are dropped here, and a used one in consume(), so the
+        # store holds only live tokens instead of growing across a session.
+        now = time.monotonic()
+        self._entries = {t: e for t, e in self._entries.items() if e.expires_at >= now}
         token = secrets.token_urlsafe(24)
         self._entries[token] = _Entry(scope_id=scope_id, expires_at=time.monotonic() + self.ttl_s)
         return token
@@ -58,9 +61,7 @@ class StreamTokenStore:
         """True and marks used, exactly once, iff the token matches the
         scope and has not expired or already been used."""
         entry = self._entries.get(token)
-        if entry is None or entry.used or entry.scope_id != scope_id:
+        if entry is None or entry.scope_id != scope_id:
             return False
-        if time.monotonic() > entry.expires_at:
-            return False
-        entry.used = True
-        return True
+        del self._entries[token]
+        return time.monotonic() <= entry.expires_at

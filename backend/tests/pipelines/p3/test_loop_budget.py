@@ -117,3 +117,53 @@ def test_sufficient_evidence_stops_before_the_budget():
 
     assert record.status == "done"
     assert record.stop_reason == "sufficient_evidence"
+
+
+
+class _StaticGraphClient(TigerGraphClient):
+    """Every traversal and document expansion returns the same rows, so each
+    loop iteration after the second adds no new evidence."""
+
+    def _run_query(self, query_name, params):
+        if query_name == "q4_traverse":
+            return [{"event_id": "E1", "event_name": "Men's 100 metres 2008"}]
+        return [{"value": "Jamaica", "doc_id": "Q9"}]
+
+    def _expand_has_chunk(self, doc_ids):
+        return [{"chunk_id": "Q9_c0", "doc_id": "Q9", "text": "Jamaica won the final.", "seq": 0}]
+
+
+def _groundedness_calls(model) -> int:
+    return sum(
+        "groundedness" in " ".join(str(getattr(m, "content", "")) for m in call.args[0]).lower()
+        for call in model.invoke.call_args_list
+    )
+
+
+def test_unchanged_evidence_reuses_the_groundedness_verdict():
+    """Deterministic-first: an iteration adding no new evidence must not pay
+    for a second, identical groundedness call."""
+    model = _mock_llm("NO")
+    intent = json.dumps({"operation": "TRAVERSE", "anchor": {"title": "Men's 100 metres"}, "constraints": []})
+    base = model.invoke.side_effect
+
+    def invoke(messages, **kwargs):
+        response = base(messages, **kwargs)
+        if "intent parser" in " ".join(str(getattr(m, "content", "")) for m in messages).lower():
+            response.content = intent
+        return response
+
+    model.invoke.side_effect = invoke
+    config = RunConfig()
+    record = run_p3_agentic(
+        query="Who won the event after the Men's 100 metres?",
+        llm_model=model,
+        tg_client=_StaticGraphClient(config=config),
+        entity_linker=EntityLinker(),
+        config=config,
+    )
+    reused = [s for s in record.trace if "verdict reused" in s.notes]
+    assert reused and all(s.tokens.total == 0 for s in reused)
+    assert _groundedness_calls(model) == 2  # new evidence twice, then unchanged
+    assert record.stop_reason == "step_budget_exhausted"
+    assert sum(s.tokens.total for s in record.trace) == record.tokens.total

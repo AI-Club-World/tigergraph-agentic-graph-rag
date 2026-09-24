@@ -46,6 +46,11 @@ StopReason = Literal[
 DEFAULT_MAX_STEPS = 6
 DEFAULT_MAX_TOKENS_PER_QUERY = 20_000
 
+# Tools reachable inside the loop: one traversal tool per iteration, plus the
+# two evidence-evaluator fallbacks (DP-2).
+PRIMARY_LOOP_TOOLS = frozenset({"traversal", "multi_hop"})
+FALLBACK_TOOLS = frozenset({"similarity_search", "document_retrieval"})
+
 
 def should_stop(
     evaluation: EvidenceEvaluation,
@@ -88,10 +93,12 @@ def should_stop(
         logger.warning("Stopping: step_budget_exhausted (%d >= %d)", step_count, max_steps)
         return True, "step_budget_exhausted"
 
-    # No further action available
-    all_tools = {"lookup", "aggregation", "traversal", "similarity_search", "document_retrieval", "multi_hop"}
-    if tools_tried and all_tools.issubset(set(tools_tried)):
-        logger.debug("Stopping: no_further_action_available — all tools exhausted")
+    # No further action available. Only loop tools count: lookup and
+    # aggregation route straight to generation and never enter the loop, so
+    # requiring them here made this reason unreachable.
+    tried = set(tools_tried or [])
+    if tried & PRIMARY_LOOP_TOOLS and FALLBACK_TOOLS <= tried:
+        logger.debug("Stopping: no_further_action_available — all loop tools exhausted")
         return True, "no_further_action_available"
 
     return False, "sufficient_evidence"  # unused when stop=False

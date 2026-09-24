@@ -68,6 +68,12 @@ export function openSse(
       } catch {
         onTransportError(`Malformed ${name} event`)
       }
+      // The server closes the connection right after its own 'done' event
+      // (both /query/{id}/stream and /build/{id}/stream end their generator
+      // there). Closing the client first means that expected close is never
+      // seen as a transport failure below — without this, every successful
+      // run against a live backend ends with a spurious error banner.
+      if (name === 'done') source.close()
     })
   }
 

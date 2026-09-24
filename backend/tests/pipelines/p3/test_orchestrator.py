@@ -272,3 +272,48 @@ class TestParaphraseSetSameIntents:
         """Paraphrase IDs must be unique."""
         ids = [json.loads(line)["id"] for line in PARAPHRASE_FILE.read_text().strip().splitlines()]
         assert len(ids) == len(set(ids)), "Duplicate IDs found in paraphrase set"
+
+
+class TestDisambiguationPath:
+    """AD-15: an ambiguous venue with no sport/event discriminator ends the
+    run with a disambiguation request — no retrieval, no generation call."""
+
+    def _run(self, intent_json: str):
+        from ogr.pipelines.p3_agentic.orchestrator import run_p3_agentic
+
+        model = _make_mock_llm()
+        intent_resp = MagicMock()
+        intent_resp.content = intent_json
+        intent_resp.tool_calls = []
+        intent_resp.usage_metadata = {"input_tokens": 40, "output_tokens": 10, "total_tokens": 50}
+        intent_resp.response_metadata = {}
+        answer_resp = model.invoke.return_value
+        model.invoke.side_effect = [intent_resp, answer_resp, answer_resp, answer_resp]
+        linker = EntityLinker(
+            sports_vocab=["Sailing", "Swimming"],
+            venues_vocab=["Olympic Oval", "Olympic Stadium", "Olympic Aquatic Centre"],
+        )
+        record = run_p3_agentic(
+            "What happened at the Olympic venue?",
+            llm_model=model,
+            tg_client=_make_mock_client(),
+            entity_linker=linker,
+            config=RunConfig(llm_supports_tool_calling="false"),
+        )
+        return record, model
+
+    def test_ambiguous_venue_stops_with_disambiguation_required(self):
+        record, model = self._run('{"operation": "LOOKUP", "anchor": {"venue": "Olympic"}}')
+        assert record.status == "done"
+        assert record.stop_reason == "disambiguation_required"
+        assert "Olympic Stadium" in record.answer and "Olympic Oval" in record.answer
+        assert model.invoke.call_count == 1  # the intent parse only
+        assert record.tokens.total == 50
+        assert sum(step.tokens.total for step in record.trace) == record.tokens.total
+
+    def test_sport_discriminator_proceeds_to_retrieval(self):
+        record, model = self._run(
+            '{"operation": "LOOKUP", "anchor": {"venue": "Olympic", "sport": "Sailing"}}'
+        )
+        assert record.stop_reason != "disambiguation_required"
+        assert model.invoke.call_count >= 2

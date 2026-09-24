@@ -69,6 +69,16 @@ class ResolvedAnchors:
     unresolved_fields: list[str] = field(default_factory=list)
     disambiguation_candidates: dict[str, list[str]] = field(default_factory=dict)
 
+    @property
+    def needs_disambiguation(self) -> bool:
+        """ARCHITECTURE-SPEC §13: sport and event name are the real
+        discriminators for an ambiguous venue. With neither supplied there is
+        nothing to narrow the candidates by, so a disambiguation request is
+        returned instead of an answer (AD-15)."""
+        return bool(self.disambiguation_candidates) and not (
+            self.sport or self.title or self.event_id
+        )
+
 
 class EntityLinker:
     """Longest-match entity linker over closed Olympic vocabularies.
@@ -188,10 +198,25 @@ class EntityLinker:
             return None, []
         if len(candidates) == 1:
             return candidates[0], []
-        # Multiple matches: return longest (most specific)
-        best = max(candidates, key=len)
         # If query exactly matches one, prefer that
         exact = [c for c in candidates if c.lower() == q_lower]
         if exact:
             return exact[0], []
-        return best, candidates  # Return best + all candidates for disambiguation
+        # AD-15: several venues match and none exactly — surface them, never
+        # substitute a best guess.
+        return None, candidates
+
+
+def narrow_to_games(rows: list[dict], games: str | None) -> list[dict]:
+    """Q1 matches an event name across every Games ("Women's RS:X" exists for
+    2008, 2012 and 2016). With a resolved Games anchor, keep only that
+    edition's rows — deterministic, no LLM needed to pick the year. Falls back
+    to all rows when none match, so a wrong anchor never empties the result."""
+    if not games or len(rows) < 2:
+        return rows
+    year = games.split("-")[0]
+    by_id = [r for r in rows if f"-{games}-" in str(r.get("event_id", ""))]
+    if by_id:
+        return by_id
+    by_year = [r for r in rows if str(r.get("date_year", "")) == year]
+    return by_year or rows

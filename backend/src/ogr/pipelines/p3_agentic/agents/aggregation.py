@@ -49,6 +49,24 @@ def run_aggregation(
         )
 
 
+def _numeric_constraint_value(value: Any) -> float:
+    """Q2's constrainable fields (competitors, nations, date_year) are all
+    numeric, but `AnchorConstraint.value` is typed `Any` because the intent
+    parser's JSON-schema path may emit a numeric-looking string (`"10"`)
+    instead of a number. Serialised as-is, that string makes
+    `q2_count_where.gsql`'s `c0.getDouble("value")` raise a GSQL runtime
+    error — caught by `_run_query` and returned as `[]`, which silently
+    empties evidence for every constrained COUNT question. Coerce once here,
+    the one place that knows both what the field expects and what the
+    parser may have produced.
+    """
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        logger.warning("Q2 constraint value %r is not numeric; treating as 0", value)
+        return 0.0
+
+
 def _run_count_where(
     client: TigerGraphClient,
     intent: IntentSchema,
@@ -57,7 +75,9 @@ def _run_count_where(
     """Execute Q2: count_where(...)"""
     t0 = time.perf_counter()
     constraints_json = json.dumps(
-        [c.model_dump() for c in intent.constraints] if intent.constraints else []
+        [{**c.model_dump(), "value": _numeric_constraint_value(c.value)} for c in intent.constraints]
+        if intent.constraints
+        else []
     )
     params = {
         "anchor_sport": anchors.sport or "",
