@@ -107,7 +107,7 @@ def _build(corpus: str, vector_timeout_s: float) -> int:
     print("  installing Q1-Q5 ...")
     install_queries(client)
     try:
-        wait_until_ready(config, timeout_s=vector_timeout_s)
+        wait_until_ready(config, timeout_s=vector_timeout_s, conn=client.conn)
     except VectorNotReadyError as e:
         print(str(e), file=sys.stderr)
         return 1

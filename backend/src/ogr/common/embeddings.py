@@ -33,7 +33,12 @@ def get_embedding_model(model_name: str | None = None):
             try:
                 from sentence_transformers import SentenceTransformer
 
-                _MODELS[model_name] = SentenceTransformer(model_name)
+                try:
+                    # Cached weights first: an online check on every process
+                    # start hits Hugging Face rate limits (90 s waits observed).
+                    _MODELS[model_name] = SentenceTransformer(model_name, local_files_only=True)
+                except Exception:
+                    _MODELS[model_name] = SentenceTransformer(model_name)
             except Exception as e:
                 # Every embedding after this is a hash pseudo-vector, so
                 # semantic search runs against noise. Say so loudly, once.

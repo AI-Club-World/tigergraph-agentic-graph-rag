@@ -35,7 +35,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, ValidationError
 
 from ogr.common.contracts import TokenUsage
-from ogr.common.llm import invoke_and_count
+from ogr.common.llm import _response_text, invoke_and_count
 
 logger = logging.getLogger(__name__)
 
@@ -81,8 +81,10 @@ INTENT_TOOL_DEFINITION = {
         "description": (
             "Emit the parsed intent schema from the user's question. "
             "operation must be one of: LOOKUP, COUNT, ARGMAX, TRAVERSE. "
-            "LOOKUP: single event retrieval. COUNT: count events. "
-            "ARGMAX: find max/min/best/most. TRAVERSE: follow temporal or multi-hop chains."
+            "LOOKUP: an attribute of one named event, numeric attributes included "
+            "(e.g. the participant total of that one event). COUNT: how many EVENTS match a filter. "
+            "ARGMAX: find max/min/best/most. TRAVERSE: follow temporal or multi-hop chains. "
+            "Never invent a venue or event_id; omit fields the question does not give."
         ),
         "parameters": {
             "type": "object",
@@ -97,9 +99,12 @@ INTENT_TOOL_DEFINITION = {
                     "properties": {
                         "sport": {"type": "string", "description": "Sport name (e.g. 'Sailing')"},
                         "games": {"type": "string", "description": "Games identifier (e.g. '2016-Summer')"},
-                        "venue": {"type": "string", "description": "Venue name"},
-                        "title": {"type": "string", "description": "Event title for direct lookup"},
-                        "event_id": {"type": "string", "description": "Event ID for direct lookup"},
+                        "venue": {"type": "string", "description": "Venue name as written in the question"},
+                        "title": {"type": "string", "description": "Event name as written in the question"},
+                        "event_id": {
+                            "type": "string",
+                            "description": "Only if the question quotes an event id verbatim",
+                        },
                     },
                 },
                 "constraints": {
@@ -150,11 +155,13 @@ Parse the user's question and return a JSON object matching this exact schema:
 }
 
 Operation selection rules:
-- LOOKUP: question asks for a specific attribute of a named event (use title or event_id)
-- COUNT: question asks how many / number of
+- LOOKUP: question asks for a specific attribute of a named event (use title or event_id),
+  numeric attributes included (e.g. the participant total of that one event)
+- COUNT: question asks how many EVENTS match a filter
 - ARGMAX: question asks for most / highest / lowest / best / first / last
 - TRAVERSE: question involves temporal chains (previous/next edition) or multi-hop relations
 
+Copy venue and event_id exactly as written in the question; never invent them — use null.
 Return ONLY valid JSON, no markdown, no explanation.
 """
 
@@ -164,6 +171,47 @@ JSON_SCHEMA_USER_PROMPT = "Question: {question}\n\nJSON:"
 # ---------------------------------------------------------------------------
 # Parser implementation
 # ---------------------------------------------------------------------------
+
+
+def _normalize(text: str) -> str:
+    return " ".join(text.replace("\u2019", "'").replace("\u2013", "-").lower().split())
+
+
+def _ground_in_question(intent: IntentSchema, question: str) -> IntentSchema:
+    """Deterministic post-check of the LLM's extraction.
+
+    - "" means "not given" (some providers fill every field) -> None.
+    - Numeric strings in constraints become numbers, so Q2/Q3 compare numbers.
+    - venue and event_id are spans the question itself must contain; one
+      that does not appear in it was invented. An invented event_id makes Q1
+      match nothing (it takes precedence over title); an invented venue adds
+      a wrong filter. title, sport and games are exempt: the model
+      legitimately composes or normalises them ("2016 Summer Olympics" ->
+      "2016-Summer"), and entity linking / Q1 check them against the graph.
+    """
+    q = _normalize(question)
+    anchor = intent.anchor
+    for name in ("sport", "games", "venue", "title", "event_id"):
+        value = getattr(anchor, name)
+        if isinstance(value, str) and not value.strip():
+            setattr(anchor, name, None)
+    for name in ("venue", "event_id"):
+        value = getattr(anchor, name)
+        if value and _normalize(value) not in q:
+            logger.info("Intent %s %r is not in the question; dropped as invented", name, value)
+            setattr(anchor, name, None)
+    for constraint in intent.constraints:
+        if isinstance(constraint.value, str):
+            try:
+                constraint.value = int(constraint.value)
+            except ValueError:
+                try:
+                    constraint.value = float(constraint.value)
+                except ValueError:
+                    pass
+    if isinstance(intent.target_field, str) and not intent.target_field.strip():
+        intent.target_field = None
+    return intent
 
 
 def _correction_message(error: Exception) -> str:
@@ -200,7 +248,7 @@ class IntentParser:
             try:
                 raw = self._extract(question, correction)
                 schema = self._validate(raw)
-                return schema
+                return _ground_in_question(schema, question)
             except (ValidationError, ValueError, TypeError) as e:
                 if attempt == 0:
                     # The retry carries the validation error back to the model;
@@ -229,14 +277,19 @@ class IntentParser:
         except ImportError:
             from langchain.schema import HumanMessage
 
-        model_with_tools = self.model.bind_tools([INTENT_TOOL_DEFINITION])
+        # Forcing the one tool stops a model answering with empty text instead
+        # of a call (observed with Gemini), which would burn the retry.
+        try:
+            model_with_tools = self.model.bind_tools([INTENT_TOOL_DEFINITION], tool_choice="emit_intent")
+        except (TypeError, ValueError, NotImplementedError):
+            model_with_tools = self.model.bind_tools([INTENT_TOOL_DEFINITION])
         content = f"{question}\n\n{correction}" if correction else question
         response = self._invoke_counted(model_with_tools, [HumanMessage(content=content)])
         tool_calls = getattr(response, "tool_calls", [])
         if tool_calls:
             return tool_calls[0].get("args", {})
         # Fallback if tool_calls empty
-        return self._parse_json_from_text(getattr(response, "content", "{}"))
+        return self._parse_json_from_text(_response_text(response) or "{}")
 
     def _extract_json_schema(self, question: str, correction: str | None = None) -> dict[str, Any]:
         """JSON-schema prompting fallback for local models."""
@@ -252,12 +305,7 @@ class IntentParser:
         if correction:
             messages.append(HumanMessage(content=correction))
         response = self._invoke_counted(self.model, messages)
-        raw_text = response.content if hasattr(response, "content") else str(response)
-        if isinstance(raw_text, list):
-            raw_text = "".join(
-                p.get("text", "") if isinstance(p, dict) else str(p) for p in raw_text
-            )
-        return self._parse_json_from_text(raw_text)
+        return self._parse_json_from_text(_response_text(response))
 
     def _invoke_counted(self, model: Any, messages: Any) -> Any:
         """Invoke through the accounting module, accumulating across retries."""

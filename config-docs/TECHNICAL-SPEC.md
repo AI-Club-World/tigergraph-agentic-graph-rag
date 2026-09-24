@@ -20,7 +20,7 @@ Status: **v0.3 — synchronised with implementation plans, 2026-09-21.** Superse
 |---|---|---|
 | Graph + vector store | TigerGraph Savanna (Community Edition fallback) | 384-dim embeddings fit either |
 | Embedding model | BAAI/bge-small-en-v1.5, 384-dim, local via `sentence-transformers`, COSINE similarity | Provider-swappable via config; local = deterministic, zero API cost, no rate limits, removes an external dependency from the reproduce path |
-| LLM | **Pluggable — local (Ollama/llama.cpp/vLLM via OpenAI-compatible `base_url`) or free-tier cloud.** One boundary: `common/llm.py`. Pinned within a run, swappable between runs | No LLM in the scoring loop. A capability probe selects native tool-calling or a JSON-schema fallback (§14) |
+| LLM | **Pluggable — `LLM_PROVIDER` selects the client: `anthropic`/`claude` → native Claude (`langchain-anthropic`), `google`/`gemini`/`google_genai` → native Gemini (`langchain-google-genai`), anything else (`openai`, `openai_compatible`, `groq`, `ollama`, vLLM, llama.cpp, OpenRouter…) → OpenAI-compatible client at `LLM_BASE_URL`.** One boundary: `common/llm.py`; every provider shares one retry policy, one rate limiter and LangChain `usage_metadata` accounting. Pinned within a run, swappable between runs | No LLM in the scoring loop. A capability probe selects native tool-calling or a JSON-schema fallback (§14) |
 | Backend | **Python 3.11 · FastAPI · `sse-starlette` · LangGraph/LangChain · pyTigerGraph ≥ 2.0** | `asyncio.gather` for concurrent invocation; the sync pipelines run in worker threads and share one `TigerGraphClient`, which is safe because pyTigerGraph ≥ 2.0 keeps one HTTP session per thread. Python is forced: `sentence-transformers` and `pyTigerGraph` are Python-only |
 | Frontend | **React + Vite**, native `EventSource` | Independent per-column async rendering + streaming trace |
 | Dev acceleration | TigerGraph MCP (optional, SHOULD) | Natural-language GSQL via Cursor/Copilot; 5 MCP tools, one per GSQL query (F-19) |
@@ -253,7 +253,7 @@ browser `EventSource` is GET-only. `POST /query` returns
 
 ## 7. Intent Schema (P3 only)
 
-Emitted by the Intent Parser via LLM function-calling, schema-validated with one retry on failure; the retry carries the validation error back to the model (an identical prompt at temperature 0 would reproduce the failure). No question-template regex anywhere in this path.
+Emitted by the Intent Parser via LLM function-calling (the `emit_intent` tool is forced, so a model cannot answer with empty text), schema-validated with one retry on failure; the retry carries the validation error back to the model (an identical prompt at temperature 0 would reproduce the failure). A deterministic post-check then normalises the extraction for every provider: empty strings → null, numeric constraint strings → numbers, and a `venue` or `event_id` that does not appear in the question is dropped as invented (an invented `event_id` makes Q1 match nothing). `title`, `sport` and `games` are exempt — the model legitimately composes or normalises them, and the graph checks them. No question-template regex anywhere in this path.
 
 ```json
 {
@@ -312,6 +312,7 @@ removes the loop, P3 has both.**
 | Evidence evaluation | Deterministic scope gate; for prose-only evidence a deterministic token-overlap pre-check gates the one LLM groundedness call (structured graph evidence always gets the LLM check); an iteration that adds no new evidence reuses the previous verdict at 0 tokens |
 | Stopping | `sufficient_evidence` · `step_budget_exhausted` · `token_budget_exhausted` · `no_further_action_available` (a traversal tool and both fallbacks tried) · `disambiguation_required` · `error` |
 | Output | answer, citations, full trace, `strategy_changed`, `stop_reason`, cumulative tokens/latency |
+| Context rendering | Shared with P2 (`contracts.format_evidence_context`): prose chunks keep their text; structured graph rows are rendered as every non-empty field, so the asked attribute reaches the model. A LOOKUP keeps only the rows of the resolved Games (Q1 matches the event name across editions) |
 
 ## 9. Evaluation
 
@@ -358,7 +359,7 @@ No LLM sits in the scoring loop — deterministic and reproducible run-to-run; t
 |---|---|
 | Concurrency | Dispatcher fires all 3 pipeline calls via `asyncio.gather`, not sequential await |
 | Latency comparability | 3 concurrent pipelines × a batch pool of N is up to 3N in-flight provider calls, and queuing inflates `latency_ms` unevenly. Two run modes (`ogr.cli batch --mode`, `POST /batch` `latency_mode`, default `RUN_LATENCY_MODE`): `throughput` (pool `RUN_POOL_SIZE`, default 2 per PLAT-08) for accuracy and token metrics, which are pool-invariant, and `timing` (pool 1) for latency figures. The run header records the mode and effective pool; the Benchmarks comparison shows both as configuration rows |
-| Rate limiting | Provider calls go through one `rate_limiter` per model client (`LLM_REQUESTS_PER_MINUTE`, 0 = off) and are retried on 429/408/409/5xx/connection errors with exponential backoff from `LLM_BACKOFF_BASE_S` (jitter; `Retry-After` honoured) up to `LLM_MAX_RETRIES` — one policy in `common/llm.invoke_and_count`, the SDK's own retries are off. Only the successful call's tokens are counted; `latency_ms` includes the waits |
+| Rate limiting | Provider calls go through one `rate_limiter` per model client (`LLM_REQUESTS_PER_MINUTE`, 0 = off) and are retried on 429/408/409/5xx/connection errors with exponential backoff from `LLM_BACKOFF_BASE_S` (jitter; `Retry-After` honoured) up to `LLM_MAX_RETRIES` — one policy in `common/llm.invoke_and_count`, the SDK's own retries are off. A per-day quota error (`…PerDay…`) is not retried: no backoff window recovers it. Gemini's thinking level is `LLM_THINKING` (default `minimal`): thinking tokens count against `LLM_MAX_TOKENS` and truncated the answer JSON in live runs. Only the successful call's tokens are counted; `latency_ms` includes the waits |
 | Sampling seed | `RUN_SEED` is passed to the provider (`seed`) where supported and recorded in the run header; empty = none |
 | Fault isolation | Each pipeline call wrapped in try/catch at Dispatcher level; partial failure → other 2 records still returned |
 | Instrumentation | Token/latency capture wraps every LLM and retrieval call at the lowest invocation point, not estimated post-hoc. Σ `TraceStep.tokens` is **asserted** equal to the record total. Where the configured provider reports no usage — common for local servers — the model's tokenizer is used and `token_source` is set to `local_tokenizer` so the figure is labelled rather than silently zero |
@@ -470,7 +471,7 @@ TG_TOKEN=                                   # optional: pre-minted REST++ token
 TG_GRAPHNAME=OlympicGraphRAG
 
 # ── LLM (pluggable: local or free-tier cloud) ─────────────────
-LLM_PROVIDER=openai_compatible              # openai_compatible | openai | google_genai | groq | ollama
+LLM_PROVIDER=openai_compatible              # anthropic | google | openai | openai_compatible | groq | ollama
 LLM_MODEL=qwen2.5:7b-instruct
 LLM_BASE_URL=http://localhost:11434/v1      # local server; leave blank for a hosted provider
 LLM_API_KEY=                                # blank for a local server that needs none

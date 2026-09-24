@@ -187,7 +187,7 @@ def _check_groundedness_llm(
 
     Returns (passed, notes, tokens_input, tokens_output).
     """
-    from ogr.common.llm import invoke_and_count
+    from ogr.common.llm import _response_text, invoke_and_count
 
     try:
         from langchain_core.messages import HumanMessage, SystemMessage
@@ -210,7 +210,8 @@ def _check_groundedness_llm(
             SystemMessage(content="You are a groundedness evaluator. Answer only YES or NO."),
             HumanMessage(content=prompt),
         ])
-        raw = (response.content if hasattr(response, "content") else str(response)).strip().upper()
+        # Claude and Gemini may return content as a list of blocks.
+        raw = _response_text(response).strip().upper()
         passed = raw.startswith("YES")
         return (
             passed,

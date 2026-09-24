@@ -31,7 +31,7 @@ pipelines**, with the 50 hidden-question outputs rendered by the same component.
 | Backend module | `backend/` — Python 3.11 · FastAPI · `sse-starlette` · `uv` + lockfile | |
 | Frontend module | `frontend/` — React + Vite · native `EventSource` | |
 | Orchestration (P3) | **LangGraph** `StateGraph`; LangChain for provider abstraction, function-calling, usage callbacks | No `GraphCypherQAChain`, no text-to-GSQL |
-| LLM | **Pluggable** — local (Ollama/llama.cpp/vLLM via OpenAI-compatible `base_url`) or free-tier cloud, selected in `run_config` | One boundary (`common/llm.py`); pinned within a run, swappable between runs |
+| LLM | **Pluggable** — native Claude or Gemini clients, or any OpenAI-compatible endpoint (local Ollama/llama.cpp/vLLM via `base_url`, or a free-tier cloud), selected by `LLM_PROVIDER` | One boundary (`common/llm.py`); pinned within a run, swappable between runs |
 | Graph + vector store | **TigerGraph Savanna — mandatory for both vectors and graph** | No FAISS, Chroma, pgvector or any external index anywhere. Hackathon eligibility condition. Only permitted fallback is local Community Edition 4.2+ |
 | Embeddings | BAAI/bge-small-en-v1.5, 384-dim, local, `sentence-transformers` | Vectors are **stored in TigerGraph**; only the encoder is local |
 | API security | `X-API-Key` header from configuration on every route except `/health`; SSE streams use a short-lived single-use `?token=` | See §3 |

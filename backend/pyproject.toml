@@ -15,6 +15,9 @@ dependencies = [
     # StateGraph; LangChain is the single provider boundary in common/llm.py.
     "langchain-core>=0.3",
     "langchain-openai>=0.2",
+    # Native Claude and Gemini clients, selected by LLM_PROVIDER in common/llm.py.
+    "langchain-anthropic>=1.0",
+    "langchain-google-genai>=3.0",
     "langgraph>=0.2",
     # Vectors and graph both live in TigerGraph — no external index (BUILD-PLAN §1).
     # >=2.0: per-thread HTTP sessions, which graph/client.py relies on to share

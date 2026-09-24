@@ -8,6 +8,8 @@ Verification Plan Group 1:
 
 from __future__ import annotations
 
+import json
+
 import ast
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -214,3 +216,53 @@ class TestNoQtypeReadAtRuntime:
             assert pattern not in content.lower(), (
                 f"Anti-overfitting violation: eval-set phrasing '{pattern}' found in intent.py"
             )
+
+
+class TestGroundInQuestion:
+    """Deterministic post-check of the LLM's extraction (any provider)."""
+
+    def _parse(self, raw: dict, question: str):
+        model = MagicMock()
+        resp = MagicMock()
+        resp.content = json.dumps(raw)
+        resp.tool_calls = []
+        model.invoke.return_value = resp
+        return IntentParser(model, supports_tool_calling=False).parse(question)
+
+    def test_empty_strings_become_none_and_numbers_are_numbers(self):
+        intent = self._parse(
+            {"operation": "COUNT", "anchor": {"sport": "Biathlon", "venue": "", "event_id": ""},
+             "constraints": [{"field": "competitors", "op": ">", "value": "73"}], "target_field": ""},
+            "How many biathlon events had more than 73 competitors?",
+        )
+        assert intent.anchor.venue is None and intent.anchor.event_id is None
+        assert intent.constraints[0].value == 73
+        assert intent.target_field is None
+
+    def test_invented_event_id_and_venue_are_dropped(self):
+        intent = self._parse(
+            {"operation": "LOOKUP", "anchor": {"title": "Women's RS:X", "venue": "Marina da Glória",
+                                               "event_id": "sailing-2016-womens-rsx"}},
+            "Which nation won the Women's RS:X?",
+        )
+        assert intent.anchor.event_id is None
+        assert intent.anchor.venue is None
+        assert intent.anchor.title == "Women's RS:X"  # composed titles are kept
+
+    def test_venue_written_in_the_question_is_kept(self):
+        intent = self._parse(
+            {"operation": "LOOKUP", "anchor": {"venue": "Olympic Weightlifting Gymnasium"}},
+            "Who won at the olympic weightlifting gymnasium on 20 September?",
+        )
+        assert intent.anchor.venue == "Olympic Weightlifting Gymnasium"
+
+
+def test_tool_calling_path_forces_the_intent_tool():
+    model = MagicMock()
+    bound = MagicMock()
+    resp = MagicMock()
+    resp.tool_calls = [{"args": {"operation": "COUNT", "anchor": {}}}]
+    bound.invoke.return_value = resp
+    model.bind_tools.return_value = bound
+    IntentParser(model, supports_tool_calling=True).parse("How many events?")
+    assert model.bind_tools.call_args.kwargs.get("tool_choice") == "emit_intent"

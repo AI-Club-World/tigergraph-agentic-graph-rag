@@ -33,6 +33,7 @@ def get_chat_model(config: RunConfig) -> Any:
     for constructing a new one.
     """
     key = (
+        config.llm_provider,
         config.llm_model,
         config.llm_base_url,
         config.llm_api_key,
@@ -40,6 +41,7 @@ def get_chat_model(config: RunConfig) -> Any:
         config.llm_max_tokens,
         config.seed,
         config.llm_requests_per_minute,
+        config.llm_thinking,
     )
     with _MODEL_CACHE_LOCK:
         if key not in _MODEL_CACHE:
@@ -47,51 +49,84 @@ def get_chat_model(config: RunConfig) -> Any:
         return _MODEL_CACHE[key]
 
 
+# LLM_PROVIDER -> native LangChain integration. Anything not listed here is
+# treated as OpenAI-compatible (openai, openai_compatible, groq, ollama,
+# vLLM, llama.cpp, OpenRouter, ...) and reached through LLM_BASE_URL.
+ANTHROPIC_PROVIDERS = frozenset({"anthropic", "claude"})
+GOOGLE_PROVIDERS = frozenset({"google", "gemini", "google_genai"})
+
+
 def _build_chat_model(config: RunConfig) -> Any:
-    """Supports local OpenAI-compatible servers (Ollama, llama.cpp, vLLM) and cloud providers."""
-    try:
-        from langchain_openai import ChatOpenAI
-    except ImportError:
-        # Fallback if langchain_openai is not yet installed
-        try:
-            from langchain.chat_models import ChatOpenAI
-        except ImportError as exc:
-            raise ImportError(
-                "langchain-openai or langchain is required. "
-                "Install it with: pip install langchain-openai"
-            ) from exc
+    """Build the chat model for `config.llm_provider`.
 
-    base_url = config.llm_base_url
-    api_key = config.llm_api_key or "local"
-
-    kwargs: dict[str, Any] = {
+    Claude (`anthropic`) and Gemini (`google`) use their native LangChain
+    integrations; every other provider uses the OpenAI-compatible client. All
+    three share the same retry policy (SDK retries off, invoke_and_count owns
+    backoff) and the same per-client rate limiter, and all report usage
+    through LangChain's `usage_metadata`, so token accounting is identical.
+    """
+    provider = (config.llm_provider or "").strip().lower()
+    common: dict[str, Any] = {
         "model": config.llm_model,
         "temperature": config.llm_temperature,
-        "max_tokens": config.llm_max_tokens,
-        # Several integrations omit usage when streaming unless asked (DP-5).
-        # Without this the cost axis silently reads zero.
-        "stream_usage": True,
         # Retries are owned by invoke_and_count (one backoff policy, from
         # run_config), so the SDK's own retry loop is switched off.
         "max_retries": 0,
     }
-    if config.seed is not None:
-        kwargs["seed"] = config.seed
     if config.llm_requests_per_minute > 0:
         from langchain_core.rate_limiters import InMemoryRateLimiter
 
         # Shared by every pipeline because the model instance is shared.
-        kwargs["rate_limiter"] = InMemoryRateLimiter(
+        common["rate_limiter"] = InMemoryRateLimiter(
             requests_per_second=config.llm_requests_per_minute / 60.0,
             check_every_n_seconds=0.1,
             max_bucket_size=1,
         )
 
-    if base_url:
-        kwargs["base_url"] = base_url
-    if api_key:
-        kwargs["api_key"] = api_key
+    if provider in ANTHROPIC_PROVIDERS:
+        from langchain_anthropic import ChatAnthropic
 
+        kwargs = {**common, "max_tokens": config.llm_max_tokens, "stream_usage": True}
+        if config.llm_api_key:
+            kwargs["api_key"] = config.llm_api_key
+        if config.llm_base_url:
+            kwargs["base_url"] = config.llm_base_url
+        if config.seed is not None:
+            logger.warning("RUN_SEED is set but Anthropic models do not accept a seed; ignored")
+        return ChatAnthropic(**kwargs)
+
+    if provider in GOOGLE_PROVIDERS:
+        from langchain_google_genai import ChatGoogleGenerativeAI
+
+        kwargs = {**common, "max_tokens": config.llm_max_tokens}
+        if config.llm_api_key:
+            kwargs["api_key"] = config.llm_api_key
+        if config.seed is not None:
+            kwargs["seed"] = config.seed
+        if config.llm_thinking:
+            kwargs["thinking_config"] = {"thinking_level": config.llm_thinking}
+        if config.llm_base_url:
+            logger.warning(
+                "LLM_BASE_URL is ignored for the native Gemini client; set LLM_PROVIDER=openai_compatible "
+                "to use Gemini's OpenAI-compatible endpoint instead"
+            )
+        return ChatGoogleGenerativeAI(**kwargs)
+
+    from langchain_openai import ChatOpenAI
+
+    kwargs = {
+        **common,
+        "max_tokens": config.llm_max_tokens,
+        # Several integrations omit usage when streaming unless asked (DP-5).
+        # Without this the cost axis silently reads zero.
+        "stream_usage": True,
+        # A local server needs no key, but the client insists on one.
+        "api_key": config.llm_api_key or "local",
+    }
+    if config.seed is not None:
+        kwargs["seed"] = config.seed
+    if config.llm_base_url:
+        kwargs["base_url"] = config.llm_base_url
     return ChatOpenAI(**kwargs)
 
 
@@ -154,15 +189,35 @@ def _count_with_model_tokenizer(model: Any, text: str) -> int | None:
         return None
 
 
-_RETRYABLE_STATUS = {408, 409, 429, 500, 502, 503, 504}
-_RETRYABLE_NAMES = {"RateLimitError", "APIConnectionError", "APITimeoutError", "InternalServerError"}
+# 529 is Anthropic's "overloaded". Google errors carry the HTTP code as `.code`.
+_RETRYABLE_STATUS = {408, 409, 429, 500, 502, 503, 504, 529}
+_RETRYABLE_NAMES = {
+    "RateLimitError",
+    "APIConnectionError",
+    "APITimeoutError",
+    "InternalServerError",
+    "OverloadedError",
+    "ResourceExhausted",
+    "ServiceUnavailable",
+    "DeadlineExceeded",
+    "ServerError",
+}
 
 
 def _retry_delay(error: Exception, attempt: int, base_s: float) -> float | None:
     """Seconds to wait before retrying `error`, or None if it is not transient."""
     response = getattr(error, "response", None)
     status = getattr(error, "status_code", None) or getattr(response, "status_code", None)
-    if status not in _RETRYABLE_STATUS and type(error).__name__ not in _RETRYABLE_NAMES:
+    if status is None and isinstance(getattr(error, "code", None), int):
+        status = error.code
+    # A per-day quota does not recover within any backoff window; retrying
+    # only burns minutes per call. Fail fast so the run records the error.
+    if "PerDay" in str(error):
+        return None
+    name = type(error).__name__
+    # Provider wrappers rename these (e.g. langchain-google-genai's
+    # GoogleRateLimitError carries no status code), so match on the name too.
+    if status not in _RETRYABLE_STATUS and name not in _RETRYABLE_NAMES and "RateLimit" not in name:
         return None
     retry_after = getattr(response, "headers", {}).get("retry-after") if response is not None else None
     try:
@@ -182,7 +237,9 @@ def _invoke_with_backoff(model: Any, messages: Any, max_retries: int, base_s: fl
             delay = _retry_delay(e, attempt, base_s) if attempt < max_retries else None
             if delay is None:
                 raise
-            logger.warning("LLM call failed (%s); retry %d/%d in %.1fs", e, attempt + 1, max_retries, delay)
+            logger.warning(
+                "LLM call failed (%s); retry %d/%d in %.1fs", str(e)[:200], attempt + 1, max_retries, delay
+            )
             time.sleep(delay)
     raise AssertionError("unreachable")
 
