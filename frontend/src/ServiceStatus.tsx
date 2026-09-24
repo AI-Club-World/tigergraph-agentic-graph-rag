@@ -1,0 +1,139 @@
+/**
+ * ServiceStatus — header indicators for Knowledge Base (TigerGraph) and
+ * Intelligent Engine (LLM) availability.
+ *
+ * Shows two icon badges with color-coded dot indicators. Full names appear
+ * on hover via title/aria-label. A "⟳" button triggers an immediate recheck.
+ * RequiresServices wraps features that need a live service and shows a clear
+ * blocked state + mailto link when unavailable.
+ */
+
+import { createContext, useContext, type ReactNode } from 'react'
+import { config } from './config'
+import { type ServiceState, type ServiceStatus, useServiceStatus } from './useServiceStatus'
+
+// ── Context ─────────────────────────────────────────────────────────────────
+
+const ServiceContext = createContext<ServiceStatus | null>(null)
+
+export function ServiceStatusProvider({ children }: { children: ReactNode }) {
+  const status = useServiceStatus()
+  return <ServiceContext.Provider value={status}>{children}</ServiceContext.Provider>
+}
+
+export function useServiceContext(): ServiceStatus {
+  const ctx = useContext(ServiceContext)
+  if (!ctx) throw new Error('useServiceContext used outside ServiceStatusProvider')
+  return ctx
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+const SERVICE_META = {
+  db:  { label: 'Knowledge Base',    icon: '🗄' },
+  llm: { label: 'Intelligent Engine', icon: '🧠' },
+} as const
+
+function stateLabel(s: ServiceState): string {
+  return s === 'ok' ? 'Online' : s === 'skip' ? 'Skipped' : s === 'unknown' ? 'Checking…' : 'Offline'
+}
+
+function stateClass(s: ServiceState): string {
+  return s === 'ok' ? 'svc-ok' : s === 'skip' ? 'svc-skip' : s === 'unknown' ? 'svc-unknown' : 'svc-error'
+}
+
+function buildMailto(downServices: string[]): string {
+  const subject = encodeURIComponent(`[OGR] Service unavailable: ${downServices.join(', ')}`)
+  const body = encodeURIComponent(
+    `Hi Admin,\n\nThe following service(s) appear to be unavailable in the Agentic GraphRAG app:\n\n` +
+      downServices.map((s) => `  - ${s}`).join('\n') +
+      `\n\nPlease investigate.\n\nTimestamp: ${new Date().toISOString()}\n`,
+  )
+  return `mailto:${config.adminEmail}?subject=${subject}&body=${body}`
+}
+
+// ── Pill indicator ────────────────────────────────────────────────────────────
+
+function Pill({
+  serviceKey,
+  state,
+  detail,
+}: {
+  serviceKey: 'db' | 'llm'
+  state: ServiceState
+  detail: string
+}) {
+  const { label, icon } = SERVICE_META[serviceKey]
+  const tooltip = `${label}: ${stateLabel(state)}${detail ? `\n${detail}` : ''}`
+
+  return (
+    <span
+      className={`svc-pill ${stateClass(state)}`}
+      title={tooltip}
+      aria-label={tooltip}
+      role="status"
+    >
+      <span className="svc-dot" aria-hidden="true" />
+      <span className="svc-icon" aria-hidden="true">{icon}</span>
+    </span>
+  )
+}
+
+// ── Status bar (header) ───────────────────────────────────────────────────────
+
+export function ServiceStatusBar() {
+  const { db, llm, dbDetail, llmDetail, checking, lastChecked, recheck } = useServiceContext()
+
+  return (
+    <div className="svc-bar" aria-label="Service availability">
+      <Pill serviceKey="db" state={db} detail={dbDetail} />
+      <Pill serviceKey="llm" state={llm} detail={llmDetail} />
+      <button
+        type="button"
+        className="svc-recheck"
+        onClick={recheck}
+        disabled={checking}
+        aria-label="Re-check service availability now"
+        title={lastChecked ? `Last checked: ${lastChecked.toLocaleTimeString()}` : 'Click to check now'}
+      >
+        {checking ? '↻' : '⟳'}
+      </button>
+    </div>
+  )
+}
+
+// ── Blocked-feature overlay ───────────────────────────────────────────────────
+
+interface BlockedProps {
+  needs: Array<'db' | 'llm'>
+  children: ReactNode
+}
+
+export function RequiresServices({ needs, children }: BlockedProps) {
+  const status = useServiceContext()
+
+  // In mock mode there is no live service polling — never block.
+  if (config.useMockApi) return <>{children}</>
+
+  const downNeeds = needs.filter((s) => status[s] === 'error')
+  if (!downNeeds.length) return <>{children}</>
+
+  const downLabels = downNeeds.map((s) => SERVICE_META[s].label)
+  const mailto = buildMailto(downLabels)
+
+  return (
+    <div className="svc-blocked" role="status" aria-live="polite">
+      <span className="svc-blocked-icon" aria-hidden="true">⚠</span>
+      <div className="svc-blocked-body">
+        <strong>Feature unavailable</strong>
+        <p>
+          {downLabels.join(' and ')} {downLabels.length === 1 ? 'is' : 'are'} currently offline.
+          This feature requires {downLabels.length === 1 ? 'it' : 'them'} to operate.
+        </p>
+        <a href={mailto} className="svc-contact-link">
+          Contact Admin
+        </a>
+      </div>
+    </div>
+  )
+}

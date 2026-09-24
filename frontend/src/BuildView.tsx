@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Icon, type IconName } from './components/Icon'
 import { StatusBadge } from './components/StatusBadge'
 import { ms, num, titleCase } from './format'
+import { RequiresServices } from './ServiceStatus'
 import { openBuildStream, startBuild } from './services/buildService'
 import { PIPELINE_IDS, PIPELINE_LABELS, type BuildEvent, type PipelineId } from './types'
 
@@ -235,10 +236,12 @@ export function BuildView() {
             <span className="dot" aria-hidden="true" />
             {syncLabel}
           </span>
-          <button type="button" className="btn-primary" onClick={run} disabled={running}>
-            <Icon name="restart" size={16} className={running ? 'spin' : undefined} />
-            {running ? 'Building…' : 'Start build'}
-          </button>
+          <RequiresServices needs={['db', 'llm']}>
+            <button type="button" className="btn-primary" onClick={run} disabled={running}>
+              <Icon name="restart" size={16} className={running ? 'spin' : undefined} />
+              {running ? 'Building…' : 'Start build'}
+            </button>
+          </RequiresServices>
         </div>
       </header>
 

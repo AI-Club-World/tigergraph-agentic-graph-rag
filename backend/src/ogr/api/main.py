@@ -27,6 +27,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
@@ -83,6 +84,20 @@ _tg_client: TigerGraphClient | None = None
 # Also keeps each background run's task referenced so it is not garbage-collected.
 _batch_tasks: dict[str, asyncio.Task] = {}
 
+# Runtime model overrides applied on top of env-var config without a restart.
+# Keys match RunConfig field names; updated by PATCH /settings.
+_runtime_overrides: dict[str, Any] = {}
+
+
+def _get_config_with_overrides() -> RunConfig:
+    base = get_default_config()
+    return base.model_copy(update=_runtime_overrides) if _runtime_overrides else base
+
+
+# Override the per-route dependency so every existing route automatically
+# picks up the runtime overrides without touching each handler.
+app.dependency_overrides[get_config] = _get_config_with_overrides
+
 # Resolved relative to this file, not the process CWD — a long-running
 # service should not depend on which directory it happened to be started
 # from (unlike the CLI, whose defaults already assume the repo root).
@@ -94,6 +109,18 @@ OUT_DIR = _REPO_ROOT / "out"
 
 class QueryRequest(BaseModel):
     query: str
+
+
+class SettingsPatch(BaseModel):
+    llm_model: str | None = None
+    embedding_model: str | None = None
+
+
+# Embedding dim is fixed per supported model; unknown models keep current dim.
+_EMBEDDING_DIMS: dict[str, int] = {
+    "BAAI/bge-small-en-v1.5": 384,
+    "sentence-transformers/all-MiniLM-L6-v2": 384,
+}
 
 
 def _get_client(config: RunConfig) -> TigerGraphClient:
@@ -116,6 +143,71 @@ def _evict_finished(store: dict[str, dict[str, Any]]) -> None:
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+# ─────────────────────────────────────────── /settings ──────────────────────
+
+
+@app.get("/settings")
+def get_settings_endpoint() -> dict[str, Any]:
+    """Return the current effective model/embedding config. Unauthenticated."""
+    cfg = _get_config_with_overrides()
+    return {
+        "llm_provider": cfg.llm_provider,
+        "llm_model": cfg.llm_model,
+        "embedding_model": cfg.embedding_model,
+        "embedding_dim": cfg.embedding_dim,
+    }
+
+
+@router.patch("/settings")
+def patch_settings(body: SettingsPatch) -> dict[str, Any]:
+    """Update runtime model/embedding without a server restart."""
+    global _tg_client
+    if body.llm_model is not None:
+        _runtime_overrides["llm_model"] = body.llm_model
+        # Clear cached model instance so next request builds a new client.
+        try:
+            from ogr.common.llm import _MODEL_CACHE, _MODEL_CACHE_LOCK
+            with _MODEL_CACHE_LOCK:
+                _MODEL_CACHE.clear()
+        except Exception:  # noqa: BLE001
+            pass
+    if body.embedding_model is not None:
+        _runtime_overrides["embedding_model"] = body.embedding_model
+        dim = _EMBEDDING_DIMS.get(body.embedding_model)
+        if dim is not None:
+            _runtime_overrides["embedding_dim"] = dim
+        # Reset TG client so vocabulary cache isn't stale after a rebuild.
+        _tg_client = None
+    return {
+        "llm_provider": _get_config_with_overrides().llm_provider,
+        "llm_model": _get_config_with_overrides().llm_model,
+        "embedding_model": _get_config_with_overrides().embedding_model,
+        "embedding_dim": _get_config_with_overrides().embedding_dim,
+    }
+
+
+@app.get("/health/status")
+async def health_status(config: RunConfig = Depends(get_config)) -> dict[str, Any]:
+    """Check TigerGraph and LLM reachability in parallel. Unauthenticated — browser polls this."""
+    from ogr.verify import check_llm, check_tigergraph
+
+    def _check_db() -> dict[str, Any]:
+        t0 = time.monotonic()
+        status, detail = check_tigergraph(config)
+        return {"status": "ok" if status == "OK" else status.lower(), "detail": detail, "latency_ms": round((time.monotonic() - t0) * 1000)}
+
+    def _check_llm() -> dict[str, Any]:
+        t0 = time.monotonic()
+        status, detail = check_llm(config)
+        return {"status": "ok" if status == "OK" else status.lower(), "detail": detail, "latency_ms": round((time.monotonic() - t0) * 1000)}
+
+    db_result, llm_result = await asyncio.gather(
+        asyncio.to_thread(_check_db),
+        asyncio.to_thread(_check_llm),
+    )
+    return {"db": db_result, "llm": llm_result}
 
 
 # ---------------------------------------------------------------- /query ---

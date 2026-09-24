@@ -1,4 +1,5 @@
 import { config } from '../config'
+import { triggerRecheckOnFailure } from '../useServiceStatus'
 
 export class ApiError extends Error {
   constructor(
@@ -18,6 +19,8 @@ function headers(): HeadersInit {
 
 async function parse<T>(res: Response): Promise<T> {
   if (!res.ok) {
+    // Server errors (5xx) suggest the backend is degraded — re-check health.
+    if (res.status >= 500) triggerRecheckOnFailure()
     let detail = res.statusText
     try {
       const body = (await res.json()) as { detail?: string }
@@ -31,17 +34,42 @@ async function parse<T>(res: Response): Promise<T> {
 }
 
 export async function get<T>(path: string): Promise<T> {
-  return parse<T>(await fetch(`${config.apiBaseUrl}${path}`, { headers: headers() }))
+  try {
+    return await parse<T>(await fetch(`${config.apiBaseUrl}${path}`, { headers: headers() }))
+  } catch (err) {
+    if (err instanceof TypeError) triggerRecheckOnFailure() // network failure
+    throw err
+  }
 }
 
 export async function post<T>(path: string, body: unknown): Promise<T> {
-  return parse<T>(
-    await fetch(`${config.apiBaseUrl}${path}`, {
-      method: 'POST',
-      headers: headers(),
-      body: JSON.stringify(body),
-    }),
-  )
+  try {
+    return await parse<T>(
+      await fetch(`${config.apiBaseUrl}${path}`, {
+        method: 'POST',
+        headers: headers(),
+        body: JSON.stringify(body),
+      }),
+    )
+  } catch (err) {
+    if (err instanceof TypeError) triggerRecheckOnFailure() // network failure
+    throw err
+  }
+}
+
+export async function patch<T>(path: string, body: unknown): Promise<T> {
+  try {
+    return await parse<T>(
+      await fetch(`${config.apiBaseUrl}${path}`, {
+        method: 'PATCH',
+        headers: headers(),
+        body: JSON.stringify(body),
+      }),
+    )
+  } catch (err) {
+    if (err instanceof TypeError) triggerRecheckOnFailure()
+    throw err
+  }
 }
 
 export type SseHandlers = Record<string, (data: unknown) => void>

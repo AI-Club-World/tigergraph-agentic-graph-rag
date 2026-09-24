@@ -6,6 +6,8 @@ import { EvalTable } from './EvalTable'
 import { BenchmarksView } from './BenchmarksView'
 import { config } from './config'
 import { useTheme } from './useTheme'
+import { ServiceStatusBar, ServiceStatusProvider } from './ServiceStatus'
+import { SettingsPanel } from './SettingsPanel'
 
 function SunIcon() {
   return (
@@ -28,56 +30,61 @@ export function App() {
   const { theme, toggle } = useTheme()
 
   return (
-    <div className="app">
-      <header className="app-head">
-        <div className="brand">
-          <h1>Agentic GraphRAG</h1>
-          <span className="muted">Three-pipeline comparison</span>
-        </div>
-        <nav>
-          <NavLink to="/" end>
-            Search
-          </NavLink>
-          <NavLink to="/build">Build</NavLink>
-          <NavLink to="/dashboard">Dashboard</NavLink>
-          <NavLink to="/eval">Eval table</NavLink>
-          <NavLink to="/benchmarks">Benchmarks</NavLink>
-        </nav>
-        <div className="head-right">
-          {config.useMockApi && (
-            <span className="mock-flag" title="VITE_USE_MOCK_API=true — every screen is served from src/fixtures">
-              mock data
-            </span>
-          )}
-          <button
-            type="button"
-            className="theme-toggle"
-            onClick={toggle}
-            aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
-            title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
-          >
-            {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
-          </button>
-        </div>
-      </header>
+    <ServiceStatusProvider>
+      <div className="app">
+        <header className="app-head">
+          <div className="brand">
+            <h1>Agentic GraphRAG</h1>
+            <span className="muted">Three-pipeline comparison</span>
+          </div>
+          <nav>
+            <NavLink to="/" end>
+              Search
+            </NavLink>
+            <NavLink to="/build">Build</NavLink>
+            <NavLink to="/dashboard">Dashboard</NavLink>
+            <NavLink to="/eval">Eval table</NavLink>
+            <NavLink to="/benchmarks">Benchmarks</NavLink>
+          </nav>
+          <div className="head-right">
+            {config.useMockApi && (
+              <span className="mock-flag" title="VITE_USE_MOCK_API=true — every screen is served from src/fixtures">
+                mock data
+              </span>
+            )}
+            {!config.useMockApi && <ServiceStatusBar />}
+            <SettingsPanel />
+            <button
+              type="button"
+              className="theme-toggle"
+              onClick={toggle}
+              aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+              title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+            >
+              {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
+            </button>
+          </div>
+        </header>
 
-      <main>
-        <Routes>
-          <Route path="/" element={<SearchView />} />
-          <Route path="/build" element={<BuildView />} />
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/eval" element={<EvalTable />} />
-          <Route path="/benchmarks" element={<BenchmarksView />} />
-          <Route path="*" element={<p className="pad">Not found.</p>} />
-        </Routes>
-      </main>
+        <main>
+          <Routes>
+            <Route path="/" element={<SearchView />} />
+            <Route path="/build" element={<BuildView />} />
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/eval" element={<EvalTable />} />
+            <Route path="/benchmarks" element={<BenchmarksView />} />
+            <Route path="*" element={<p className="pad">Not found.</p>} />
+          </Routes>
+        </main>
 
-      <footer className="app-foot">
-        <span>
-          Telemetry framework<strong>Standard RAG · GraphRAG · Agentic GraphRAG</strong>
-        </span>
-        <span>Deterministic Benchmark Cockpit</span>
-      </footer>
-    </div>
+        <footer className="app-foot">
+          <span>
+            Telemetry framework<strong>Standard RAG · GraphRAG · Agentic GraphRAG</strong>
+          </span>
+          <span>Deterministic Benchmark Cockpit</span>
+        </footer>
+      </div>
+    </ServiceStatusProvider>
   )
 }
+

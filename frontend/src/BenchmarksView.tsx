@@ -11,6 +11,7 @@ import {
   parseRunFile,
   startBenchmark,
 } from './services/benchmarkService'
+import { RequiresServices } from './ServiceStatus'
 import { PIPELINE_IDS, PIPELINE_LABELS, type PipelineSummary, type RunSummary } from './types'
 
 type Metric = {
@@ -201,9 +202,11 @@ export function BenchmarksView() {
               <option key={d}>{d}</option>
             ))}
           </select>
-          <button type="button" onClick={run} disabled={busy || !dataset}>
-            Run benchmark
-          </button>
+          <RequiresServices needs={['db', 'llm']}>
+            <button type="button" onClick={run} disabled={busy || !dataset}>
+              Run benchmark
+            </button>
+          </RequiresServices>
           <button type="button" className="secondary" onClick={() => fileRef.current?.click()} disabled={busy}>
             Import JSON
           </button>

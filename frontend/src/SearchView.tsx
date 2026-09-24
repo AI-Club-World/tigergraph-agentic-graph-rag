@@ -4,6 +4,7 @@ import { QueryInput } from './components/QueryInput'
 import { ResultColumn, type ColumnState } from './components/ResultColumn'
 import { VerdictStrip } from './components/VerdictStrip'
 import { TracePanel } from './TracePanel'
+import { RequiresServices } from './ServiceStatus'
 import { getQueryResult, openQueryStream, submitQuery } from './services/queryService'
 import { PIPELINE_IDS, type PipelineId, type QueryLevelRecord, type TraceStep } from './types'
 
@@ -94,56 +95,58 @@ export function SearchView() {
 
   return (
     <div className="view search-view">
-      <section className="panel-x console">
-        <header className="panel-x-head">
-          <h2 className="panel-x-title">
-            <Icon name="scan" size={20} className="accent" />
-            Synchronous Execution Console
-          </h2>
-          <span className={`live-flag ${consoleState}`}>
-            <span className="dot" aria-hidden="true" />
-            {consoleLabel}
-          </span>
-        </header>
-        <QueryInput onSubmit={runQuery} disabled={inFlight} />
-      </section>
-
-      <p className="sr-only" aria-live="polite" role="status">
-        {announcement}
-      </p>
-
-      {submitError && <p className="error-box pad">{submitError}</p>}
-
-      {result ? (
-        <VerdictStrip verdict={result.verdict} />
-      ) : (
-        <section className="panel-x verdict placeholder">
+      <RequiresServices needs={['db', 'llm']}>
+        <section className="panel-x console">
           <header className="panel-x-head">
-            <h3 className="panel-x-title">
-              <span className="icon-box">
-                <Icon name="checkCircle" size={16} />
-              </span>
-              Verdict: pending
-            </h3>
+            <h2 className="panel-x-title">
+              <Icon name="scan" size={20} className="accent" />
+              Synchronous Execution Console
+            </h2>
+            <span className={`live-flag ${consoleState}`}>
+              <span className="dot" aria-hidden="true" />
+              {consoleLabel}
+            </span>
           </header>
-          <p className="muted">
-            The verdict strip renders once all three pipelines have completed.
-          </p>
+          <QueryInput onSubmit={runQuery} disabled={inFlight} />
         </section>
-      )}
 
-      <div className="columns">
-        {PIPELINE_IDS.map((pipeline) => (
-          <ResultColumn key={pipeline} pipeline={pipeline} state={columns[pipeline]} />
-        ))}
-      </div>
+        <p className="sr-only" aria-live="polite" role="status">
+          {announcement}
+        </p>
 
-      <TracePanel
-        steps={trace}
-        running={agentic.status === 'running'}
-        stopReason={agentic.record?.stop_reason ?? null}
-        strategyChanged={agentic.record?.strategy_changed ?? null}
-      />
+        {submitError && <p className="error-box pad">{submitError}</p>}
+
+        {result ? (
+          <VerdictStrip verdict={result.verdict} />
+        ) : (
+          <section className="panel-x verdict placeholder">
+            <header className="panel-x-head">
+              <h3 className="panel-x-title">
+                <span className="icon-box">
+                  <Icon name="checkCircle" size={16} />
+                </span>
+                Verdict: pending
+              </h3>
+            </header>
+            <p className="muted">
+              The verdict strip renders once all three pipelines have completed.
+            </p>
+          </section>
+        )}
+
+        <div className="columns">
+          {PIPELINE_IDS.map((pipeline) => (
+            <ResultColumn key={pipeline} pipeline={pipeline} state={columns[pipeline]} />
+          ))}
+        </div>
+
+        <TracePanel
+          steps={trace}
+          running={agentic.status === 'running'}
+          stopReason={agentic.record?.stop_reason ?? null}
+          strategyChanged={agentic.record?.strategy_changed ?? null}
+        />
+      </RequiresServices>
     </div>
   )
 }
