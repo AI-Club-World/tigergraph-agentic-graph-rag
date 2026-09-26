@@ -55,7 +55,7 @@ class DatasetRegistry:
                 "datasets": {},
             })
 
-    def record(self, name: str, ids: dict[str, list[str]], counts: dict[str, int], file_bytes: int) -> None:
+    def record(self, name: str, ids: dict[str, list[str]], counts: dict[str, Any], file_bytes: int) -> None:
         with _LOCK:
             data = self.read()
             data["datasets"][name] = {
@@ -65,6 +65,13 @@ class DatasetRegistry:
                 **{key: sorted(set(ids.get(key, []))) for _, key in ID_KINDS},
             }
             self._write(data)
+
+    def update(self, name: str, **fields: Any) -> None:
+        with _LOCK:
+            data = self.read()
+            if name in data["datasets"]:
+                data["datasets"][name].update(fields)
+                self._write(data)
 
     def removable_ids(self, name: str) -> dict[str, list[str]]:
         """Ids `name` wrote that no other dataset also wrote, per vertex type."""

@@ -143,3 +143,38 @@ def test_second_dataset_keeps_the_first_and_rebuild_replaces_its_own(env, monkey
     assert ("delete", "Document", ["Q1"]) in calls
     assert any(e["stage"] == "remove_previous" and e["status"] == "done" for e in again)
     assert set(env.registry.read()["datasets"]) == {"olympics", "finance"}
+
+
+def test_stages_are_scoped_to_the_pipelines_they_serve(env, monkeypatch):
+    """RAG: chunks/vectors only; GraphRAG: graph only, ready before the vector
+    index; Agentic: both. Counts are per part, and restorable after a reload."""
+    import ogr.graph.schema as schema
+    import ogr.graph.vector_status as vector_status
+    import ogr.ingest.chunk_embed as chunk_embed
+
+    conn = MagicMock()
+    conn.getVertexCount.return_value = 0
+    monkeypatch.setattr(api_main, "_get_client", lambda config: SimpleNamespace(
+        conn=conn, _ensure_connection=lambda: None, _vocab_cache={}))
+    monkeypatch.setattr(schema, "install_schema", lambda client: None)
+    monkeypatch.setattr(schema, "install_queries", lambda client: None)
+    monkeypatch.setattr(vector_status, "wait_until_ready", lambda *a, **k: {})
+    monkeypatch.setattr(chunk_embed, "embed_chunks", lambda chunks: None)
+    monkeypatch.setattr(api_main, "load_graph", lambda client, docs, chunks: SimpleNamespace(
+        documents=1, olympic_events=1, games=1, sports=1, venues=1, chunks=4,
+        edges=4 + 6, prev_edges_resolved=0, next_edges_resolved=0))
+
+    events = _run_build_stream(env.client, {"dataset": "olympics"})
+    done = {e["stage"]: e for e in events if e["status"] == "done"}
+    assert "rag" not in done["load_vertices"]["pipeline_affected"]
+    assert done["load_vertices"]["items_done"] == 5 and done["load_edges"]["items_done"] == 6
+    assert "graphrag" not in done["embed_chunks"]["pipeline_affected"]
+    assert done["load_chunks"]["pipeline_affected"] == ["rag", "agentic_graphrag"]
+    readies = [(i, e["pipeline_affected"]) for i, e in enumerate(events) if e["status"] == "ready"]
+    vector_start = next(i for i, e in enumerate(events) if e["stage"] == "vector_index")
+    assert readies[0][1] == ["graphrag"] and readies[0][0] < vector_start
+    assert readies[-1][1] == ["rag", "agentic_graphrag"]
+
+    built = env.client.get("/corpora", headers=HEADERS).json()["graph"]["datasets"]["olympics"]
+    assert built["entities"] == 5 and built["relationships"] == 6 and built["vectors"] == 4
+    assert set(built["ready_ms"]) == {"rag", "graphrag", "agentic_graphrag"}

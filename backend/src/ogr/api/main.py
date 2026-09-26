@@ -590,9 +590,14 @@ async def _run_build(build_id: str, queue: asyncio.Queue, config: RunConfig, req
     corpus = CORPUS_DIR / f"{request.dataset}.jsonl"
     registry = _registry()
     progress = BuildProgress(on_event=on_event)
+    # Which pipelines each stage serves: RAG answers from chunk vectors only,
+    # GraphRAG from the graph only, Agentic GraphRAG from the graph with the
+    # vector search as its fallback tool. Every pipeline needs TigerGraph.
     everyone = ["rag", "graphrag", "agentic_graphrag"]
     graph_pipelines = ["graphrag", "agentic_graphrag"]
+    vector_pipelines = ["rag", "agentic_graphrag"]
     stage, affected = "parse_infoboxes", graph_pipelines
+    ready_ms: dict[str, int] = {}
     started = time.monotonic()
     outcome: dict[str, Any] = {}
 
@@ -609,13 +614,13 @@ async def _run_build(build_id: str, queue: asyncio.Queue, config: RunConfig, req
         docs, _report = await asyncio.to_thread(parse_corpus, corpus)
         progress.finish(stage, affected, items_done=len(docs), note=f"dataset {request.dataset}")
 
-        begin("chunk_documents", everyone)
+        begin("chunk_documents", vector_pipelines)
         chunks = await asyncio.to_thread(
             chunk_and_embed_corpus, corpus, config.chunk_tokens, config.chunk_overlap, False
         )
         progress.finish(stage, affected, items_done=len(chunks))
 
-        begin("embed_chunks", everyone, items_total=len(chunks))
+        begin("embed_chunks", vector_pipelines, items_total=len(chunks))
         step = 500
         for start in range(0, len(chunks), step):
             await asyncio.to_thread(embed_chunks, chunks[start:start + step])
@@ -647,15 +652,22 @@ async def _run_build(build_id: str, queue: asyncio.Queue, config: RunConfig, req
                 stage, affected, items_done=removed, note=f"removed {request.dataset}'s previous data"
             )
 
-        begin("load_vertices", everyone)
+        # One load call writes graph and chunk vertices; its counts are
+        # reported to the pipelines each part serves.
+        begin("load_vertices", graph_pipelines)
         load = await asyncio.to_thread(load_graph, client, docs, chunks)
-        vertices = load.documents + load.olympic_events + load.games + load.sports + load.venues + load.chunks
-        progress.finish(stage, affected, items_done=vertices)
-        begin("load_edges", everyone)
+        entities = load.documents + load.olympic_events + load.games + load.sports + load.venues
+        relationships = load.edges - load.chunks  # every chunk adds one HAS_CHUNK edge
         progress.finish(
-            stage, affected, items_done=load.edges,
+            stage, affected, items_done=entities, note="Document, OlympicEvent, Games, Sport, Venue"
+        )
+        begin("load_edges", graph_pipelines)
+        progress.finish(
+            stage, affected, items_done=relationships,
             note=f"PREV_EDITION {load.prev_edges_resolved} resolved, NEXT_EDITION {load.next_edges_resolved}",
         )
+        begin("load_chunks", vector_pipelines, items_total=load.chunks)
+        progress.finish(stage, affected, items_done=load.chunks, note="Chunk vertices with bge-m3 vectors")
         registry.record(
             request.dataset,
             ids={
@@ -663,7 +675,11 @@ async def _run_build(build_id: str, queue: asyncio.Queue, config: RunConfig, req
                 "event_ids": [d.event_id or d.doc_id for d in docs if d.is_olympic_event],
                 "chunk_ids": [c.chunk_id for c in chunks],
             },
-            counts={"documents": load.documents, "events": load.olympic_events, "chunks": load.chunks},
+            counts={
+                "documents": load.documents, "events": load.olympic_events, "chunks": load.chunks,
+                "entities": entities, "relationships": relationships, "vectors": load.chunks,
+                "embedding_backend": backend,
+            },
             file_bytes=corpus.stat().st_size,
         )
 
@@ -671,11 +687,16 @@ async def _run_build(build_id: str, queue: asyncio.Queue, config: RunConfig, req
         await asyncio.to_thread(install_queries, client)
         client._vocab_cache.clear()  # the reload may have changed Games/Sport/Venue
         progress.finish(stage, affected, items_done=5)
+        # GraphRAG needs no vectors: answerable once the graph and Q1-Q4 are in.
+        progress.ready(["graphrag"])
+        ready_ms["graphrag"] = round((time.monotonic() - started) * 1000)
 
-        begin("vector_index", everyone)
+        begin("vector_index", vector_pipelines)
         await asyncio.to_thread(wait_until_ready, config, 600.0, conn=client.conn)
         progress.finish(stage, affected, items_done=1, note="Ready_for_query")
-        progress.ready(everyone)
+        progress.ready(vector_pipelines)
+        ready_ms.update(dict.fromkeys(vector_pipelines, round((time.monotonic() - started) * 1000)))
+        registry.update(request.dataset, ready_ms=ready_ms)
         outcome = {"status": "ready", "documents": load.documents, "chunks": load.chunks}
     except Exception as e:  # noqa: BLE001 - reported on the stage that failed
         logger.error("Build %s failed at %s: %s", build_id, stage, e)
