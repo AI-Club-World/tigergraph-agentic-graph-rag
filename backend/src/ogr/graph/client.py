@@ -258,18 +258,25 @@ class TigerGraphClient:
         all_chunks: list[dict[str, Any]] = []
         for doc_id in doc_ids:
             try:
-                # Navigate HAS_CHUNK edge from Document to Chunk vertices
-                raw = self.conn.getEdgesByType("HAS_CHUNK", "Document", doc_id)
-                for item in (raw or []):
+                # This document's HAS_CHUNK edges, then the Chunk vertices they
+                # point to (the edge carries no attributes; the text is on the
+                # vertex). getEdgesByType would return every HAS_CHUNK edge in
+                # the graph, whatever its source.
+                edges = self.conn.getEdges("Document", doc_id, "HAS_CHUNK") or []
+                chunk_ids = [e["to_id"] for e in edges if e.get("to_id")]
+                if not chunk_ids:
+                    continue
+                for vertex in self.conn.getVerticesById("Chunk", chunk_ids) or []:
+                    attributes = vertex.get("attributes", {})
                     all_chunks.append({
-                        "chunk_id": item.get("to_id", ""),
+                        "chunk_id": vertex.get("v_id", ""),
                         "doc_id": doc_id,
-                        "text": item.get("attributes", {}).get("text", ""),
-                        "seq": item.get("attributes", {}).get("seq", 0),
+                        "text": attributes.get("text", ""),
+                        "seq": attributes.get("seq", 0),
                     })
             except Exception as e:
                 logger.warning("HAS_CHUNK expansion failed for %s: %s", doc_id, e)
-        return all_chunks
+        return sorted(all_chunks, key=lambda c: (c["doc_id"], c["seq"]))
 
     def get_vocabulary(self, vtype: str) -> list[str]:
         """Retrieve distinct values for a vertex type (Games, Sport, Venue names).
