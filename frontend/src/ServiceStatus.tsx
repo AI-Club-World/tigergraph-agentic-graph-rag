@@ -31,7 +31,7 @@ export function useServiceContext(): ServiceStatus {
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 const SERVICE_META = {
-  db: { label: 'Knowledge Base (TigerGraph)', icon: 'hub' },
+  db: { label: 'Knowledge Base (TigerGraph)', icon: 'database' },
   llm: { label: 'Intelligent Engine (LLM)', icon: 'bot' },
   emb: { label: 'Embedding Model', icon: 'layers' },
 } as const satisfies Record<string, { label: string; icon: IconName }>

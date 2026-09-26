@@ -187,3 +187,19 @@ Method: live end-to-end run of the real backend and frontend (Chromium via Playw
 | Capture every trial | `out/history.jsonl` via `common/trials.py` (queries, builds incl. refused/needs-confirmation, benchmarks incl. refused); `GET /history`; History tab. |
 | NVIDIA: Free Endpoint only | NGC catalog search (`llm_config.nvidia_free_endpoints` in `server_config.json`, env-overridable) matched to NIM ids, cached 1 h. **Unverified**: NGC is unreachable from the development sandbox, so the query format is a best-known default; when it fails or matches nothing the UI lists every text model with an explicit note. |
 | Search models by name | Filter box in Settings. |
+
+---
+
+## 10. Follow-up round 2 (2026-09-26)
+
+| Request | Change |
+|---|---|
+| LLM health timing out at 20 s; split status API | `/health/db`, `/health/llm`, `/health/embedding`, polled independently; LLM check waits `HEALTH_LLM_TIMEOUT_S` (default 120 s). |
+| Icons; closable errors | Database / robot / layers SVG icons; `Notice` banners with a close button everywhere. |
+| Build percent | Per-pipeline percent complete (stages weighted, embedding heaviest); header and button show the whole build's percent. |
+| Dataset picker placement | Selector + Upload beside Start build; no separate panel. |
+| "Vector Index" shown after completion | Ready pipelines show *Ready / Answerable*. |
+| Metrics lost on reload | Registry stores entities, relationships, vectors, embedding tier and per-pipeline time-to-ready; the Build view restores them from `GET /corpora`; a running build is picked up again via `GET /build/current`. |
+| Same metrics for all three | Stages and counts are scoped: RAG = chunks + vectors; GraphRAG = documents + entities + relationships (ready without vectors); Agentic GraphRAG = graph + vectors (vector search is its fallback tool). |
+| "LLM used for embeddings?" | No — building calls only the embedding model (bge-m3). The misleading "LLM tokens: 0" row is replaced by the embedding model/tier line. |
+| Benchmark → Dashboard; Eval table inside | `/dashboard` with Dashboard, Run benchmark and Eval table tabs; `/benchmarks` and `/eval` redirect. |

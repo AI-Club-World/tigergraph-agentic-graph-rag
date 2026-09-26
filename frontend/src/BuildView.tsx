@@ -410,9 +410,9 @@ export function BuildView() {
           </p>
           <h2>Ingestion build</h2>
           <p className="build-lede">
-            One shared build. Each column shows when that pipeline becomes answerable, fanned out by
-            the stages it depends on — RAG consumes the foundation, GraphRAG pays for the graph, and
-            Agentic turns ready last.
+            One shared build. Each column shows when that pipeline becomes answerable, from the stages it
+            depends on — RAG needs chunks and vectors, GraphRAG the graph, Agentic GraphRAG both (graph
+            tools with vector search as fallback). Building calls the embedding model, never an LLM.
           </p>
         </div>
         <div className="build-actions">
@@ -644,7 +644,7 @@ export function BuildView() {
                   <div className="latency-label">
                     <span className="pipe-color">
                       {PIPELINE_LABELS[row.pipeline]}
-                      {i > 0 && row.ms > 0 && ` (+${secs(delta)}${row.active ? ' active' : ''})`}
+                      {i > 0 && row.ms > 0 && ` (${delta >= 0 ? '+' : '−'}${secs(Math.abs(delta))}${row.active ? ' active' : ''})`}
                     </span>
                     <span>{(row.ms / 1000).toFixed(2)} s</span>
                   </div>

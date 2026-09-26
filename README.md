@@ -334,6 +334,7 @@ boundary. The real branch is already written against the spec'd endpoints:
 | `getQueryResult` | `GET /query/{id}/result` |
 | `listCorpora` | `GET /corpora` — datasets in `data/corpus/` and which are loaded (`out/datasets.json`) |
 | `uploadCorpus` | `POST /corpora/{name}` — body is the JSONL (`doc_id`, `text` required per line) |
+| `getCurrentBuild` | `GET /build/current` — latest build and its events (a reloaded Build page resumes following it) |
 | `startBuild` | `POST /build` `{dataset, rebuild, reset}` → `202 {build_id, stream_token}`; `409 {code: already_built \| reset_required \| build_running}` asks first |
 | `getHistory` | `GET /history?kind=` — every attempt, newest first |
 | `openBuildStream` | `GET /build/{id}/stream?token=…` (SSE) |
