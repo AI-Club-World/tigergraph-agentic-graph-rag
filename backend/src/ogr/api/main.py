@@ -42,6 +42,7 @@ from sse_starlette.sse import EventSourceResponse
 from ogr.api.security import StreamTokenStore, get_config, require_api_key
 from ogr.common.config import RunConfig, get_default_config
 from ogr.common.contracts import PipelineRecord, QueryLevelRecord
+from ogr.common.trials import TrialLog
 from ogr.eval.aggregator import aggregate_query
 from ogr.eval.batch_runner import default_pipelines, effective_pool_size, run_batch, run_config_header
 from ogr.eval.dispatcher import error_record
@@ -126,6 +127,19 @@ class SettingsPatch(BaseModel):
 _EMBEDDING_DIMS: dict[str, int] = {
     "@cf/baai/bge-m3": 1024,
 }
+
+
+def _trials() -> TrialLog:
+    return TrialLog(OUT_DIR / "history.jsonl")
+
+
+def _model_fields(config: RunConfig) -> dict[str, Any]:
+    """Non-secret run identity recorded with every trial."""
+    return {
+        "llm_provider": config.llm_provider,
+        "llm_model": config.llm_model,
+        "embedding_model": config.embedding_model,
+    }
 
 
 def _get_client(config: RunConfig) -> TigerGraphClient:
@@ -318,10 +332,31 @@ async def _run_query(query_id: str, query: str, queue: asyncio.Queue, config: Ru
         records["agentic_graphrag"] = record
         await queue.put(("pipeline", record))
 
+    started = time.monotonic()
     await asyncio.gather(_rag(), _graphrag(), _agentic())
 
     query_record = aggregate_query(query_id=query_id, query_text=query, records=records)
     _queries[query_id]["record"] = query_record
+    statuses = {r.status for r in records.values()}
+    _trials().append(
+        "query",
+        "done" if statuses == {"done"} else "error" if statuses == {"error"} else "partial",
+        subject=query,
+        query_id=query_id,
+        duration_ms=round((time.monotonic() - started) * 1000),
+        tokens=sum(r.tokens.total for r in records.values()),
+        pipelines={
+            name: {
+                "status": r.status,
+                "tokens": r.tokens.total,
+                "latency_ms": round(r.latency_ms),
+                "error": r.error_detail,
+            }
+            for name, r in records.items()
+        },
+        error="; ".join(f"{n}: {r.error_detail}" for n, r in records.items() if r.error_detail) or None,
+        **_model_fields(config),
+    )
     await queue.put(("done", None))
 
 
@@ -451,6 +486,27 @@ async def post_build(
     body: BuildRequest | None = None, config: RunConfig = Depends(get_config)
 ) -> dict[str, str]:
     body = body or BuildRequest()
+    try:
+        return await _start_build(body, config)
+    except HTTPException as e:
+        # A refused build is a trial too: the user sees why it did not run
+        # (unknown dataset, already built -> asked to rebuild, reset needed).
+        detail = e.detail if isinstance(e.detail, dict) else {"message": str(e.detail)}
+        _trials().append(
+            "build",
+            "needs_confirmation" if detail.get("code") in ("already_built", "reset_required") else "refused",
+            subject=body.dataset,
+            dataset=body.dataset,
+            rebuild=body.rebuild,
+            reset=body.reset,
+            code=detail.get("code"),
+            error=detail.get("message"),
+            **_model_fields(config),
+        )
+        raise
+
+
+async def _start_build(body: BuildRequest, config: RunConfig) -> dict[str, str]:
     corpus = _corpus_file(body.dataset)
     if not corpus.exists():
         raise HTTPException(status_code=404, detail=f"Unknown dataset {body.dataset!r}")
@@ -518,6 +574,8 @@ async def _run_build(build_id: str, queue: asyncio.Queue, config: RunConfig, req
     everyone = ["rag", "graphrag", "agentic_graphrag"]
     graph_pipelines = ["graphrag", "agentic_graphrag"]
     stage, affected = "parse_infoboxes", graph_pipelines
+    started = time.monotonic()
+    outcome: dict[str, Any] = {}
 
     def begin(name: str, pipelines: list[str], items_total: int = 0) -> None:
         nonlocal stage, affected
@@ -599,10 +657,24 @@ async def _run_build(build_id: str, queue: asyncio.Queue, config: RunConfig, req
         await asyncio.to_thread(wait_until_ready, config, 600.0, conn=client.conn)
         progress.finish(stage, affected, items_done=1, note="Ready_for_query")
         progress.ready(everyone)
+        outcome = {"status": "ready", "documents": load.documents, "chunks": load.chunks}
     except Exception as e:  # noqa: BLE001 - reported on the stage that failed
         logger.error("Build %s failed at %s: %s", build_id, stage, e)
         progress.error(stage, affected, str(e))
+        outcome = {"status": "error", "failed_stage": stage, "error": str(e)[:500]}
 
+    _trials().append(
+        "build",
+        outcome.pop("status"),
+        subject=request.dataset,
+        build_id=build_id,
+        dataset=request.dataset,
+        rebuild=request.rebuild,
+        reset=request.reset,
+        duration_ms=round((time.monotonic() - started) * 1000),
+        **outcome,
+        **_model_fields(config),
+    )
     await queue.put(("done", None))
 
 
@@ -663,6 +735,17 @@ async def get_datasets() -> list[str]:
 
 @router.post("/batch", status_code=202)
 async def post_batch(body: BatchRequest, config: RunConfig = Depends(get_config)) -> dict[str, str]:
+    try:
+        return await _start_batch(body, config)
+    except HTTPException as e:
+        _trials().append(
+            "benchmark", "refused", subject=body.dataset, dataset=body.dataset, run_id=body.run_id,
+            error=str(e.detail), **_model_fields(config),
+        )
+        raise
+
+
+async def _start_batch(body: BatchRequest, config: RunConfig) -> dict[str, str]:
     """Execute a benchmark over a named question set in `data/questions/`.
     Records append to `out/{run_id}.jsonl`, which makes the run part of the
     history as soon as its first question completes.
@@ -697,7 +780,33 @@ async def post_batch(body: BatchRequest, config: RunConfig = Depends(get_config)
             max_total_tokens=config.max_total_tokens,
         )
     )
+    started_clock = time.monotonic()
+
+    def _record_benchmark(task: asyncio.Task) -> None:
+        error = None if task.cancelled() else task.exception()
+        status = "cancelled" if task.cancelled() else "error" if error else "complete"
+        _trials().append(
+            "benchmark",
+            status,
+            subject=f"{body.dataset} · {run_id}",
+            run_id=run_id,
+            dataset=body.dataset,
+            questions=None if error else task.result(),
+            duration_ms=round((time.monotonic() - started_clock) * 1000),
+            error=str(error)[:500] if error else None,
+            **_model_fields(config),
+        )
+
+    _batch_tasks[run_id].add_done_callback(_record_benchmark)
     return {"run_id": run_id, "status": "running"}
+
+
+@router.get("/history")
+async def get_history(
+    kind: Literal["query", "build", "benchmark"] | None = None, limit: int = 500
+) -> list[dict]:
+    """Every query, build and benchmark attempt, newest first."""
+    return await asyncio.to_thread(_trials().read, kind, min(max(limit, 1), 5000))
 
 
 @router.get("/runs")

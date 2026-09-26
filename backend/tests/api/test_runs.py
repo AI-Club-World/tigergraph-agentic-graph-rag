@@ -129,3 +129,16 @@ def test_timing_mode_is_recorded_in_the_run_header(client):
 def test_unknown_latency_mode_is_rejected(client):
     response = client.post("/batch", json={"dataset": "mini", "latency_mode": "fast"}, headers=HEADERS)
     assert response.status_code == 422
+
+
+def test_benchmark_run_is_captured_as_a_trial(client):
+    run_id = client.post("/batch", headers=HEADERS, json={"dataset": "mini", "run_id": "trial-1"}).json()["run_id"]
+    _wait_complete(client, run_id)
+    for _ in range(100):
+        trials = client.get("/history", headers=HEADERS, params={"kind": "benchmark"}).json()
+        if trials:
+            break
+        time.sleep(0.02)
+    [trial] = trials
+    assert trial["status"] == "complete" and trial["run_id"] == "trial-1" and trial["dataset"] == "mini"
+    assert trial["llm_model"] and "llm_api_key" not in trial

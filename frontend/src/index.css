@@ -1299,3 +1299,12 @@ table.matrix .section-row th { background: var(--bg-sunken); text-align: left; f
   font: inherit;
 }
 .tab.active { border-bottom-color: var(--accent, #1f6feb); font-weight: 600; }
+
+/* History view */
+.history-filters { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; margin-bottom: 0.75rem; }
+.history-filters input[type='search'] { min-width: 18rem; flex: 1; }
+.history-table { width: 100%; border-collapse: collapse; }
+.history-table th, .history-table td { text-align: left; padding: 0.4rem 0.5rem; border-bottom: 1px solid var(--border, #d0d7de); vertical-align: top; }
+.history-row { cursor: pointer; }
+.history-detail pre { margin: 0; white-space: pre-wrap; font-size: 0.8rem; }
+.error-text { color: var(--bad, #c53030); }

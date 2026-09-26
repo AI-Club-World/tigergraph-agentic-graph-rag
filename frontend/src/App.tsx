@@ -3,6 +3,7 @@ import { SearchView } from './SearchView'
 import { BuildView } from './BuildView'
 import { EvalTable } from './EvalTable'
 import { BenchmarksPage } from './BenchmarksPage'
+import { HistoryView } from './HistoryView'
 import { config } from './config'
 import { useTheme } from './useTheme'
 import { ServiceStatusBar, ServiceStatusProvider } from './ServiceStatus'
@@ -50,6 +51,7 @@ export function App() {
             <NavLink to="/build">Build</NavLink>
             <NavLink to="/benchmarks">Benchmarks</NavLink>
             <NavLink to="/eval">Eval table</NavLink>
+            <NavLink to="/history">History</NavLink>
           </nav>
           <div className="head-right">
             {config.useMockApi && (
@@ -78,6 +80,7 @@ export function App() {
             <Route path="/dashboard" element={<DashboardRedirect />} />
             <Route path="/eval" element={<EvalTable />} />
             <Route path="/benchmarks" element={<BenchmarksPage />} />
+            <Route path="/history" element={<HistoryView />} />
             <Route path="*" element={<p className="pad">Not found.</p>} />
           </Routes>
         </main>
