@@ -196,7 +196,9 @@ export function BuildView() {
       ? `Stage ${activeGroup + 1}/${groups.length} in flight`
       : 'Idle'
 
-  const syncState = error ? 'failed' : running ? 'running' : allReady ? 'complete' : 'idle'
+  // A stage that ended in error fails the build even though the stream closed cleanly.
+  const stageFailed = PIPELINE_IDS.some((p) => columns[p].status === 'error')
+  const syncState = error || stageFailed ? 'failed' : running ? 'running' : allReady ? 'complete' : 'idle'
   const syncLabel = {
     failed: 'Build failed',
     running: `Sync running: +${secs(elapsed)}`,

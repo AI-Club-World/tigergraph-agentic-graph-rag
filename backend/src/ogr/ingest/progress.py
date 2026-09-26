@@ -51,20 +51,21 @@ class BuildProgress:
 
     def __init__(self, on_event: Callable[[BuildEvent], None] | None = None) -> None:
         self._on_event = on_event
-        self._stage_started: dict[str, float] = {}
+        # elapsed_ms is time since the build started, so a column's elapsed and
+        # its ready event read as "time to answerable" (UI-SPEC build view).
+        self._build_started = time.perf_counter()
 
     def start(self, stage: str, pipeline_affected: list[str], items_total: int = 0) -> None:
-        self._stage_started[stage] = time.perf_counter()
         self._emit(BuildEvent(
             stage=stage, pipeline_affected=pipeline_affected,
-            status="running", items_total=items_total,
+            status="running", items_total=items_total, elapsed_ms=self._elapsed_ms(),
         ))
 
     def progress(self, stage: str, pipeline_affected: list[str], items_done: int, items_total: int) -> None:
         self._emit(BuildEvent(
             stage=stage, pipeline_affected=pipeline_affected, status="running",
             items_done=items_done, items_total=items_total,
-            elapsed_ms=self._elapsed_ms(stage),
+            elapsed_ms=self._elapsed_ms(),
         ))
 
     def finish(
@@ -73,22 +74,24 @@ class BuildProgress:
         self._emit(BuildEvent(
             stage=stage, pipeline_affected=pipeline_affected, status="done",
             items_done=items_done, items_total=items_done,
-            elapsed_ms=self._elapsed_ms(stage), note=note,
+            elapsed_ms=self._elapsed_ms(), note=note,
         ))
 
     def ready(self, pipeline_affected: list[str], note: str = "") -> None:
         """A pipeline has everything its build stages promised — flips its readiness badge."""
-        self._emit(BuildEvent(stage="ready", pipeline_affected=pipeline_affected, status="ready", note=note))
+        self._emit(BuildEvent(
+            stage="ready", pipeline_affected=pipeline_affected, status="ready",
+            elapsed_ms=self._elapsed_ms(), note=note,
+        ))
 
     def error(self, stage: str, pipeline_affected: list[str], note: str) -> None:
         self._emit(BuildEvent(
             stage=stage, pipeline_affected=pipeline_affected, status="error",
-            elapsed_ms=self._elapsed_ms(stage), note=note,
+            elapsed_ms=self._elapsed_ms(), note=note,
         ))
 
-    def _elapsed_ms(self, stage: str) -> float:
-        started = self._stage_started.get(stage)
-        return (time.perf_counter() - started) * 1000.0 if started else 0.0
+    def _elapsed_ms(self) -> float:
+        return (time.perf_counter() - self._build_started) * 1000.0
 
     def _emit(self, event: BuildEvent) -> None:
         if self._on_event is not None:

@@ -159,6 +159,40 @@ class TestBuildStream:
         assert any(p["status"] == "error" for p in error_payloads)
 
 
+    def test_no_pipeline_is_ready_without_tigergraph(self, client, monkeypatch, tmp_path):
+        """Every pipeline queries TigerGraph, so a build that cannot reach it
+        stops at schema_install and marks nothing ready (it used to mark RAG
+        ready right after local chunk+embed)."""
+        corpus = tmp_path / "corpus.jsonl"
+        corpus.write_text(
+            json.dumps({"doc_id": "Q1", "title": "Sailing at the 2016 Summer Olympics", "text": "Sailing text."})
+            + "\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(api_main, "CORPUS_PATH", corpus)
+
+        class _Offline:
+            conn = None
+
+            def _ensure_connection(self):
+                return None
+
+        monkeypatch.setattr(api_main, "_get_client", lambda config: _Offline())
+        body = client.post("/build", headers=HEADERS).json()
+        with client.stream(
+            "GET", f"/build/{body['build_id']}/stream", params={"token": body["stream_token"]}
+        ) as response:
+            lines = list(response.iter_lines())
+        events = [json.loads(lines[i + 1][len("data: "):]) for i, line in enumerate(lines) if line == "event: build"]
+
+        stages = [e["stage"] for e in events if e["status"] == "done"]
+        assert stages == ["parse_infoboxes", "chunk_documents", "embed_chunks"]
+        assert events[-1]["stage"] == "schema_install" and events[-1]["status"] == "error"
+        assert not any(e["status"] == "ready" for e in events)
+        elapsed = [e["elapsed_ms"] for e in events]
+        assert elapsed == sorted(elapsed)  # measured from build start
+
+
 class TestBatchRecords:
     def test_unknown_run_id_is_404(self, client):
         response = client.get("/batch/no-such-run/records", headers=HEADERS)

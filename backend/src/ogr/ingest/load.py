@@ -48,6 +48,7 @@ class LoadReport:
     prev_edges_unresolved: int = 0
     next_edges_resolved: int = 0
     next_edges_unresolved: int = 0
+    edges: int = 0
 
 
 def _games_year(games_id: str | None) -> int | None:
@@ -240,5 +241,6 @@ def load_graph(
         ("Document", "HAS_CHUNK", "Chunk", e_has_chunk),
     ):
         _flush(conn, "E", (src, etype, tgt), payload, batch_size)
+        report.edges += len(payload)
 
     return report

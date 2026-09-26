@@ -360,53 +360,83 @@ async def post_build(config: RunConfig = Depends(get_config)) -> dict[str, str]:
 
 
 async def _run_build(build_id: str, queue: asyncio.Queue, config: RunConfig) -> None:
-    """Chunk+embed is real and needs no TigerGraph (AD-6). Schema install
-    and load only run if a live connection is reachable; if not, that stage
-    reports an error rather than a fabricated success (DP-7: a build column
-    states what did not happen, it does not hide it).
+    """The same stages as `ogr.cli build`, streamed as BuildEvents under the
+    stage names the build view renders. A pipeline turns ready only when it
+    can answer: every pipeline queries TigerGraph, so nothing is ready until
+    the graph is loaded, Q1-Q5 are installed and the vector index reports
+    Ready_for_query (TECHNICAL-SPEC §11). A failed stage reports an error
+    rather than a fabricated success (DP-7).
     """
+    from ogr.common.embeddings import embedding_backend
+    from ogr.graph.schema import install_queries, install_schema
+    from ogr.graph.vector_status import wait_until_ready
+    from ogr.ingest.chunk_embed import embed_chunks
+
     def on_event(event: BuildEvent) -> None:
         queue.put_nowait(("build", event))
 
     progress = BuildProgress(on_event=on_event)
-    all_pipelines = ["rag", "graphrag", "agentic_graphrag"]
-
-    if not CORPUS_PATH.exists():
-        progress.error("chunk_embed", all_pipelines, f"{CORPUS_PATH} not found")
-        await queue.put(("done", None))
-        return
-
-    progress.start("chunk_embed", all_pipelines)
-    try:
-        chunks = await asyncio.to_thread(
-            chunk_and_embed_corpus, CORPUS_PATH, config.chunk_tokens, config.chunk_overlap
-        )
-    except Exception as e:  # noqa: BLE001
-        progress.error("chunk_embed", all_pipelines, str(e))
-        await queue.put(("done", None))
-        return
-    progress.finish("chunk_embed", all_pipelines, items_done=len(chunks))
-    progress.ready(["rag"], note="chunk+embed done — Q5 must still be installed for a live index")
-
-    client = _get_client(config)
-    client._ensure_connection()
+    everyone = ["rag", "graphrag", "agentic_graphrag"]
     graph_pipelines = ["graphrag", "agentic_graphrag"]
-    if client.conn is None:
-        progress.error("schema_and_load", graph_pipelines, "TigerGraph unreachable — set TG_HOST")
-    else:
-        progress.start("schema_and_load", graph_pipelines)
-        try:
-            from ogr.graph.schema import install_queries, install_schema
+    stage, affected = "parse_infoboxes", graph_pipelines
 
-            await asyncio.to_thread(install_schema, client)
-            docs, _report = await asyncio.to_thread(parse_corpus, CORPUS_PATH)
-            await asyncio.to_thread(load_graph, client, docs, chunks)
-            await asyncio.to_thread(install_queries, client)
-            client._vocab_cache.clear()  # the reload may have changed Games/Sport/Venue
-            progress.finish("schema_and_load", graph_pipelines, items_done=len(docs))
-            progress.ready(graph_pipelines)
-        except Exception as e:  # noqa: BLE001
-            progress.error("schema_and_load", graph_pipelines, str(e))
+    def begin(name: str, pipelines: list[str], items_total: int = 0) -> None:
+        nonlocal stage, affected
+        stage, affected = name, pipelines
+        progress.start(name, pipelines, items_total=items_total)
+
+    try:
+        if not CORPUS_PATH.exists():
+            raise FileNotFoundError(f"{CORPUS_PATH} not found")
+
+        begin("parse_infoboxes", graph_pipelines)
+        docs, _report = await asyncio.to_thread(parse_corpus, CORPUS_PATH)
+        progress.finish(stage, affected, items_done=len(docs))
+
+        begin("chunk_documents", everyone)
+        chunks = await asyncio.to_thread(
+            chunk_and_embed_corpus, CORPUS_PATH, config.chunk_tokens, config.chunk_overlap, False
+        )
+        progress.finish(stage, affected, items_done=len(chunks))
+
+        begin("embed_chunks", everyone, items_total=len(chunks))
+        step = 500
+        for start in range(0, len(chunks), step):
+            await asyncio.to_thread(embed_chunks, chunks[start:start + step])
+            progress.progress(stage, affected, min(start + step, len(chunks)), len(chunks))
+        backend = await asyncio.to_thread(embedding_backend)
+        progress.finish(stage, affected, items_done=len(chunks), note=f"{config.embedding_model} via {backend}")
+
+        client = _get_client(config)
+        begin("schema_install", everyone)
+        await asyncio.to_thread(client._ensure_connection)
+        if client.conn is None:
+            raise ConnectionError("TigerGraph unreachable — set TG_HOST and credentials")
+        await asyncio.to_thread(install_schema, client)
+        progress.finish(stage, affected, items_done=1)
+
+        begin("load_vertices", everyone)
+        load = await asyncio.to_thread(load_graph, client, docs, chunks)
+        vertices = load.documents + load.olympic_events + load.games + load.sports + load.venues + load.chunks
+        progress.finish(stage, affected, items_done=vertices)
+        begin("load_edges", everyone)
+        progress.finish(
+            stage, affected, items_done=load.edges,
+            note=f"PREV_EDITION {load.prev_edges_resolved} resolved, NEXT_EDITION {load.next_edges_resolved}",
+        )
+
+        begin("install_graph_queries", everyone, items_total=5)
+        await asyncio.to_thread(install_queries, client)
+        client._vocab_cache.clear()  # the reload may have changed Games/Sport/Venue
+        progress.finish(stage, affected, items_done=5)
+
+        begin("vector_index", everyone)
+        await asyncio.to_thread(wait_until_ready, config, 600.0, conn=client.conn)
+        progress.finish(stage, affected, items_done=1, note="Ready_for_query")
+        progress.ready(everyone)
+    except Exception as e:  # noqa: BLE001 - reported on the stage that failed
+        logger.error("Build %s failed at %s: %s", build_id, stage, e)
+        progress.error(stage, affected, str(e))
 
     await queue.put(("done", None))
 
