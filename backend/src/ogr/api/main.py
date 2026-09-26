@@ -405,7 +405,9 @@ async def _run_build(build_id: str, queue: asyncio.Queue, config: RunConfig) -> 
             await asyncio.to_thread(embed_chunks, chunks[start:start + step])
             progress.progress(stage, affected, min(start + step, len(chunks)), len(chunks))
         backend = await asyncio.to_thread(embedding_backend)
-        progress.finish(stage, affected, items_done=len(chunks), note=f"{config.embedding_model} via {backend}")
+        progress.finish(
+            stage, affected, items_done=len(chunks), note=f"{config.embedding_model} via {backend}"
+        )
 
         client = _get_client(config)
         begin("schema_install", everyone)
