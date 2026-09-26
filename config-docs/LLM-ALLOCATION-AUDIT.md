@@ -152,7 +152,7 @@ Sources consulted for provider facts: [Cloudflare bge-m3](https://developers.clo
 
 ## 8. Verification pass (2026-09-26) — defects found and fixed
 
-Method: live end-to-end run of the real backend and frontend (Chromium via Playwright) against a local OpenAI-compatible stub LLM, direct probes of the live NVIDIA / Groq / Cloudflare / Gemini endpoints, and two independent code reviews (backend, frontend) verified against both sides of each interface. Backend 383 → 422 tests; frontend 11/20 → 20/20 passing; `ruff`, `tsc`, `vite build` clean.
+Method: live end-to-end run of the real backend and frontend (Chromium via Playwright) against a local OpenAI-compatible stub LLM, direct probes of the live NVIDIA / Groq / Cloudflare / Gemini endpoints, and two independent code reviews (backend, frontend) verified against both sides of each interface. Backend 383 → 414 tests; frontend 11/20 → 20/20 passing; `ruff`, `tsc`, `vite build` clean.
 
 | Area | Defect | Fix |
 |---|---|---|
