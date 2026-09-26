@@ -186,6 +186,11 @@ class RunConfig(BaseModel):
     # Empty means "no key configured" — the API refuses every request rather
     # than silently running unauthenticated.
     ogr_api_key: str = Field(default_factory=lambda: _env("OGR_API_KEY", ""))
+    # /health/llm waits this long for its one-token completion; a cold
+    # free-tier model can take well over 20 s.
+    health_llm_timeout_s: float = Field(
+        default_factory=lambda: float(_env("HEALTH_LLM_TIMEOUT_S", "120"))
+    )
     ogr_stream_token_ttl_s: int = Field(
         default_factory=lambda: int(_env("OGR_STREAM_TOKEN_TTL_S", "300"))
     )

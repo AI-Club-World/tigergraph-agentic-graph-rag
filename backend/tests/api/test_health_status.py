@@ -1,4 +1,4 @@
-"""/health/status: each dependency judged on its own (indicator fixes)."""
+"""/health/db, /health/llm, /health/embedding: each dependency on its own route."""
 
 from __future__ import annotations
 
@@ -26,15 +26,19 @@ def client(monkeypatch):
         api_main.app.dependency_overrides[get_config] = previous
 
 
-def test_slow_llm_does_not_mark_the_database_down(client, monkeypatch):
-    monkeypatch.setattr(api_main, "HEALTH_CHECK_TIMEOUT_S", 0.2)
+def test_each_dependency_has_its_own_route_and_time_limit(client, monkeypatch):
     monkeypatch.setattr(verify, "check_tigergraph", lambda config, c=None: ("OK", "up"))
     monkeypatch.setattr(verify, "check_llm", lambda config: time.sleep(1) or ("OK", "late"))
     monkeypatch.setattr(verify, "check_embedding", lambda config: ("SKIP", "local"))
-    body = client.get("/health/status").json()
-    assert body["db"]["status"] == "ok"
-    assert body["llm"]["status"] == "fail" and "did not answer" in body["llm"]["detail"]
-    assert body["embedding"]["status"] == "skip"
+    api_main.app.dependency_overrides[get_config] = lambda: RunConfig(ogr_api_key="k", health_llm_timeout_s=0.2)
+    assert client.get("/health/db").json()["status"] == "ok"
+    llm = client.get("/health/llm").json()
+    assert llm["status"] == "fail" and "did not answer within" in llm["detail"]
+    assert client.get("/health/embedding").json()["status"] == "skip"
+
+
+def test_llm_limit_defaults_to_two_minutes():
+    assert RunConfig().health_llm_timeout_s == 120
 
 
 def test_tigergraph_check_uses_rest_echo_not_version():

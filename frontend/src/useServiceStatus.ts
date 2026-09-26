@@ -1,5 +1,7 @@
 /**
- * useServiceStatus — polls /health/status periodically and on API failure.
+ * useServiceStatus — polls /health/db, /health/llm and /health/embedding
+ * periodically and on API failure. Each indicator has its own request and
+ * time limit, so a slow LLM never holds up or fails the other two.
  *
  * Single endpoint, both services checked in one round-trip.
  * Polling interval: configurable via VITE_POLL_INTERVAL_MS (default 10 min).
@@ -31,24 +33,24 @@ interface ServiceResult {
   detail?: string
   latency_ms?: number
 }
-interface StatusResponse {
-  db: ServiceResult
-  llm: ServiceResult
-  embedding?: ServiceResult
-}
-
 function toState(s: string): ServiceState {
   return s === 'ok' ? 'ok' : s === 'skip' ? 'skip' : 'error'
 }
 
-async function fetchStatus(): Promise<StatusResponse> {
-  const res = await fetch(`${config.apiBaseUrl}/health/status`, {
-    // The LLM probe is one real completion (no retries server-side); a cold
-    // large model can take >15 s, which would mark both services offline.
-    signal: AbortSignal.timeout(30_000),
-  })
+// Browser-side limits sit above the server's own (20 s, HEALTH_LLM_TIMEOUT_S
+// default 120 s, 30 s) so the server reports the timeout, with detail.
+const CHECKS = {
+  db: { path: '/health/db', timeoutMs: 30_000 },
+  llm: { path: '/health/llm', timeoutMs: config.llmHealthTimeoutMs },
+  emb: { path: '/health/embedding', timeoutMs: 40_000 },
+} as const
+type CheckKey = keyof typeof CHECKS
+
+async function fetchCheck(key: CheckKey): Promise<ServiceResult> {
+  const { path, timeoutMs } = CHECKS[key]
+  const res = await fetch(`${config.apiBaseUrl}${path}`, { signal: AbortSignal.timeout(timeoutMs) })
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
-  return (await res.json()) as StatusResponse
+  return (await res.json()) as ServiceResult
 }
 
 // Module-level callback set by useServiceStatus so http.ts can trigger it
@@ -84,30 +86,30 @@ export function useServiceStatus(): ServiceStatus {
   const doCheck = useCallback(async () => {
     if (!mounted.current) return
     setChecking(true)
-    try {
-      const result = await fetchStatus()
-      if (!mounted.current) return
-      setDb(toState(result.db.status))
-      setDbDetail(result.db.detail ?? '')
-      setDbLatencyMs(result.db.latency_ms ?? null)
-      setLlm(toState(result.llm.status))
-      setLlmDetail(result.llm.detail ?? '')
-      setLlmLatencyMs(result.llm.latency_ms ?? null)
-      setEmb(result.embedding ? toState(result.embedding.status) : 'unknown')
-      setEmbDetail(result.embedding?.detail ?? '')
+    const setters: Record<CheckKey, [(s: ServiceState) => void, (d: string) => void, ((ms: number | null) => void)?]> = {
+      db: [setDb, setDbDetail, setDbLatencyMs],
+      llm: [setLlm, setLlmDetail, setLlmLatencyMs],
+      emb: [setEmb, setEmbDetail],
+    }
+    await Promise.all(
+      (Object.keys(CHECKS) as CheckKey[]).map(async (key) => {
+        const [setState, setDetail, setLatency] = setters[key]
+        try {
+          const result = await fetchCheck(key)
+          if (!mounted.current) return
+          setState(toState(result.status))
+          setDetail(result.detail ?? '')
+          setLatency?.(result.latency_ms ?? null)
+        } catch (err) {
+          if (!mounted.current) return
+          setState('error')
+          setDetail(err instanceof Error ? err.message : 'Unreachable')
+        }
+      }),
+    )
+    if (mounted.current) {
       setLastChecked(new Date())
-    } catch (err) {
-      if (!mounted.current) return
-      const msg = err instanceof Error ? err.message : 'Unreachable'
-      setDb('error')
-      setDbDetail(msg)
-      setLlm('error')
-      setLlmDetail(msg)
-      setEmb('error')
-      setEmbDetail(msg)
-      setLastChecked(new Date())
-    } finally {
-      if (mounted.current) setChecking(false)
+      setChecking(false)
     }
   }, [])
 

@@ -81,8 +81,10 @@ _queries: dict[str, dict[str, Any]] = {}
 _builds: dict[str, dict[str, Any]] = {}
 # Finished query/build entries kept for result reads; older ones are dropped.
 _MAX_RETAINED = 100
-# Per-dependency limit for /health/status; below the UI's 30 s poll timeout.
-HEALTH_CHECK_TIMEOUT_S = 20.0
+# Time limits for the TigerGraph and embedding health routes; the LLM's is
+# configurable (RunConfig.health_llm_timeout_s) because a completion is slow.
+HEALTH_DB_TIMEOUT_S = 20.0
+HEALTH_EMBEDDING_TIMEOUT_S = 30.0
 # One client for the process: its vocabulary cache and connection are reused
 # by every query and batch run instead of being rebuilt per request.
 _tg_client: TigerGraphClient | None = None
@@ -251,33 +253,43 @@ def patch_settings(body: SettingsPatch) -> dict[str, Any]:
     }
 
 
-@app.get("/health/status")
-async def health_status(config: RunConfig = Depends(get_config)) -> dict[str, Any]:
-    """Check TigerGraph, the LLM and the embedding tier in parallel, each
-    under its own time limit, so one slow dependency (typically a cold
-    free-tier LLM) reports itself as slow instead of pushing the whole
-    response past the browser's timeout — which marked every service down.
-    Unauthenticated — the browser polls this."""
-    from ogr.verify import check_embedding, check_llm, check_tigergraph
+async def _timed_check(name: str, timeout_s: float, check, *args) -> dict[str, Any]:
+    t0 = time.monotonic()
+    try:
+        status, detail = await asyncio.wait_for(asyncio.to_thread(check, *args), timeout_s)
+    except TimeoutError:
+        status, detail = "FAIL", f"{name} did not answer within {timeout_s:.0f} s"
+    return {
+        "status": "ok" if status == "OK" else status.lower(),
+        "detail": detail,
+        "latency_ms": round((time.monotonic() - t0) * 1000),
+    }
 
-    async def _timed(name: str, check, *args) -> dict[str, Any]:
-        t0 = time.monotonic()
-        try:
-            status, detail = await asyncio.wait_for(asyncio.to_thread(check, *args), HEALTH_CHECK_TIMEOUT_S)
-        except TimeoutError:
-            status, detail = "FAIL", f"{name} did not answer within {HEALTH_CHECK_TIMEOUT_S:.0f} s"
-        return {
-            "status": "ok" if status == "OK" else status.lower(),
-            "detail": detail,
-            "latency_ms": round((time.monotonic() - t0) * 1000),
-        }
 
-    db_result, llm_result, emb_result = await asyncio.gather(
-        _timed("TigerGraph", check_tigergraph, config, _get_client(config)),
-        _timed("LLM", check_llm, config),
-        _timed("Embedding", check_embedding, config),
+# One route per dependency, each polled on its own by the UI, so a slow LLM
+# (a cold free-tier model can take a minute) never delays or fails the
+# TigerGraph and embedding indicators. Unauthenticated — the browser polls.
+@app.get("/health/db")
+async def health_db(config: RunConfig = Depends(get_config)) -> dict[str, Any]:
+    from ogr.verify import check_tigergraph
+
+    return await _timed_check(
+        "TigerGraph", HEALTH_DB_TIMEOUT_S, check_tigergraph, config, _get_client(config)
     )
-    return {"db": db_result, "llm": llm_result, "embedding": emb_result}
+
+
+@app.get("/health/llm")
+async def health_llm(config: RunConfig = Depends(get_config)) -> dict[str, Any]:
+    from ogr.verify import check_llm
+
+    return await _timed_check("LLM", config.health_llm_timeout_s, check_llm, config)
+
+
+@app.get("/health/embedding")
+async def health_embedding(config: RunConfig = Depends(get_config)) -> dict[str, Any]:
+    from ogr.verify import check_embedding
+
+    return await _timed_check("Embedding", HEALTH_EMBEDDING_TIMEOUT_S, check_embedding, config)
 
 
 # ---------------------------------------------------------------- /query ---

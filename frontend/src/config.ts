@@ -12,4 +12,6 @@ export const config = {
   adminEmail: (env.VITE_ADMIN_EMAIL as string | undefined) ?? 'admin@example.com',
   // Health-check polling interval in ms. Default 10 min — LLM checks are slow.
   pollIntervalMs: Number(env.VITE_POLL_INTERVAL_MS ?? '600000'),
+  // Browser limit for /health/llm; keep above the server's HEALTH_LLM_TIMEOUT_S (120 s).
+  llmHealthTimeoutMs: Number(env.VITE_LLM_HEALTH_TIMEOUT_MS ?? '130000'),
 } as const
