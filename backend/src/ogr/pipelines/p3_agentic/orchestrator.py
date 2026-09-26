@@ -93,7 +93,11 @@ def build_p3_graph(
     from langgraph.graph import END, StateGraph
 
     from ogr.common.contracts import Citation, PipelineRecord, TokenUsage, format_evidence_context
-    from ogr.common.llm import invoke_llm_with_answer_contract, resolve_tool_calling_support
+    from ogr.common.llm import (
+        LLMRateLimitError,
+        invoke_llm_with_answer_contract,
+        resolve_tool_calling_support,
+    )
     from ogr.common.rerank import rerank
     from ogr.pipelines.p3_agentic.agents.agent_result import AgentResult
     from ogr.pipelines.p3_agentic.agents.aggregation import run_aggregation
@@ -437,6 +441,8 @@ def build_p3_graph(
             )
             status = "done"
             error_detail = None
+        except LLMRateLimitError:
+            raise  # DP-3: stop the run; the user switches model
         except Exception as e:
             logger.error("P3 generation failed: %s", e)
             answer = ""
@@ -726,11 +732,15 @@ def run_p3_agentic(
     Returns:
         PipelineRecord with full trace, strategy_changed, stop_reason.
     """
+    from ogr.common.llm import LLMRateLimitError
+
     compiled_graph, state_store = _prepare_run(llm_model, tg_client, entity_linker, config)
     total_start = time.perf_counter()
 
     try:
         compiled_graph.invoke({"question": query})
+    except LLMRateLimitError:
+        raise  # DP-3: stop the run; the user switches model
     except Exception as e:
         logger.error("P3 orchestrator failed: %s", e)
         return _error_record(str(e), (time.perf_counter() - total_start) * 1000.0)

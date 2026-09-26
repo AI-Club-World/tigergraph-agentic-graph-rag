@@ -10,7 +10,9 @@ the demo's "three columns populate at visibly different times" depends on it.
 NFR-2: failure or timeout in one pipeline must not block the other two. Every
 pipeline call is wrapped independently and a failure yields a PipelineRecord
 with status="error" — this module never raises to its caller, because in batch
-mode one bad question must not halt a 100-question run.
+mode one bad question must not halt a 100-question run. Sole exception:
+LLMRateLimitError (DP-3) — every later call would fail the same way, so the
+run stops and the user switches model.
 
 AD-1: this is the single dispatch implementation, used by both the interactive
 API and the batch runner, so demo behaviour and submitted metrics cannot drift.
@@ -26,6 +28,7 @@ from collections.abc import Callable, Mapping
 from typing import Any
 
 from ogr.common.contracts import PipelineRecord, TokenUsage
+from ogr.common.llm import LLMRateLimitError
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +70,8 @@ async def _run_one(pipeline: str, fn: Callable[[str], Any], query: str) -> Pipel
             result = await fn(query)
         else:
             result = await asyncio.to_thread(fn, query)
+    except LLMRateLimitError:
+        raise  # DP-3: a rate-limited model stops the whole run, not one record
     except Exception as e:  # noqa: BLE001 - fault isolation is the point
         latency_ms = (time.perf_counter() - started) * 1000.0
         logger.error("Pipeline %s failed: %s", pipeline, e)
@@ -91,7 +96,8 @@ async def dispatch(
         query: the question text, passed identically to each pipeline.
         pipelines: {pipeline_id: callable}. Sync or async callables both work.
 
-    Never raises: a pipeline that fails contributes an error record instead.
+    A pipeline that fails contributes an error record instead; the one
+    exception is LLMRateLimitError, which stops the whole run (DP-3).
     """
     if not pipelines:
         return {}

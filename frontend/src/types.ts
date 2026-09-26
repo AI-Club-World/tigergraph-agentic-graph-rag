@@ -162,6 +162,7 @@ export type RunConfigValue = string | number | boolean | null
 export interface RunSummary {
   run_id: string
   status: 'running' | 'complete' | 'failed'
+  error?: string // why a failed run stopped, e.g. the selected LLM's rate limit
   started_at: string
   dataset: string | null
   run_config: Record<string, RunConfigValue>

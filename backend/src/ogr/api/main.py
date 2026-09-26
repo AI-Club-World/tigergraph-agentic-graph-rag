@@ -499,8 +499,14 @@ async def post_batch(body: BatchRequest, config: RunConfig = Depends(get_config)
 
 @router.get("/runs")
 async def get_runs() -> list[dict[str, Any]]:
-    """Benchmark history: one summary per stored run, newest first."""
-    return await asyncio.to_thread(list_runs, OUT_DIR, _run_statuses())
+    """Benchmark history: one summary per stored run, newest first. A failed
+    run carries its `error` — e.g. the rate-limit stop naming provider/model."""
+    runs = await asyncio.to_thread(list_runs, OUT_DIR, _run_statuses())
+    for run in runs:
+        task = _batch_tasks.get(run["run_id"])
+        if task is not None and task.done() and not task.cancelled() and task.exception():
+            run["error"] = str(task.exception())
+    return runs
 
 
 @router.post("/runs/import", status_code=201)

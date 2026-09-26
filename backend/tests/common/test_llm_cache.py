@@ -66,9 +66,23 @@ def test_gives_up_after_max_retries(monkeypatch):
     model = _Model([_Status(429)] * 10)
     try:
         llm.invoke_and_count(model, [], max_retries=2, backoff_base_s=1)
-    except _Status:
+    except llm.LLMRateLimitError:
         pass
     assert model.calls == 3
+
+
+def test_exhausted_rate_limit_names_the_selected_model(monkeypatch):
+    """DP-3: the error names provider/model and asks for a switch — no fallback."""
+    monkeypatch.setattr(llm.time, "sleep", lambda s: None)
+    model = _Model([_Status(429)] * 10)
+    monkeypatch.setitem(llm._MODEL_LABELS, id(model), "groq/openai/gpt-oss-120b")
+    try:
+        llm.invoke_and_count(model, [], max_retries=1, backoff_base_s=1)
+        raise AssertionError("expected LLMRateLimitError")
+    except llm.LLMRateLimitError as e:
+        assert str(e).startswith("groq/openai/gpt-oss-120b: rate limit reached")
+        assert "Switch the LLM in Settings" in str(e)
+    assert model.calls == 2
 
 
 def test_seed_rate_limiter_and_single_retry_policy_reach_the_client():

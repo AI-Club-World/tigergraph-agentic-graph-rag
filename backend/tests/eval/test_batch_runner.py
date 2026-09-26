@@ -204,3 +204,30 @@ class TestRunLevelControls:
         assert header["pool_size"] == 1
         assert header["seed"] == 7
         assert header["max_total_tokens"] == 99
+
+
+class TestRateLimitStopsTheRun:
+    """DP-3: a rate-limited model stops the run instead of erroring every question."""
+
+    def test_no_question_starts_after_the_limit(self, tmp_path):
+        from ogr.common.llm import LLMRateLimitError
+
+        questions_path = tmp_path / "q.jsonl"
+        _write_questions(questions_path, [
+            {"qid": f"pub-{i:03d}", "question": f"Q{i}?", "qtype": "lookup", "answer": ["5"]}
+            for i in range(5)
+        ])
+        calls = []
+
+        def limited(q):
+            calls.append(q)
+            raise LLMRateLimitError("groq/m", "429")
+
+        pipelines = {**_stub_pipelines(), "rag": limited}
+        with pytest.raises(LLMRateLimitError, match="groq/m"):
+            run_batch_sync(
+                questions_path, tmp_path / "run.jsonl", pipelines,
+                run_id="test-run", run_config={}, pool_size=1,
+            )
+        assert len(calls) == 1
+        assert read_written_qids(tmp_path / "run.jsonl") == set()

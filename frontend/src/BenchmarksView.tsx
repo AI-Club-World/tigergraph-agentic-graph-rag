@@ -293,6 +293,7 @@ export function BenchmarksView() {
                           <th scope="row">
                             <code>{r.run_id}</code>
                             {r.status !== 'complete' && <span className={`badge badge-${r.status === 'running' ? 'running' : 'error'}`}>{r.status}</span>}
+                            {r.error && <span className="error-box small block">{r.error}</span>}
                             <span className="muted small block">{when(r.started_at)}</span>
                           </th>
                           <td className="text">{r.dataset ?? '—'}</td>

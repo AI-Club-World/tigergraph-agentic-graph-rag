@@ -187,7 +187,7 @@ def _check_groundedness_llm(
 
     Returns (passed, notes, tokens_input, tokens_output).
     """
-    from ogr.common.llm import _response_text, invoke_and_count
+    from ogr.common.llm import LLMRateLimitError, _response_text, invoke_and_count
 
     try:
         from langchain_core.messages import HumanMessage, SystemMessage
@@ -219,6 +219,8 @@ def _check_groundedness_llm(
             tokens.input,
             tokens.output,
         )
+    except LLMRateLimitError:
+        raise  # DP-3: no silent deterministic substitute for a rate-limited model
     except Exception as e:
         logger.warning("Groundedness LLM call failed: %s; falling back to deterministic", e)
         passed, notes = _check_groundedness_deterministic(evidence, question)

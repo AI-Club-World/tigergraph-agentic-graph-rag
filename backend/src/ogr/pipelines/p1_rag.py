@@ -19,7 +19,7 @@ from typing import Any
 from ogr.common.config import RunConfig, get_default_config
 from ogr.common.contracts import Citation, PipelineRecord, TokenUsage
 from ogr.common.embeddings import embed_query
-from ogr.common.llm import get_chat_model, invoke_llm_with_answer_contract
+from ogr.common.llm import LLMRateLimitError, get_chat_model, invoke_llm_with_answer_contract
 from ogr.graph.client import TigerGraphClient
 
 logger = logging.getLogger(__name__)
@@ -91,6 +91,8 @@ def run_p1_rag(
         )
         status = "done"
         error_detail = None
+    except LLMRateLimitError:
+        raise  # DP-3: stop the run; the user switches model
     except Exception as e:
         logger.error("LLM generation failed in P1: %s", e)
         answer = ""

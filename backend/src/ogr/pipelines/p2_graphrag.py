@@ -31,6 +31,7 @@ from typing import Any
 from ogr.common.config import RunConfig, get_default_config
 from ogr.common.contracts import Citation, PipelineRecord, TokenUsage, format_evidence_context
 from ogr.common.llm import (
+    LLMRateLimitError,
     get_chat_model,
     invoke_llm_with_answer_contract,
     resolve_tool_calling_support,
@@ -171,6 +172,8 @@ def run_p2_graphrag(
         )
         status: Any = "done"
         error_detail = None
+    except LLMRateLimitError:
+        raise  # DP-3: stop the run; the user switches model
     except Exception as e:  # noqa: BLE001 - NFR-2: P1 and P3 must be unaffected
         logger.error("LLM generation failed in P2: %s", e)
         answer, explanation = "", f"Generation error: {e}"

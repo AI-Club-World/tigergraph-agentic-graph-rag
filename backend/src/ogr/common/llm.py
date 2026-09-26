@@ -25,6 +25,22 @@ logger = logging.getLogger(__name__)
 
 _MODEL_CACHE: dict[tuple, Any] = {}
 _MODEL_CACHE_LOCK = threading.Lock()
+# id(model) -> "provider/model", so an error can name what the user selected.
+_MODEL_LABELS: dict[int, str] = {}
+
+
+class LLMRateLimitError(RuntimeError):
+    """The selected LLM stayed rate-limited past the retry threshold.
+
+    DP-3 (LLM-ALLOCATION plan): the run stops and the user switches model and
+    starts a new run. There is never an automatic fallback to another provider.
+    """
+
+    def __init__(self, label: str, reason: str) -> None:
+        super().__init__(
+            f"{label}: rate limit reached after retries ({reason}). Switch the LLM in Settings "
+            "and start a new run; there is no automatic fallback to another provider."
+        )
 
 
 def get_chat_model(config: RunConfig) -> Any:
@@ -49,6 +65,7 @@ def get_chat_model(config: RunConfig) -> Any:
     with _MODEL_CACHE_LOCK:
         if key not in _MODEL_CACHE:
             _MODEL_CACHE[key] = _build_chat_model(config)
+            _MODEL_LABELS[id(_MODEL_CACHE[key])] = f"{config.llm_provider}/{config.llm_model}"
         return _MODEL_CACHE[key]
 
 
@@ -254,12 +271,34 @@ _RETRYABLE_NAMES = {
 }
 
 
-def _retry_delay(error: Exception, attempt: int, base_s: float) -> float | None:
-    """Seconds to wait before retrying `error`, or None if it is not transient."""
+def _status(error: Exception) -> int | None:
     response = getattr(error, "response", None)
     status = getattr(error, "status_code", None) or getattr(response, "status_code", None)
     if status is None and isinstance(getattr(error, "code", None), int):
         status = error.code
+    return status
+
+
+def _is_rate_limit(error: Exception) -> bool:
+    name = type(error).__name__
+    return (
+        _status(error) == 429
+        or "RateLimit" in name
+        or name == "ResourceExhausted"
+        or "PerDay" in str(error)
+    )
+
+
+def _model_label(model: Any) -> str:
+    # bind_tools wraps the cached model in a RunnableBinding; label the inner one.
+    inner = getattr(model, "bound", model)
+    return _MODEL_LABELS.get(id(inner)) or _MODEL_LABELS.get(id(model)) or type(inner).__name__
+
+
+def _retry_delay(error: Exception, attempt: int, base_s: float) -> float | None:
+    """Seconds to wait before retrying `error`, or None if it is not transient."""
+    response = getattr(error, "response", None)
+    status = _status(error)
     # A per-day quota does not recover within any backoff window; retrying
     # only burns minutes per call. Fail fast so the run records the error.
     if "PerDay" in str(error):
@@ -286,6 +325,8 @@ def _invoke_with_backoff(model: Any, messages: Any, max_retries: int, base_s: fl
         except Exception as e:
             delay = _retry_delay(e, attempt, base_s) if attempt < max_retries else None
             if delay is None:
+                if _is_rate_limit(e):
+                    raise LLMRateLimitError(_model_label(model), str(e)[:200]) from e
                 raise
             logger.warning(
                 "LLM call failed (%s); retry %d/%d in %.1fs", str(e)[:200], attempt + 1, max_retries, delay

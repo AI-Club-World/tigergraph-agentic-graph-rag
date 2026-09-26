@@ -37,6 +37,7 @@ from typing import Any
 from ogr.common.config import RunConfig
 from ogr.common.contracts import BatchRecord, Question
 from ogr.common.embeddings import embedding_backend
+from ogr.common.llm import LLMRateLimitError
 from ogr.eval.aggregator import aggregate_query
 from ogr.eval.dispatcher import dispatch
 from ogr.eval.store import BatchStore, read_written_qids
@@ -182,6 +183,10 @@ async def run_batch(
     async def _run_one(question: Question) -> None:
         try:
             await _record_one(question)
+        except LLMRateLimitError as e:
+            # DP-3: stop the run — no further question starts; the user
+            # switches model and starts a new run (no provider fallback).
+            rate_limited.append(e)
         except Exception as e:  # noqa: BLE001 - one question must not cancel the others
             logger.exception("Batch %s: question %s was not recorded", run_id, question.qid)
             failed[question.qid] = f"{type(e).__name__}: {e}"
@@ -189,6 +194,8 @@ async def run_batch(
     async def _record_one(question: Question) -> None:
         nonlocal spent
         async with semaphore:
+            if rate_limited:
+                return
             if max_total_tokens and spent >= max_total_tokens:
                 not_started.append(question.qid)
                 return
@@ -217,7 +224,10 @@ async def run_batch(
 
     failed: dict[str, str] = {}
     not_started: list[str] = []
+    rate_limited: list[LLMRateLimitError] = []
     await asyncio.gather(*(_run_one(q) for q in pending))
+    if rate_limited:
+        raise rate_limited[0]
     problems = []
     if failed:
         problems.append(
