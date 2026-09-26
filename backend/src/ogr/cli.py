@@ -105,10 +105,10 @@ def _build(corpus: str, vector_timeout_s: float) -> int:
     print(f"  loading {len(docs)} documents ...")
     load_graph(client, docs, chunks)
     print("  installing Q1-Q5 ...")
-    install_queries(client)
     try:
+        install_queries(client)
         wait_until_ready(config, timeout_s=vector_timeout_s, conn=client.conn)
-    except VectorNotReadyError as e:
+    except (RuntimeError, VectorNotReadyError) as e:
         print(str(e), file=sys.stderr)
         return 1
     print("Build complete; vector index Ready_for_query.")
@@ -140,6 +140,7 @@ def main(argv=None) -> int:
         from datetime import UTC, datetime
         from pathlib import Path
 
+        from ogr.common.llm import LLMRateLimitError
         from ogr.eval.batch_runner import (
             BatchIncompleteError,
             default_pipelines,
@@ -171,6 +172,9 @@ def main(argv=None) -> int:
             )
         except BatchIncompleteError as e:
             print(f"Batch {run_id} incomplete: {e}", file=sys.stderr)
+            return 1
+        except LLMRateLimitError as e:
+            print(f"Batch {run_id} stopped: {e}", file=sys.stderr)
             return 1
         print(f"Batch {run_id}: ran {count} question(s), wrote to {args.out}")
         return 0

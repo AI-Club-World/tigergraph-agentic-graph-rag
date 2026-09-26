@@ -235,7 +235,7 @@ class TigerGraphClient:
             if isinstance(raw, list) and raw and isinstance(raw[0], dict):
                 for v in raw[0].values():
                     if isinstance(v, list):
-                        return v
+                        return [_flatten_vertex(item) for item in v]
             return raw if isinstance(raw, list) else []
         except Exception as e:
             logger.error("Error running query '%s': %s", query_name, e)
@@ -309,3 +309,16 @@ class TigerGraphClient:
             self._vocab_cache[vtype] = vocab
         return vocab
 
+
+
+def _flatten_vertex(item: Any) -> Any:
+    """A printed vertex set ({v_id, v_type, attributes}) as a flat row, like
+    the tuple rows every other branch prints. Q1's Document-title fallback
+    prints vertices; nested, the evidence renderer showed only `v_type` and no
+    doc_id, so the row carried no content and no citation."""
+    if not (isinstance(item, dict) and isinstance(item.get("attributes"), dict)):
+        return item
+    row = {"v_id": item.get("v_id", ""), **item["attributes"]}
+    if item.get("v_type") == "Document":
+        row.setdefault("doc_id", item.get("v_id", ""))
+    return row

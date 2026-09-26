@@ -230,9 +230,10 @@ class IntentParser:
     change with the provider.
     """
 
-    def __init__(self, model: Any, supports_tool_calling: bool = False) -> None:
+    def __init__(self, model: Any, supports_tool_calling: bool = False, reports_usage: str = "auto") -> None:
         self.model = model
         self.supports_tool_calling = supports_tool_calling
+        self.reports_usage = reports_usage
         # Record which extraction path is active for run_config header
         self.extraction_path = "tool_calling" if supports_tool_calling else "json_schema"
         # Tokens spent parsing intent. Read by the orchestrator so the entry
@@ -323,7 +324,7 @@ class IntentParser:
 
     def _invoke_counted(self, model: Any, messages: Any) -> Any:
         """Invoke through the accounting module, accumulating across retries."""
-        response, tokens, source, _ = invoke_and_count(model, messages)
+        response, tokens, source, _ = invoke_and_count(model, messages, reports_usage=self.reports_usage)
         self.last_tokens = TokenUsage(
             input=self.last_tokens.input + tokens.input,
             output=self.last_tokens.output + tokens.output,

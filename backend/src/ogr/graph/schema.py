@@ -55,4 +55,17 @@ def install_queries(client: TigerGraphClient) -> list[str]:
     for filename in QUERY_FILES:
         gsql_text = (QUERIES_DIR / filename).read_text(encoding="utf-8")
         results.append(client.conn.gsql(gsql_text))
+
+    # conn.gsql() raises only for some statement types; a failed CREATE or
+    # INSTALL QUERY comes back as text. Ask the server what is installed so a
+    # broken query fails the build instead of silently returning [] later.
+    installed = client.conn.getInstalledQueries()
+    names = {n.rsplit("/", 1)[-1] for n in (installed if isinstance(installed, (list, set)) else installed)}
+    failed = [
+        f"{filename}: {str(output)[-300:]}"
+        for filename, output in zip(QUERY_FILES, results, strict=True)
+        if filename.removesuffix(".gsql") not in names
+    ]
+    if failed:
+        raise RuntimeError("GSQL queries not installed — " + " | ".join(failed))
     return results

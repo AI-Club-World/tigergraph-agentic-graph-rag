@@ -135,6 +135,7 @@ def run_p2_graphrag(
         supports_tool_calling=resolve_tool_calling_support(
             chat_model, getattr(cfg, "llm_supports_tool_calling", "auto")
         ),
+        reports_usage=getattr(cfg, "llm_reports_token_usage", "auto"),
     )
     intent = parser.parse(query)
     parse_tokens = parser.last_tokens

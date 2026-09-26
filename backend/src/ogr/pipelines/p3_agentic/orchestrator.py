@@ -28,6 +28,7 @@ LOOKUP must traverse ZERO loop edges — verified by test_routing_lookup_direct.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import time
@@ -120,7 +121,11 @@ def build_p3_graph(
     supports_tool_calling = resolve_tool_calling_support(
         llm_model, getattr(run_config, "llm_supports_tool_calling", "auto")
     )
-    intent_parser = IntentParser(llm_model, supports_tool_calling=supports_tool_calling)
+    # One token-accounting setting for every call in the run (DP-5).
+    reports_usage = getattr(run_config, "llm_reports_token_usage", "auto")
+    intent_parser = IntentParser(
+        llm_model, supports_tool_calling=supports_tool_calling, reports_usage=reports_usage
+    )
 
     # -----------------------------------------------------------------------
     # Node implementations
@@ -356,6 +361,7 @@ def build_p3_graph(
                 intent_operation=getattr(intent, "operation", "TRAVERSE"),
                 anchors=anchors,
                 model=llm_model,
+                reports_usage=reports_usage,
                 question=question,
             )
         _state_store["last_eval_key"] = evidence_key
@@ -449,6 +455,7 @@ def build_p3_graph(
                 model=llm_model,
                 context=context,
                 question=question,
+                reports_usage=reports_usage,
             )
             status = "done"
             error_detail = None
@@ -682,7 +689,12 @@ async def astream_p3_agentic(
 
     Yields TraceStep objects, then exactly one PipelineRecord last.
     """
-    compiled_graph, state_store = _prepare_run(llm_model, tg_client, entity_linker, config)
+    # Off the event loop: preparing connects to TigerGraph, fetches three
+    # vocabularies and builds the client — seconds on Savanna, during which
+    # every other request and SSE stream would stall.
+    compiled_graph, state_store = await asyncio.to_thread(
+        _prepare_run, llm_model, tg_client, entity_linker, config
+    )
     total_start = time.perf_counter()
     emitted = 0
 

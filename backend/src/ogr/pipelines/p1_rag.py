@@ -88,6 +88,7 @@ def run_p1_rag(
             model=model,
             context=context,
             question=query,
+            reports_usage=cfg.llm_reports_token_usage,
         )
         status = "done"
         error_detail = None

@@ -36,3 +36,14 @@ def test_document_without_chunks_makes_no_vertex_call():
     client = TigerGraphClient(config=RunConfig(), conn=conn)
     assert client._expand_has_chunk(["Q9"]) == []
     conn.getVerticesById.assert_not_called()
+
+
+def test_printed_vertex_rows_are_flattened_with_their_doc_id():
+    """Q1's Document-title fallback prints vertices, not tuple rows."""
+    conn = MagicMock()
+    conn.runInstalledQuery.return_value = [{"results": [
+        {"v_id": "Q42", "v_type": "Document", "attributes": {"title": "Sailing at the 2016 Summer Olympics"}},
+    ]}]
+    client = TigerGraphClient(config=RunConfig(), conn=conn)
+    rows = client._run_query("q1_lookup", {"title": "Sailing at the 2016 Summer Olympics"})
+    assert rows == [{"v_id": "Q42", "title": "Sailing at the 2016 Summer Olympics", "doc_id": "Q42"}]

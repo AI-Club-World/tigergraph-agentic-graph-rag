@@ -9,17 +9,23 @@ all five), and that the installers hand that exact text to `conn.gsql()`.
 
 from __future__ import annotations
 
+import pytest
+
 from ogr.graph.client import TigerGraphClient
 from ogr.graph.schema import QUERIES_DIR, QUERY_FILES, SCHEMA_PATH, install_queries, install_schema
 
 
 class _FakeConn:
-    def __init__(self):
+    def __init__(self, installed=("q1_lookup", "q2_count_where", "q3_argmax", "q4_traverse", "q5_hybrid_search")):
         self.gsql_calls: list[str] = []
+        self.installed = installed
 
     def gsql(self, text: str) -> str:
         self.gsql_calls.append(text)
         return "ok"
+
+    def getInstalledQueries(self):
+        return {f"GET /query/OlympicGraphRAG/{name}": {} for name in self.installed}
 
 
 class TestSchemaFile:
@@ -88,6 +94,13 @@ class TestInstallers:
         assert len(conn.gsql_calls) == 5
         assert "q1_lookup" in conn.gsql_calls[0]
         assert "q5_hybrid_search" in conn.gsql_calls[4]
+
+    def test_a_query_that_did_not_install_fails_the_install(self):
+        """conn.gsql() returns a failed CREATE/INSTALL QUERY as text; the
+        installer must not report success for it."""
+        conn = _FakeConn(installed=("q1_lookup", "q3_argmax", "q4_traverse", "q5_hybrid_search"))
+        with pytest.raises(RuntimeError, match="q2_count_where"):
+            install_queries(TigerGraphClient(conn=conn))
 
     def test_install_without_a_connection_raises_rather_than_silently_no_op(self):
         client = TigerGraphClient()  # no conn, no config host -> conn stays None

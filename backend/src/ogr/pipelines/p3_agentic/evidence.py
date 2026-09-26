@@ -71,6 +71,7 @@ def evaluate_evidence(
     anchors: Any,         # ResolvedAnchors
     model: Any | None = None,   # LLM for groundedness check
     question: str = "",
+    reports_usage: str = "auto",
 ) -> EvidenceEvaluation:
     """Evaluate whether the retrieved evidence is sufficient.
 
@@ -110,7 +111,7 @@ def evaluate_evidence(
     groundedness_pass, ground_notes = _check_groundedness_deterministic(evidence, question)
     if (groundedness_pass or structured) and model is not None and question:
         groundedness_pass, ground_notes, tokens_in, tokens_out = _check_groundedness_llm(
-            evidence, question, model
+            evidence, question, model, reports_usage
         )
     elif model is not None:
         ground_notes += " (LLM check skipped)"
@@ -182,6 +183,7 @@ def _check_groundedness_llm(
     evidence: list[dict[str, Any]],
     question: str,
     model: Any,
+    reports_usage: str = "auto",
 ) -> tuple[bool, str, int, int]:
     """LLM groundedness check — labelled as LLM call (DP-4 Option A).
 
@@ -209,7 +211,7 @@ def _check_groundedness_llm(
         response, tokens, _source, _latency = invoke_and_count(model, [
             SystemMessage(content="You are a groundedness evaluator. Answer only YES or NO."),
             HumanMessage(content=prompt),
-        ])
+        ], reports_usage=reports_usage)
         # Claude and Gemini may return content as a list of blocks.
         raw = _response_text(response).strip().upper()
         passed = raw.startswith("YES")
