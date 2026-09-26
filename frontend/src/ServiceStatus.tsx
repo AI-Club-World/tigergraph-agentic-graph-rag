@@ -110,10 +110,11 @@ interface BlockedProps {
 }
 
 export function RequiresServices({ needs, children }: BlockedProps) {
-  const status = useServiceContext()
+  const status = useContext(ServiceContext)
 
-  // In mock mode there is no live service polling — never block.
-  if (config.useMockApi) return <>{children}</>
+  // In mock mode there is no live service polling, and with no provider
+  // mounted (a view rendered on its own) there is no status — never block.
+  if (config.useMockApi || !status) return <>{children}</>
 
   const downNeeds = needs.filter((s) => status[s] === 'error')
   if (!downNeeds.length) return <>{children}</>

@@ -1,3 +1,4 @@
+import { config } from '../config'
 import { get, patch } from './http'
 
 export interface AppSettings {
@@ -10,8 +11,6 @@ export interface AppSettings {
 /** GET /settings — unauthenticated, returns effective runtime config. */
 export async function fetchSettings(): Promise<AppSettings> {
   // Bypass the auth wrapper: /settings is on `app`, not `router`.
-  // Still use the same base URL from config.
-  const { config } = await import('../config')
   const res = await fetch(`${config.apiBaseUrl}/settings`, { signal: AbortSignal.timeout(8_000) })
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
   return (await res.json()) as AppSettings

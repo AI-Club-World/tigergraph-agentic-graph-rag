@@ -230,19 +230,18 @@ async def health_status(config: RunConfig = Depends(get_config)) -> dict[str, An
     """Check TigerGraph and LLM reachability in parallel. Unauthenticated — browser polls this."""
     from ogr.verify import check_llm, check_tigergraph
 
-    def _check_db() -> dict[str, Any]:
+    def _timed(check) -> dict[str, Any]:
         t0 = time.monotonic()
-        status, detail = check_tigergraph(config)
-        return {"status": "ok" if status == "OK" else status.lower(), "detail": detail, "latency_ms": round((time.monotonic() - t0) * 1000)}
-
-    def _check_llm() -> dict[str, Any]:
-        t0 = time.monotonic()
-        status, detail = check_llm(config)
-        return {"status": "ok" if status == "OK" else status.lower(), "detail": detail, "latency_ms": round((time.monotonic() - t0) * 1000)}
+        status, detail = check(config)
+        return {
+            "status": "ok" if status == "OK" else status.lower(),
+            "detail": detail,
+            "latency_ms": round((time.monotonic() - t0) * 1000),
+        }
 
     db_result, llm_result = await asyncio.gather(
-        asyncio.to_thread(_check_db),
-        asyncio.to_thread(_check_llm),
+        asyncio.to_thread(_timed, check_tigergraph),
+        asyncio.to_thread(_timed, check_llm),
     )
     return {"db": db_result, "llm": llm_result}
 
