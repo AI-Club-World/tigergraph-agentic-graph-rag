@@ -113,10 +113,11 @@ const STAGE_GROUPS: StageGroup[] = [
   },
 ]
 
-type GroupState = 'pending' | 'running' | 'done'
+type GroupState = 'pending' | 'running' | 'done' | 'failed'
 
 function groupState(group: StageGroup, columns: Record<PipelineId, BuildColumn>, seen: Set<string>): GroupState {
   if (columns[group.gate].status === 'ready') return 'done'
+  if (columns[group.gate].status === 'error') return 'failed'
   return group.stages.some((stage) => seen.has(stage)) ? 'running' : 'pending'
 }
 
@@ -189,15 +190,21 @@ export function BuildView() {
   const vertices = Math.max(...PIPELINE_IDS.map((p) => columns[p].counters.vertices))
   const edges = Math.max(...PIPELINE_IDS.map((p) => columns[p].counters.edges))
 
-  const phase = activeGroup >= 0 ? `stage ${activeGroup + 1}` : allReady ? 'complete' : 'idle'
-  const flowLabel = allReady
-    ? 'All stages ready'
-    : activeGroup >= 0
-      ? `Stage ${activeGroup + 1}/${groups.length} in flight`
-      : 'Idle'
-
   // A stage that ended in error fails the build even though the stream closed cleanly.
-  const stageFailed = PIPELINE_IDS.some((p) => columns[p].status === 'error')
+  const failedAt = PIPELINE_IDS.map((p) => columns[p]).find((c) => c.status === 'error')?.stage ?? null
+  const stageFailed = failedAt !== null
+
+  const phase = stageFailed
+    ? 'failed'
+    : activeGroup >= 0 ? `stage ${activeGroup + 1}` : allReady ? 'complete' : 'idle'
+  const flowLabel = stageFailed
+    ? `Failed at ${titleCase(failedAt)}`
+    : allReady
+      ? 'All stages ready'
+      : activeGroup >= 0
+        ? `Stage ${activeGroup + 1}/${groups.length} in flight`
+        : 'Idle'
+
   const syncState = error || stageFailed ? 'failed' : running ? 'running' : allReady ? 'complete' : 'idle'
   const syncLabel = {
     failed: 'Build failed',
@@ -213,7 +220,7 @@ export function BuildView() {
     return {
       pipeline,
       ms: ready ? ready.elapsed_ms : column.elapsedMs,
-      active: !ready && column.status !== 'idle',
+      active: !ready && column.status === 'running',
     }
   })
   const latencyMax = Math.max(1, ...readyAt.map((r) => r.ms))
@@ -238,7 +245,7 @@ export function BuildView() {
             <span className="dot" aria-hidden="true" />
             {syncLabel}
           </span>
-          <RequiresServices needs={['db', 'llm']}>
+          <RequiresServices needs={['db']}>
             <button type="button" className="btn-primary" onClick={run} disabled={running}>
               <Icon name="restart" size={16} className={running ? 'spin' : undefined} />
               {running ? 'Building…' : 'Start build'}
@@ -269,6 +276,7 @@ export function BuildView() {
                   {i + 1}. {group.title}
                   {state === 'done' && <Icon name="checkCircle" size={15} className="gain" />}
                   {state === 'running' && <span className="flow-running">running</span>}
+                  {state === 'failed' && <span className="flow-running">failed</span>}
                 </p>
                 <p className="flow-detail">{group.detail}</p>
               </div>
