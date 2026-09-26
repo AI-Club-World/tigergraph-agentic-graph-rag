@@ -4,7 +4,7 @@ import { Icon, type IconName } from './components/Icon'
 import { StatusBadge } from './components/StatusBadge'
 import { ms, num, titleCase } from './format'
 import { RequiresServices } from './ServiceStatus'
-import { openBuildStream, startBuild, type BuildOptions } from './services/buildService'
+import { getCurrentBuild, openBuildStream, startBuild, type BuildOptions } from './services/buildService'
 import {
   datasetNameFor,
   listCorpora,
@@ -261,6 +261,39 @@ export function BuildView() {
       .catch(() => setCorpora(null))
   }
   useEffect(() => refreshCorpora(), [])
+
+  // After a reload, pick up a build still running on the server: replay its
+  // events, then follow it by polling until it ends.
+  useEffect(() => {
+    let stopped = false
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const replay = (events: BuildEvent[]) => {
+      const next = initialColumns()
+      for (const event of events) for (const p of event.pipeline_affected) next[p] = apply(next[p], event)
+      return next
+    }
+    const follow = async (first: boolean) => {
+      let current
+      try {
+        current = await getCurrentBuild()
+      } catch {
+        return
+      }
+      if (stopped || !current || (first && !current.running)) return
+      if (cancelRef.current) return // a build started from this page streams itself
+      setBuildId(current.build_id)
+      if (current.dataset) setDataset(current.dataset)
+      setColumns(replay(current.events))
+      setRunning(current.running)
+      if (current.running) timer = setTimeout(() => void follow(false), 2000)
+      else refreshCorpora()
+    }
+    void follow(true)
+    return () => {
+      stopped = true
+      if (timer) clearTimeout(timer)
+    }
+  }, [])
 
   async function upload(file: File) {
     const name = datasetNameFor(file.name)

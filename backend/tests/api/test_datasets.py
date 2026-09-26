@@ -178,3 +178,12 @@ def test_stages_are_scoped_to_the_pipelines_they_serve(env, monkeypatch):
     built = env.client.get("/corpora", headers=HEADERS).json()["graph"]["datasets"]["olympics"]
     assert built["entities"] == 5 and built["relationships"] == 6 and built["vectors"] == 4
     assert set(built["ready_ms"]) == {"rag", "graphrag", "agentic_graphrag"}
+
+
+def test_current_build_can_be_picked_up_after_a_reload(env, monkeypatch):
+    api_main._builds.clear()
+    assert env.client.get("/build/current", headers=HEADERS).json() == {"build": None}
+    events = _run_build_stream(env.client, {"dataset": "olympics"})  # fails at schema (no TigerGraph)
+    current = env.client.get("/build/current", headers=HEADERS).json()["build"]
+    assert current["dataset"] == "olympics" and current["running"] is False
+    assert [e["stage"] for e in current["events"]] == [e["stage"] for e in events]

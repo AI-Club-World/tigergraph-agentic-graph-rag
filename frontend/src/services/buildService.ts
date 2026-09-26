@@ -1,5 +1,5 @@
 import { config } from '../config'
-import { openSse, post } from './http'
+import { get, openSse, post } from './http'
 import { delay, mockBuildEvents, replay } from './mock/transport'
 import type { BuildAccepted, BuildEvent } from '../types'
 
@@ -49,4 +49,18 @@ export function openBuildStream(
     handlers.onEvent,
     handlers.onDone,
   )
+}
+
+export interface CurrentBuild {
+  build_id: string
+  dataset: string | null
+  running: boolean
+  events: BuildEvent[]
+}
+
+/** GET /build/current — the latest build with its events, so a reloaded page
+ *  can show a running build and keep following it. */
+export async function getCurrentBuild(): Promise<CurrentBuild | null> {
+  if (config.useMockApi) return null
+  return (await get<{ build: CurrentBuild | null }>('/build/current')).build
 }

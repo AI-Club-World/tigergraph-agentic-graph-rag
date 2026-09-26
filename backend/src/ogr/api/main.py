@@ -563,7 +563,7 @@ async def _start_build(body: BuildRequest, config: RunConfig) -> dict[str, str]:
     build_id = str(uuid.uuid4())
     token = _stream_tokens.issue(build_id)
     queue: asyncio.Queue = asyncio.Queue()
-    _builds[build_id] = {"queue": queue}
+    _builds[build_id] = {"queue": queue, "dataset": body.dataset, "events": [], "started": time.time()}
     task = asyncio.create_task(_run_build(build_id, queue, config, body))
     _builds[build_id]["task"] = task
     return {"build_id": build_id, "stream_token": token}
@@ -584,7 +584,11 @@ async def _run_build(build_id: str, queue: asyncio.Queue, config: RunConfig, req
     from ogr.graph.vector_status import wait_until_ready
     from ogr.ingest.chunk_embed import embed_chunks
 
+    events = _builds[build_id].setdefault("events", []) if build_id in _builds else []
+
     def on_event(event: BuildEvent) -> None:
+        # Kept per build so a reloaded page can pick up a running build.
+        events.append(event.__dict__)
         queue.put_nowait(("build", event))
 
     corpus = CORPUS_DIR / f"{request.dataset}.jsonl"
@@ -725,6 +729,25 @@ def _delete_vertices(client: TigerGraphClient, ids_by_type: dict[str, list[str]]
         for start in range(0, len(ids), batch):
             removed += int(client.conn.delVerticesById(vtype, ids[start:start + batch]) or 0)
     return removed
+
+
+@router.get("/build/current")
+async def get_current_build() -> dict[str, Any]:
+    """The latest build of this server process with every event so far, so a
+    reloaded page can show a running build and keep following it."""
+    latest = max(
+        ((bid, b) for bid, b in _builds.items() if "task" in b), key=lambda item: item[1].get("started", 0),
+        default=None,
+    )
+    if latest is None:
+        return {"build": None}
+    build_id, build = latest
+    return {"build": {
+        "build_id": build_id,
+        "dataset": build.get("dataset"),
+        "running": not build["task"].done(),
+        "events": list(build.get("events", [])),
+    }}
 
 
 @app.get("/build/{build_id}/stream")
