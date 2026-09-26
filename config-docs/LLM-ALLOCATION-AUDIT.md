@@ -139,11 +139,11 @@ Provider endpoints (OpenAI-compatible model listing — `GET {base}/models`, Bea
 
 ---
 
-## 7. Open design decisions (resolved before code — see plan)
+## 7. Design decisions (resolved 2026-09-26 — detail in plan)
 
-- **DP-1** Reranker in P1 vs AD-9.
-- **DP-2** Reranker host: Cloudflare `@cf/baai/bge-reranker-base` vs local `BAAI/bge-reranker-v2-m3`.
-- **DP-3** Rate-limit behaviour: bounded same-provider backoff then error, vs fail on first 429.
-- **DP-4** Embedding failure: hash fallback only when Cloudflare credentials are absent, vs always hard-fail.
+- **DP-1** Reranker in P1 vs AD-9 → **P3 only**; P1 stays the unfiltered baseline.
+- **DP-2** Reranker host → **Cloudflare `@cf/baai/bge-reranker-base`**.
+- **DP-3** Rate limit → **retry same provider up to `LLM_MAX_RETRIES`, then stop the run** and ask the user to switch model and restart. No cross-provider fallback.
+- **DP-4** Embedding failure → **same-model chain: Cloudflare bge-m3 → NVIDIA NIM `baai/bge-m3` → local `BAAI/bge-m3`** (then existing hash fallback, recorded). Same model on every tier, so the single-embedding-model rule holds.
 
 Sources consulted for provider facts: [Cloudflare bge-m3](https://developers.cloudflare.com/workers-ai/models/bge-m3/), [Cloudflare bge-reranker-base](https://developers.cloudflare.com/workers-ai/models/bge-reranker-base/), [NVIDIA NIM free tier](https://itsfree.ai/provider/nvidia-nim/).

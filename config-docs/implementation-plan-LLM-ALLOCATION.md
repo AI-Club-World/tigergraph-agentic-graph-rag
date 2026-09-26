@@ -21,7 +21,7 @@ Audit classified every step of P1/P2/P3 and ingestion. **No existing LLM call is
 ## Design Decisions Required Before Implementation
 
 > [!IMPORTANT]
-> Options + recommendation listed. Not implemented until selected.
+> **Resolved 2026-09-26** — DP-1 = A, DP-2 = A, DP-3 = user variant (C), DP-4 = user variant (C). Resolutions noted under each table.
 
 ### DP-1 — Reranker in P1 (G-3)
 
@@ -30,12 +30,16 @@ Audit classified every step of P1/P2/P3 and ingestion. **No existing LLM call is
 | **A** *(Recommended)* | P1 stays unfiltered (AD-9). Reranker only in P3 prose fallback | Keeps the ablation honest: P1 = no graph, no rerank; any P1 gain would be credited to the wrong variable |
 | B | P1 retrieves k=30, reranks to top-10 | Raises P1 accuracy; requires amending AD-9 and shrinks the measured P3−P1 gap |
 
+**Resolved: A.**
+
 ### DP-2 — Reranker host (G-2)
 
 | # | Approach | Notes |
 |---|---|---|
 | **A** *(Recommended)* | Cloudflare `@cf/baai/bge-reranker-base` (512-token context; chunks are 300) | Same account/token as bge-m3; no local weights; lets `sentence-transformers` (+ torch) be dropped |
 | B | Local `BAAI/bge-reranker-v2-m3` via `sentence_transformers.CrossEncoder` | Stronger multilingual model, free; keeps torch dependency (~2 GB) and adds CPU latency (~1–3 s / 30 pairs) |
+
+**Resolved: A.** (`sentence-transformers` stays: DP-4 needs it for the local embedding tier.)
 
 ### DP-3 — Rate-limit behaviour (G-5)
 
@@ -44,12 +48,16 @@ Audit classified every step of P1/P2/P3 and ingestion. **No existing LLM call is
 | **A** *(Recommended)* | Keep bounded same-provider backoff for per-minute 429s (existing), fail fast on per-day quota (existing); on exhaustion raise `LLMRateLimitError` naming provider, model, reason, and "switch LLM in Settings" | Free tiers (30–40 RPM) recover in seconds; no cross-provider retry anywhere |
 | B | Zero retries: first 429 → `LLMRateLimitError` | Simplest; with pool=2 on a 30-RPM tier, bursts will fail runs that would have succeeded |
 
+**Resolved: C (user)** — retry up to the threshold (`LLM_MAX_RETRIES`, same provider); beyond it **stop the whole run** and ask the user to switch model and start the run again. Batch runs abort (remaining questions not attempted, abort reason recorded) instead of recording an error per question; a live `/query` returns the error naming provider/model on each pipeline card.
+
 ### DP-4 — Embedding failure mode (G-1)
 
 | # | Approach | Notes |
 |---|---|---|
 | **A** *(Recommended)* | Cloudflare creds absent → existing hash fallback, logged + recorded as `hash_fallback` in run header (parity with today). Creds present but request fails → raise | Keeps offline unit tests working; a live API error is never silently turned into noise |
 | B | Always raise when embedding is unavailable | Strictest; tests need a mock for every embedding path |
+
+**Resolved: C (user)** — fallback chain, one model throughout so vectors stay in one space: **Cloudflare `@cf/baai/bge-m3` → NVIDIA NIM `baai/bge-m3` (`/v1/embeddings`) → local `BAAI/bge-m3` (sentence-transformers)**. A tier is skipped when its credentials are absent. The existing hash fallback remains the last resort (logged, recorded as `hash_fallback` in the run header) so offline tests still run. Assumption to verify on first live run: the three hosts return the same dense (CLS, normalised) vector up to fp16 noise — check cosine ≥ 0.99 on a sample text.
 
 ---
 
@@ -58,15 +66,17 @@ Audit classified every step of P1/P2/P3 and ingestion. **No existing LLM call is
 ### Group 1 — Embedding migration (G-1)
 
 #### [MODIFY] `backend/src/ogr/common/embeddings.py`
-- Replace `sentence-transformers` loader with a Cloudflare Workers AI client (stdlib `urllib`): `POST .../ai/run/@cf/baai/bge-m3`, `{"text": [...]}`, read `result.data`; batch size 50; L2-normalise.
-- `embedding_backend()` → `"cloudflare"` | `"hash_fallback"` (DP-4).
+- Tier 1 Cloudflare Workers AI client (stdlib `urllib`): `POST .../ai/run/@cf/baai/bge-m3`, `{"text": [...]}`, read `result.data`.
+- Tier 2 NVIDIA NIM: `POST https://integrate.api.nvidia.com/v1/embeddings`, `{"model": "baai/bge-m3", "input": [...]}`, read `data[].embedding`.
+- Tier 3 local `sentence-transformers` `BAAI/bge-m3` (existing loader).
+- Tier 4 existing hash fallback. Batch size 50; L2-normalise every tier.
+- `embedding_backend()` → first available tier name (DP-4).
 #### [MODIFY] `backend/src/ogr/common/config.py`
-- Defaults `EMBEDDING_MODEL=@cf/baai/bge-m3`, `EMBEDDING_DIM=1024`; add `cloudflare_account_id`, `cloudflare_api_token` (env only).
+- Defaults `EMBEDDING_MODEL=@cf/baai/bge-m3`, `EMBEDDING_DIM=1024`; add `cloudflare_account_id`, `cloudflare_api_token`, `nvidia_api_key` (env only).
 #### [MODIFY] `backend/src/ogr/graph/schema.gsql` — `DIMENSION=1024` (both vector attributes).
 #### [MODIFY] `config/server_config.json`, `env.example` — model / dim / service = `cloudflare`; new env vars.
 #### [MODIFY] `backend/src/ogr/api/main.py` (`_EMBEDDING_DIMS`), `pipelines/p3_agentic/agents/similarity_search.py` (default dim) — 1024.
 #### [MODIFY] `frontend/src/services/settingsService.ts` — `EMBEDDING_OPTIONS` = bge-m3 only.
-#### [MODIFY] `backend/pyproject.toml` — drop `sentence-transformers` (only if DP-2 = A).
 #### [MODIFY] tests: `tests/common/test_embeddings.py`, `tests/graph/test_schema.py` (dim) — commit carries `TEST-CHANGE:` marker (CI guard).
 
 ### Group 2 — Reranker (G-2, DP-1, DP-2)
@@ -95,7 +105,9 @@ Audit classified every step of P1/P2/P3 and ingestion. **No existing LLM call is
 ### Group 4 — Rate-limit error (G-5, DP-3)
 
 #### [MODIFY] `backend/src/ogr/common/llm.py`
-- `LLMRateLimitError(provider, model, reason)`; raised by `_invoke_with_backoff` when the final failure is a rate limit / quota. Message names provider + model + reason + "switch the LLM in Settings; no automatic fallback". Flows unchanged into `PipelineRecord.error_detail` (existing handlers) → UI.
+- `LLMRateLimitError(provider, model, reason)`; raised by `_invoke_with_backoff` when retries are exhausted on a rate limit / quota. Message names provider + model + reason + "switch the LLM in Settings and start the run again; no automatic fallback".
+#### [MODIFY] pipelines `p1_rag.py`, `p2_graphrag.py`, `p3_agentic/orchestrator.py` — generation `except` re-raises `LLMRateLimitError` instead of folding it into a record; `evidence.py` groundedness likewise (no silent deterministic substitute).
+#### [MODIFY] `backend/src/ogr/eval/dispatcher.py`, `eval/batch_runner.py` — `LLMRateLimitError` propagates; batch stops scheduling new questions, records `aborted: <message>` in the run output. `/query` path unchanged (its per-pipeline handler already turns the exception into an error card with the message).
 
 ### Group 5 — Intent-parse robustness (G-6)
 
