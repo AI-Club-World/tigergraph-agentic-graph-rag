@@ -46,6 +46,8 @@ export function SettingsPanel() {
   const [providers, setProviders] = useState<ProviderInfo[]>([])
   const [models, setModels] = useState<string[]>([])
   const [modelsError, setModelsError] = useState<string | null>(null)
+  const [modelsNote, setModelsNote] = useState<string | null>(null)
+  const [modelFilter, setModelFilter] = useState('')
   const [customModel, setCustomModel] = useState('')
   const [saving, setSaving] = useState(false)
   const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null)
@@ -73,12 +75,18 @@ export function SettingsPanel() {
   useEffect(() => {
     setModels([])
     setModelsError(null)
+    setModelsNote(null)
+    setModelFilter('')
     if (!open || !draftProvider || !isPreset) return
     // A slower catalog for a provider the user already left must not land
     // under the one now selected.
     let stale = false
     fetchModels(draftProvider)
-      .then((list) => { if (!stale) setModels(list) })
+      .then((res) => {
+        if (stale) return
+        setModels(res.models)
+        setModelsNote(res.note)
+      })
       .catch((e) => { if (!stale) setModelsError(e instanceof Error ? e.message : 'Could not load models') })
     return () => { stale = true }
   }, [open, draftProvider, isPreset])
@@ -122,6 +130,8 @@ export function SettingsPanel() {
     }
   }
 
+  const needle = modelFilter.trim().toLowerCase()
+  const shownModels = needle ? models.filter((m) => m.toLowerCase().includes(needle)) : models
   const currentModel = draft?.llm_model ?? ''
   const isCustom = currentModel !== '' && models.length > 0 && !models.includes(currentModel)
   const canApply = !saving && Boolean(customModel.trim() || currentModel)
@@ -208,9 +218,20 @@ export function SettingsPanel() {
                 {/* LLM model selector */}
                 <fieldset className="settings-fieldset">
                   <legend className="label">Intelligent Engine · Model</legend>
+                  {modelsNote && <p className="muted small settings-models-note" role="note">{modelsNote}</p>}
+                  {models.length > 0 && (
+                    <input
+                      type="search"
+                      className="settings-custom-input"
+                      aria-label="Filter models"
+                      placeholder={`Filter ${models.length} models by name…`}
+                      value={modelFilter}
+                      onChange={(e) => setModelFilter(e.target.value)}
+                    />
+                  )}
                   {models.length > 0 ? (
                     <div className="settings-model-grid">
-                      {models.map((m) => (
+                      {shownModels.map((m) => (
                         <label
                           key={m}
                           className={`settings-model-card ${draft.llm_model === m && !customModel ? 'selected' : ''}`}
@@ -230,6 +251,9 @@ export function SettingsPanel() {
                     <p className="muted small">
                       {modelsError ?? (isPreset ? 'Loading models…' : 'No model list for this provider — enter a model ID.')}
                     </p>
+                  )}
+                  {models.length > 0 && shownModels.length === 0 && (
+                    <p className="muted small">No model matches “{modelFilter}”.</p>
                   )}
                   <div className="settings-custom-row">
                     <label htmlFor="custom-model" className="label">Custom model ID</label>

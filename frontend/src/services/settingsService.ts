@@ -37,10 +37,13 @@ export async function fetchProviders(): Promise<ProviderInfo[]> {
   return get<ProviderInfo[]>('/settings/providers')
 }
 
-/** GET /settings/models — the provider's live text-model catalog. */
-export async function fetchModels(provider: string): Promise<string[]> {
-  const res = await get<{ models: string[] }>(`/settings/models?provider=${encodeURIComponent(provider)}`)
-  return res.models
+/** GET /settings/models — the provider's live text-model catalog. NVIDIA is
+ *  narrowed to 'Free Endpoint' models; `note` says when that was not possible. */
+export async function fetchModels(provider: string): Promise<{ models: string[]; note: string | null }> {
+  const res = await get<{ models: string[]; note?: string | null }>(
+    `/settings/models?provider=${encodeURIComponent(provider)}`,
+  )
+  return { models: res.models, note: res.note ?? null }
 }
 
 export const EMBEDDING_OPTIONS = [

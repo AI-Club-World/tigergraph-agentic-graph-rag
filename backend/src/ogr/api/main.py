@@ -192,15 +192,22 @@ def get_providers() -> list[dict[str, Any]]:
 
 
 @router.get("/settings/models")
-def get_provider_models(provider: Literal["gemini", "nvidia_nim", "groq"]) -> dict[str, Any]:
-    """Live text-model catalog of one provider."""
-    from ogr.common.llm import PROVIDER_PRESETS, list_models
+async def get_provider_models(provider: Literal["gemini", "nvidia_nim", "groq"]) -> dict[str, Any]:
+    """Live text-model catalog of one provider. NVIDIA is narrowed to the
+    models the NGC catalog labels 'Free Endpoint'; `note` explains when that
+    filter could not be applied."""
+    from ogr.common.llm import PROVIDER_PRESETS, list_models, nvidia_free_endpoints
 
-    key = getattr(get_default_config(), PROVIDER_PRESETS[provider]["key_field"])
+    config = get_default_config()
+    key = getattr(config, PROVIDER_PRESETS[provider]["key_field"])
     try:
-        return {"provider": provider, "models": list_models(provider, key)}
+        models = await asyncio.to_thread(list_models, provider, key)
     except Exception as e:  # noqa: BLE001 - surfaced to the user, not swallowed
         raise HTTPException(502, f"{provider}: could not list models ({str(e)[:200]})") from e
+    note = None
+    if provider == "nvidia_nim":
+        models, note = await asyncio.to_thread(nvidia_free_endpoints, models, config)
+    return {"provider": provider, "models": models, "note": note}
 
 
 @router.patch("/settings")

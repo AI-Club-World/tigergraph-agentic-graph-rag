@@ -29,6 +29,8 @@ _FILE_KEYS: dict[str, tuple[str, ...]] = {
     "LLM_THINKING": ("llm_config", "completion_service", "thinking_level"),
     "LLM_SUPPORTS_TOOL_CALLING": ("llm_config", "completion_service", "supports_tool_calling"),
     "LLM_REPORTS_TOKEN_USAGE": ("llm_config", "completion_service", "reports_token_usage"),
+    "NVIDIA_FREE_CATALOG_URL": ("llm_config", "nvidia_free_endpoints", "catalog_url"),
+    "NVIDIA_FREE_CATALOG_QUERY": ("llm_config", "nvidia_free_endpoints", "catalog_query"),
     "EMBEDDING_MODEL": ("llm_config", "embedding_service", "model_name"),
     "EMBEDDING_DIM": ("llm_config", "embedding_service", "dimension"),
     "RUN_POOL_SIZE": ("llm_config", "rate_limit", "max_concurrent"),
@@ -94,6 +96,11 @@ class RunConfig(BaseModel):
     gemini_api_key: str = Field(default_factory=lambda: _env("GEMINI_API_KEY", ""))
     groq_api_key: str = Field(default_factory=lambda: _env("GROQ_API_KEY", ""))
     nvidia_api_key: str = Field(default_factory=lambda: _env("NVIDIA_API_KEY", ""))
+    # NGC catalog search that build.nvidia.com's "Free Endpoint" filter uses;
+    # the NIM /v1/models list carries no such label. Kept in config so the
+    # query can be corrected without a code change.
+    nvidia_free_catalog_url: str = Field(default_factory=lambda: _env("NVIDIA_FREE_CATALOG_URL", ""))
+    nvidia_free_catalog_query: str = Field(default_factory=lambda: _env("NVIDIA_FREE_CATALOG_QUERY", ""))
     llm_temperature: float = Field(default_factory=lambda: float(_env("LLM_TEMPERATURE", "0.0")))
     llm_max_tokens: int = Field(default_factory=lambda: int(_env("LLM_MAX_TOKENS", "1024")))
     # Gemini thinking level (minimal|low|medium|high; empty = provider

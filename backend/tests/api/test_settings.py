@@ -105,3 +105,36 @@ def test_model_listing_failure_names_the_provider(client, monkeypatch):
     monkeypatch.setattr(llm_module.urllib.request, "urlopen", fail)
     resp = client.get("/settings/models", params={"provider": "groq"}, headers=HEADERS)
     assert resp.status_code == 502 and resp.json()["detail"].startswith("groq:")
+
+
+def test_nvidia_list_is_narrowed_to_catalog_free_endpoints(monkeypatch):
+    llm_module._FREE_CACHE.clear()
+    catalog = {"results": [{"resources": [
+        {"name": "llama-3_3-70b-instruct", "orgName": "meta", "displayName": "Llama 3.3 70B Instruct"},
+        {"resourceId": "nvidia/nemotron-4-340b-instruct"},
+    ]}]}
+    seen = {}
+
+    def fake_urlopen(req, timeout):
+        seen["url"] = req.full_url
+        return _Resp(catalog)
+
+    monkeypatch.setattr(llm_module.urllib.request, "urlopen", fake_urlopen)
+    config = RunConfig(nvidia_free_catalog_url="https://catalog.example/search", nvidia_free_catalog_query='{"q":1}')
+    models, note = llm_module.nvidia_free_endpoints(
+        ["meta/llama-3.3-70b-instruct", "nvidia/nemotron-4-340b-instruct", "paid/other-model"], config
+    )
+    assert models == ["meta/llama-3.3-70b-instruct", "nvidia/nemotron-4-340b-instruct"] and note is None
+    assert seen["url"].startswith("https://catalog.example/search?q=")
+
+
+def test_unreachable_catalog_shows_all_with_a_note(monkeypatch):
+    llm_module._FREE_CACHE.clear()
+
+    def fail(*_a, **_k):
+        raise OSError("blocked")
+
+    monkeypatch.setattr(llm_module.urllib.request, "urlopen", fail)
+    config = RunConfig(nvidia_free_catalog_url="https://catalog.example/search", nvidia_free_catalog_query="")
+    models, note = llm_module.nvidia_free_endpoints(["a/b"], config)
+    assert models == ["a/b"] and "Free Endpoint filter unavailable" in note

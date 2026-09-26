@@ -25,6 +25,10 @@
       "requests_per_minute": 30,
       "backoff_base_s": 2,
       "max_retries": 5
+    },
+    "nvidia_free_endpoints": {
+      "catalog_url": "https://api.ngc.nvidia.com/v2/search/catalog/resources/ENDPOINT",
+      "catalog_query": "{\"query\": \"\", \"page\": 0, \"pageSize\": 1000, \"filters\": [{\"field\": \"nimType\", \"value\": \"nim_type_preview\"}]}"
     }
   },
   "api_config": {

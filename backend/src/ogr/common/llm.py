@@ -10,6 +10,7 @@ import random
 import re
 import threading
 import time
+import urllib.parse
 import urllib.request
 from typing import Any
 
@@ -127,6 +128,73 @@ def list_models(provider: str, api_key: str) -> list[str]:
         # Flash and Flash-Lite only (task scope); Pro is not a free-tier option.
         ids = [i for i in ids if "flash" in i]
     return ids
+
+
+_FREE_CACHE: dict[str, tuple[float, set[str]]] = {}
+_FREE_CACHE_TTL_S = 3600.0
+
+
+def _model_key(name: str) -> str:
+    """Comparable form of a model name: the part after the org, alphanumerics
+    only. The catalog writes 'llama-3_3-70b-instruct' where NIM serves
+    'meta/llama-3.3-70b-instruct'."""
+    return re.sub(r"[^a-z0-9]", "", name.lower().rsplit("/", 1)[-1])
+
+
+def _catalog_names(payload: Any) -> set[str]:
+    """Every resource name in an NGC catalog search response, whatever the
+    nesting (results -> resources -> name/resourceId/displayName)."""
+    names: set[str] = set()
+
+    def walk(node: Any) -> None:
+        if isinstance(node, dict):
+            for key in ("name", "resourceId", "displayName"):
+                if isinstance(node.get(key), str):
+                    names.add(_model_key(node[key]))
+            for value in node.values():
+                walk(value)
+        elif isinstance(node, list):
+            for value in node:
+                walk(value)
+
+    walk(payload)
+    names.discard("")
+    return names
+
+
+def nvidia_free_endpoints(model_ids: list[str], config: RunConfig) -> tuple[list[str], str | None]:
+    """Keep the NIM models the NGC catalog labels 'Free Endpoint'.
+
+    Returns (models, note). The note is set when the filter could not be
+    applied — then every text model is returned, and the note says so, rather
+    than silently showing all or nothing."""
+    url, query = config.nvidia_free_catalog_url, config.nvidia_free_catalog_query
+    if not url:
+        return model_ids, "Free Endpoint filter not configured — showing every NVIDIA text model."
+    cached = _FREE_CACHE.get(url + query)
+    if cached and time.monotonic() - cached[0] < _FREE_CACHE_TTL_S:
+        names = cached[1]
+    else:
+        target = f"{url}?q={urllib.parse.quote(query)}" if query else url
+        try:
+            request = urllib.request.Request(
+                target, headers={"Accept": "application/json", "User-Agent": "ogr/0.1"}
+            )
+            with urllib.request.urlopen(request, timeout=15) as response:
+                names = _catalog_names(json.loads(response.read()))
+        except Exception as e:
+            return model_ids, (
+                f"Free Endpoint filter unavailable (NGC catalog: {type(e).__name__}: {str(e)[:120]}) — "
+                "showing every NVIDIA text model; some may need paid access."
+            )
+        _FREE_CACHE[url + query] = (time.monotonic(), names)
+    free = [m for m in model_ids if _model_key(m) in names]
+    if not free:
+        return model_ids, (
+            "The NGC catalog returned no model matching this key's NIM list — showing every NVIDIA "
+            "text model. Check llm_config.nvidia_free_endpoints in server_config.json."
+        )
+    return free, None
 
 
 def _build_chat_model(config: RunConfig) -> Any:
