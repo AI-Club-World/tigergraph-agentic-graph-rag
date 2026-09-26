@@ -1271,3 +1271,18 @@ table.matrix .section-row th { background: var(--bg-sunken); text-align: left; f
   white-space: nowrap;
   border: 0;
 }
+
+/* Build view — dataset chooser and rebuild/reset confirmation */
+.dataset-panel { display: grid; gap: 0.5rem; }
+.dataset-row { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; }
+.dataset-row select { min-width: 16rem; }
+.dataset-upload { cursor: pointer; }
+.confirm-box {
+  border: 1px solid var(--warn, #b7791f);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  display: grid;
+  gap: 0.5rem;
+}
+.confirm-actions { display: flex; gap: 0.5rem; justify-content: flex-end; }
+.btn-primary.danger { background: var(--bad, #c53030); border-color: var(--bad, #c53030); }

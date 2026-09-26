@@ -123,3 +123,29 @@ describe('BuildView reducer', () => {
     expect(within(rag).getByText('3 stage events')).toBeInTheDocument()
   })
 })
+
+describe('BuildView dataset confirmation', () => {
+  it('asks to rebuild or cancel when the dataset is already built', async () => {
+    const { ApiError } = await import('./services/http')
+    mocked.startBuild.mockRejectedValueOnce(
+      new ApiError("Dataset 'corpus' was already built. Rebuild it or cancel.", 409, 'already_built'),
+    )
+    await start()
+    expect(screen.getByRole('alertdialog')).toHaveTextContent('already built')
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Rebuild corpus' }))
+    })
+    expect(mocked.startBuild).toHaveBeenLastCalledWith('corpus', { rebuild: true })
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+  })
+
+  it('cancel keeps the existing data and starts nothing', async () => {
+    const { ApiError } = await import('./services/http')
+    mocked.startBuild.mockRejectedValueOnce(new ApiError('already built', 409, 'already_built'))
+    await start()
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+    expect(mocked.startBuild).toHaveBeenCalledTimes(1)
+  })
+})

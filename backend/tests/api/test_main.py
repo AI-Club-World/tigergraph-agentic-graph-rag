@@ -140,36 +140,24 @@ class TestQueryLifecycle:
 
 
 class TestBuildStream:
-    def test_build_reports_missing_corpus_honestly(self, client, monkeypatch, tmp_path):
-        monkeypatch.setattr(api_main, "CORPUS_PATH", tmp_path / "absent.jsonl")
-        post = client.post("/build", headers=HEADERS)
-        body = post.json()
-
-        with client.stream(
-            "GET", f"/build/{body['build_id']}/stream", params={"token": body["stream_token"]}
-        ) as response:
-            lines = list(response.iter_lines())
-
-        assert any(line == "event: build" for line in lines)
-        error_payloads = [
-            json.loads(lines[i + 1][len("data: "):])
-            for i, line in enumerate(lines)
-            if line == "event: build"
-        ]
-        assert any(p["status"] == "error" for p in error_payloads)
-
+    def test_unknown_dataset_is_refused_before_a_build_starts(self, client, monkeypatch, tmp_path):
+        monkeypatch.setattr(api_main, "CORPUS_DIR", tmp_path)
+        response = client.post("/build", headers=HEADERS, json={"dataset": "absent"})
+        assert response.status_code == 404
+        assert "absent" in response.json()["detail"]
 
     def test_no_pipeline_is_ready_without_tigergraph(self, client, monkeypatch, tmp_path):
         """Every pipeline queries TigerGraph, so a build that cannot reach it
         stops at schema_install and marks nothing ready (it used to mark RAG
         ready right after local chunk+embed)."""
         corpus = tmp_path / "corpus.jsonl"
+        monkeypatch.setattr(api_main, "OUT_DIR", tmp_path / "out")
         corpus.write_text(
             json.dumps({"doc_id": "Q1", "title": "Sailing at the 2016 Summer Olympics", "text": "Sailing text."})
             + "\n",
             encoding="utf-8",
         )
-        monkeypatch.setattr(api_main, "CORPUS_PATH", corpus)
+        monkeypatch.setattr(api_main, "CORPUS_DIR", tmp_path)
 
         class _Offline:
             conn = None

@@ -3,7 +3,9 @@ import { Icon, type IconName } from './components/Icon'
 import { StatusBadge } from './components/StatusBadge'
 import { ms, num, titleCase } from './format'
 import { RequiresServices } from './ServiceStatus'
-import { openBuildStream, startBuild } from './services/buildService'
+import { openBuildStream, startBuild, type BuildOptions } from './services/buildService'
+import { datasetNameFor, listCorpora, uploadCorpus, type CorporaResponse } from './services/datasetService'
+import { ApiError } from './services/http'
 import { PIPELINE_IDS, PIPELINE_LABELS, type BuildEvent, type PipelineId } from './types'
 
 interface Counters {
@@ -102,7 +104,7 @@ const STAGE_GROUPS: StageGroup[] = [
     detail: 'Schema • Vertices • Edges • Graph queries',
     icon: 'tree',
     gate: 'graphrag',
-    stages: ['schema_install', 'load_vertices', 'load_edges', 'install_graph_queries'],
+    stages: ['schema_install', 'remove_previous', 'load_vertices', 'load_edges', 'install_graph_queries'],
   },
   {
     title: 'Agentic Tooling',
@@ -145,11 +147,44 @@ export function BuildView() {
   const [running, setRunning] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const cancelRef = useRef<(() => void) | null>(null)
+  // Datasets: which corpus to build, and the rebuild/reset question the
+  // server asks when the build would replace existing data.
+  const [corpora, setCorpora] = useState<CorporaResponse | null>(null)
+  const [dataset, setDataset] = useState('corpus')
+  const [confirm, setConfirm] = useState<{ code: string; message: string } | null>(null)
+  const [uploadNote, setUploadNote] = useState<{ ok: boolean; text: string } | null>(null)
 
   useEffect(() => () => cancelRef.current?.(), [])
 
-  async function run() {
+  function refreshCorpora(select?: string) {
+    listCorpora()
+      .then((data) => {
+        setCorpora(data)
+        setDataset((current) => {
+          const names = data.corpora.map((c) => c.name)
+          if (select && names.includes(select)) return select
+          return names.includes(current) ? current : names[0] ?? current
+        })
+      })
+      .catch(() => setCorpora(null))
+  }
+  useEffect(() => refreshCorpora(), [])
+
+  async function upload(file: File) {
+    const name = datasetNameFor(file.name)
+    setUploadNote(null)
+    try {
+      const added = await uploadCorpus(name, file)
+      setUploadNote({ ok: true, text: `Added dataset '${added.name}' (${added.documents} documents).` })
+      refreshCorpora(added.name)
+    } catch (e) {
+      setUploadNote({ ok: false, text: e instanceof Error ? e.message : 'Upload failed' })
+    }
+  }
+
+  async function run(options: BuildOptions = {}) {
     cancelRef.current?.()
+    setConfirm(null)
     setColumns(initialColumns())
     setBuildId(null)
     setError(null)
@@ -157,9 +192,13 @@ export function BuildView() {
 
     let accepted
     try {
-      accepted = await startBuild()
+      accepted = await startBuild(dataset, options)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not start the build')
+      if (e instanceof ApiError && (e.code === 'already_built' || e.code === 'reset_required')) {
+        setConfirm({ code: e.code, message: e.message })
+      } else {
+        setError(e instanceof Error ? e.message : 'Could not start the build')
+      }
       setRunning(false)
       return
     }
@@ -174,7 +213,10 @@ export function BuildView() {
           }
           return next
         }),
-      onDone: () => setRunning(false),
+      onDone: () => {
+        setRunning(false)
+        refreshCorpora()
+      },
       onError: (message) => {
         setError(message)
         setRunning(false)
@@ -246,13 +288,74 @@ export function BuildView() {
             {syncLabel}
           </span>
           <RequiresServices needs={['db', 'emb']}>
-            <button type="button" className="btn-primary" onClick={run} disabled={running}>
+            <button type="button" className="btn-primary" onClick={() => run()} disabled={running || !!confirm}>
               <Icon name="restart" size={16} className={running ? 'spin' : undefined} />
               {running ? 'Building…' : 'Start build'}
             </button>
           </RequiresServices>
         </div>
       </header>
+
+      <section className="panel-x dataset-panel" aria-label="Dataset">
+        <div className="dataset-row">
+          <label htmlFor="build-dataset" className="section-label">Dataset</label>
+          <select
+            id="build-dataset"
+            value={dataset}
+            onChange={(e) => { setDataset(e.target.value); setConfirm(null) }}
+            disabled={running}
+          >
+            {(corpora?.corpora ?? [{ name: dataset, documents: 0, size_bytes: 0, built: null }]).map((c) => (
+              <option key={c.name} value={c.name}>
+                {c.name} — {num(c.documents)} docs{c.built ? ' · built' : ''}
+              </option>
+            ))}
+          </select>
+          <label className="secondary dataset-upload">
+            Upload JSONL…
+            <input
+              type="file"
+              accept=".jsonl,.ndjson,application/x-ndjson"
+              hidden
+              disabled={running}
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                if (file) void upload(file)
+                e.target.value = ''
+              }}
+            />
+          </label>
+        </div>
+        <p className="muted small">
+          Each line: {'{"doc_id", "title", "text", "url"}'}. Building a new dataset adds it to the graph and keeps the
+          datasets already loaded.
+          {corpora && Object.keys(corpora.graph.datasets).length > 0 && (
+            <> Loaded: {Object.entries(corpora.graph.datasets)
+              .map(([name, info]) => `${name} (${num(info.documents)} docs)`)
+              .join(', ')}.</>
+          )}
+        </p>
+        {uploadNote && <p className={uploadNote.ok ? 'flash' : 'error-box pad'}>{uploadNote.text}</p>}
+        {confirm && (
+          <div className="confirm-box" role="alertdialog" aria-label="Confirm build">
+            <p>{confirm.message}</p>
+            <div className="confirm-actions">
+              <button type="button" className="secondary" onClick={() => setConfirm(null)}>
+                Cancel
+              </button>
+              {confirm.code === 'already_built' ? (
+                <button type="button" className="btn-primary" onClick={() => run({ rebuild: true })}>
+                  Rebuild {dataset}
+                </button>
+              ) : (
+                <button type="button" className="btn-primary danger" onClick={() => run({ reset: true })}>
+                  Reset graph and build
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      </section>
 
       {error && <p className="error-box pad">{error}</p>}
 

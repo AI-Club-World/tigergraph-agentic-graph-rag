@@ -5,6 +5,8 @@ export class ApiError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    /** Machine-readable reason when the server sends a structured detail. */
+    readonly code?: string,
   ) {
     super(message)
     this.name = 'ApiError'
@@ -22,13 +24,18 @@ async function parse<T>(res: Response): Promise<T> {
     // Server errors (5xx) suggest the backend is degraded — re-check health.
     if (res.status >= 500) triggerRecheckOnFailure()
     let detail = res.statusText
+    let code: string | undefined
     try {
-      const body = (await res.json()) as { detail?: string }
-      if (body.detail) detail = body.detail
+      const body = (await res.json()) as { detail?: string | { code?: string; message?: string } }
+      if (typeof body.detail === 'string') detail = body.detail
+      else if (body.detail) {
+        detail = body.detail.message ?? detail
+        code = body.detail.code
+      }
     } catch {
       // Non-JSON error body; keep the status text.
     }
-    throw new ApiError(detail, res.status)
+    throw new ApiError(detail, res.status, code)
   }
   return (await res.json()) as T
 }

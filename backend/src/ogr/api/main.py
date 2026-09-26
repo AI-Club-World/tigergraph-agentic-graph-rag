@@ -27,13 +27,14 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import time
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 
-from fastapi import APIRouter, Body, Depends, FastAPI, HTTPException
+from fastapi import APIRouter, Body, Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
@@ -50,6 +51,7 @@ from ogr.ingest.chunk_embed import chunk_and_embed_corpus
 from ogr.ingest.infobox import parse_corpus
 from ogr.ingest.load import load_graph
 from ogr.ingest.progress import BuildEvent, BuildProgress
+from ogr.ingest.registry import DatasetRegistry
 from ogr.pipelines.p1_rag import run_p1_rag
 from ogr.pipelines.p2_graphrag import run_p2_graphrag
 from ogr.pipelines.p3_agentic.orchestrator import astream_p3_agentic
@@ -104,7 +106,8 @@ app.dependency_overrides[get_config] = _get_config_with_overrides
 # service should not depend on which directory it happened to be started
 # from (unlike the CLI, whose defaults already assume the repo root).
 _REPO_ROOT = Path(__file__).resolve().parents[4]
-CORPUS_PATH = _REPO_ROOT / "data" / "corpus" / "corpus.jsonl"
+CORPUS_DIR = _REPO_ROOT / "data" / "corpus"
+DEFAULT_DATASET = "corpus"
 QUESTIONS_DIR = _REPO_ROOT / "data" / "questions"
 OUT_DIR = _REPO_ROOT / "out"
 
@@ -357,25 +360,149 @@ async def _stream_events(queue: asyncio.Queue):
 # ---------------------------------------------------------------- /build ---
 
 
+DATASET_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+MAX_UPLOAD_BYTES = 200 * 1024 * 1024
+
+
+def _registry() -> DatasetRegistry:
+    return DatasetRegistry(OUT_DIR / "datasets.json")
+
+
+def _corpus_file(name: str) -> Path:
+    if not DATASET_RE.match(name):
+        raise HTTPException(
+            status_code=400, detail=f"Invalid dataset name {name!r} (letters, digits, _ and -)"
+        )
+    return CORPUS_DIR / f"{name}.jsonl"
+
+
+@router.get("/corpora")
+async def get_corpora() -> dict[str, Any]:
+    """Datasets available to build (JSONL files in data/corpus/) and which of
+    them are loaded into the graph."""
+    registry = _registry().summary()
+    corpora = []
+    for path in sorted(CORPUS_DIR.glob("*.jsonl")) if CORPUS_DIR.exists() else []:
+        with path.open(encoding="utf-8") as handle:
+            documents = sum(1 for line in handle if line.strip())
+        corpora.append({
+            "name": path.stem,
+            "size_bytes": path.stat().st_size,
+            "documents": documents,
+            "built": registry["datasets"].get(path.stem),
+        })
+    return {"corpora": corpora, "graph": registry}
+
+
+@router.post("/corpora/{name}", status_code=201)
+async def upload_corpus(name: str, request: Request, overwrite: bool = False) -> dict[str, Any]:
+    """Add a dataset: the request body is the JSONL itself, one document per
+    line with at least `doc_id` and `text` (`title`, `url` optional)."""
+    path = _corpus_file(name)
+    if path.exists() and not overwrite:
+        raise HTTPException(status_code=409, detail=f"Dataset {name!r} already exists")
+    body = await request.body()
+    if len(body) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail=f"File larger than {MAX_UPLOAD_BYTES // 2**20} MB")
+    documents = 0
+    for number, line in enumerate(body.decode("utf-8", errors="replace").splitlines(), 1):
+        if not line.strip():
+            continue
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError as e:
+            raise HTTPException(status_code=400, detail=f"Line {number} is not JSON: {e.msg}") from e
+        if not isinstance(record, dict) or not isinstance(record.get("doc_id"), str) \
+                or not isinstance(record.get("text"), str):
+            raise HTTPException(status_code=400, detail=f"Line {number} needs string 'doc_id' and 'text'")
+        documents += 1
+    if not documents:
+        raise HTTPException(status_code=400, detail="No documents in the file")
+    CORPUS_DIR.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(body)
+    return {"name": name, "documents": documents, "size_bytes": len(body)}
+
+
+class BuildRequest(BaseModel):
+    dataset: str = DEFAULT_DATASET
+    # The dataset is already loaded: delete its data and load it again.
+    rebuild: bool = False
+    # Drop and recreate the whole graph (every dataset) — needed once for a
+    # graph built before dataset tracking or with another embedding size.
+    reset: bool = False
+
+
+def _conflict(code: str, message: str, **extra: Any) -> HTTPException:
+    return HTTPException(status_code=409, detail={"code": code, "message": message, **extra})
+
+
+def _graph_has_documents(client: TigerGraphClient) -> bool:
+    client._ensure_connection()
+    if client.conn is None:
+        return False
+    try:
+        return int(client.conn.getVertexCount("Document") or 0) > 0
+    except Exception:  # noqa: BLE001 - no graph yet reads as empty
+        return False
+
+
 @router.post("/build", status_code=202)
-async def post_build(config: RunConfig = Depends(get_config)) -> dict[str, str]:
+async def post_build(
+    body: BuildRequest | None = None, config: RunConfig = Depends(get_config)
+) -> dict[str, str]:
+    body = body or BuildRequest()
+    corpus = _corpus_file(body.dataset)
+    if not corpus.exists():
+        raise HTTPException(status_code=404, detail=f"Unknown dataset {body.dataset!r}")
+    if any(not b["task"].done() for b in _builds.values() if "task" in b):
+        raise _conflict("build_running", "A build is already running; wait for it to finish.")
+
+    registry = _registry()
+    if not body.reset:
+        schema = registry.read().get("schema")
+        if schema and schema.get("embedding_dim") != config.embedding_dim:
+            raise _conflict(
+                "reset_required",
+                f"The graph holds {schema.get('embedding_dim')}-dim vectors but the embedding model "
+                f"produces {config.embedding_dim}-dim ones. Building needs a full reset, which removes "
+                "every loaded dataset.",
+            )
+        if not registry.exists and await asyncio.to_thread(_graph_has_documents, _get_client(config)):
+            raise _conflict(
+                "reset_required",
+                "The graph already holds data from a build made before dataset tracking (possibly "
+                "with 384-dim vectors). Building needs a full reset, which removes that data.",
+            )
+        existing = registry.get(body.dataset)
+        if existing and not body.rebuild:
+            built = existing["built_at"][:19].replace("T", " ")
+            raise _conflict(
+                "already_built",
+                f"Dataset {body.dataset!r} was already built on {built} "
+                f"UTC ({existing.get('documents', 0)} documents). Rebuild it (delete its data and load "
+                "again) or cancel.",
+                built_at=existing["built_at"],
+            )
+
     _evict_finished(_builds)
     build_id = str(uuid.uuid4())
     token = _stream_tokens.issue(build_id)
     queue: asyncio.Queue = asyncio.Queue()
     _builds[build_id] = {"queue": queue}
-    task = asyncio.create_task(_run_build(build_id, queue, config))
+    task = asyncio.create_task(_run_build(build_id, queue, config, body))
     _builds[build_id]["task"] = task
     return {"build_id": build_id, "stream_token": token}
 
 
-async def _run_build(build_id: str, queue: asyncio.Queue, config: RunConfig) -> None:
+async def _run_build(build_id: str, queue: asyncio.Queue, config: RunConfig, request: BuildRequest) -> None:
     """The same stages as `ogr.cli build`, streamed as BuildEvents under the
-    stage names the build view renders. A pipeline turns ready only when it
-    can answer: every pipeline queries TigerGraph, so nothing is ready until
-    the graph is loaded, Q1-Q5 are installed and the vector index reports
-    Ready_for_query (TECHNICAL-SPEC §11). A failed stage reports an error
-    rather than a fabricated success (DP-7).
+    stage names the build view renders, for one dataset. Other datasets
+    already in the graph are left intact: the schema is installed (dropping
+    the graph) only for the first build or an explicit reset. A pipeline
+    turns ready only when it can answer: every pipeline queries TigerGraph, so
+    nothing is ready until the graph is loaded, Q1-Q5 are installed and the
+    vector index reports Ready_for_query (TECHNICAL-SPEC §11). A failed stage
+    reports an error rather than a fabricated success (DP-7).
     """
     from ogr.common.embeddings import embedding_backend
     from ogr.graph.schema import install_queries, install_schema
@@ -385,6 +512,8 @@ async def _run_build(build_id: str, queue: asyncio.Queue, config: RunConfig) -> 
     def on_event(event: BuildEvent) -> None:
         queue.put_nowait(("build", event))
 
+    corpus = CORPUS_DIR / f"{request.dataset}.jsonl"
+    registry = _registry()
     progress = BuildProgress(on_event=on_event)
     everyone = ["rag", "graphrag", "agentic_graphrag"]
     graph_pipelines = ["graphrag", "agentic_graphrag"]
@@ -396,16 +525,16 @@ async def _run_build(build_id: str, queue: asyncio.Queue, config: RunConfig) -> 
         progress.start(name, pipelines, items_total=items_total)
 
     try:
-        if not CORPUS_PATH.exists():
-            raise FileNotFoundError(f"{CORPUS_PATH} not found")
+        if not corpus.exists():
+            raise FileNotFoundError(f"{corpus} not found")
 
         begin("parse_infoboxes", graph_pipelines)
-        docs, _report = await asyncio.to_thread(parse_corpus, CORPUS_PATH)
-        progress.finish(stage, affected, items_done=len(docs))
+        docs, _report = await asyncio.to_thread(parse_corpus, corpus)
+        progress.finish(stage, affected, items_done=len(docs), note=f"dataset {request.dataset}")
 
         begin("chunk_documents", everyone)
         chunks = await asyncio.to_thread(
-            chunk_and_embed_corpus, CORPUS_PATH, config.chunk_tokens, config.chunk_overlap, False
+            chunk_and_embed_corpus, corpus, config.chunk_tokens, config.chunk_overlap, False
         )
         progress.finish(stage, affected, items_done=len(chunks))
 
@@ -424,8 +553,22 @@ async def _run_build(build_id: str, queue: asyncio.Queue, config: RunConfig) -> 
         await asyncio.to_thread(client._ensure_connection)
         if client.conn is None:
             raise ConnectionError("TigerGraph unreachable — set TG_HOST and credentials")
-        await asyncio.to_thread(install_schema, client)
-        progress.finish(stage, affected, items_done=1)
+        if request.reset or not registry.exists:
+            await asyncio.to_thread(install_schema, client)
+            registry.reset(config.embedding_model, config.embedding_dim)
+            progress.finish(stage, affected, items_done=1, note="graph created (empty)")
+        else:
+            loaded = ", ".join(registry.read()["datasets"]) or "none"
+            progress.finish(stage, affected, items_done=0, note=f"schema kept; datasets loaded: {loaded}")
+
+        if request.rebuild and registry.get(request.dataset):
+            begin("remove_previous", everyone)
+            removable = registry.removable_ids(request.dataset)
+            removed = await asyncio.to_thread(_delete_vertices, client, removable)
+            registry.forget(request.dataset)
+            progress.finish(
+                stage, affected, items_done=removed, note=f"removed {request.dataset}'s previous data"
+            )
 
         begin("load_vertices", everyone)
         load = await asyncio.to_thread(load_graph, client, docs, chunks)
@@ -435,6 +578,16 @@ async def _run_build(build_id: str, queue: asyncio.Queue, config: RunConfig) -> 
         progress.finish(
             stage, affected, items_done=load.edges,
             note=f"PREV_EDITION {load.prev_edges_resolved} resolved, NEXT_EDITION {load.next_edges_resolved}",
+        )
+        registry.record(
+            request.dataset,
+            ids={
+                "doc_ids": [d.doc_id for d in docs],
+                "event_ids": [d.event_id or d.doc_id for d in docs if d.is_olympic_event],
+                "chunk_ids": [c.chunk_id for c in chunks],
+            },
+            counts={"documents": load.documents, "events": load.olympic_events, "chunks": load.chunks},
+            file_bytes=corpus.stat().st_size,
         )
 
         begin("install_graph_queries", everyone, items_total=5)
@@ -451,6 +604,15 @@ async def _run_build(build_id: str, queue: asyncio.Queue, config: RunConfig) -> 
         progress.error(stage, affected, str(e))
 
     await queue.put(("done", None))
+
+
+def _delete_vertices(client: TigerGraphClient, ids_by_type: dict[str, list[str]], batch: int = 500) -> int:
+    """Delete vertices (and so their edges) by id, in batches."""
+    removed = 0
+    for vtype, ids in ids_by_type.items():
+        for start in range(0, len(ids), batch):
+            removed += int(client.conn.delVerticesById(vtype, ids[start:start + batch]) or 0)
+    return removed
 
 
 @app.get("/build/{build_id}/stream")

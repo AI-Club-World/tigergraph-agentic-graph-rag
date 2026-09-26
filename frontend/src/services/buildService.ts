@@ -9,9 +9,17 @@ export interface BuildStreamHandlers {
   onError: (message: string) => void
 }
 
-/** POST /build -> 202 {build_id, stream_token} (TECHNICAL-SPEC §4.6). */
-export async function startBuild(): Promise<BuildAccepted> {
-  if (!config.useMockApi) return post<BuildAccepted>('/build', {})
+export interface BuildOptions {
+  /** The dataset is already loaded: delete its data and load it again. */
+  rebuild?: boolean
+  /** Drop and recreate the whole graph (every dataset). */
+  reset?: boolean
+}
+
+/** POST /build {dataset, rebuild, reset} -> 202 {build_id, stream_token}.
+ *  409 with code already_built / reset_required / build_running asks first. */
+export async function startBuild(dataset = 'corpus', options: BuildOptions = {}): Promise<BuildAccepted> {
+  if (!config.useMockApi) return post<BuildAccepted>('/build', { dataset, ...options })
 
   await delay(120)
   const buildId = `mock-build-${Date.now()}`

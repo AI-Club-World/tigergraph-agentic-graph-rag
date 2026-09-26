@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from pathlib import Path
 
 from ogr.common.config import get_default_config
 from ogr.graph.client import TigerGraphClient
@@ -90,6 +91,7 @@ def _build(corpus: str, vector_timeout_s: float) -> int:
     from ogr.ingest.chunk_embed import chunk_and_embed_corpus
     from ogr.ingest.infobox import parse_corpus
     from ogr.ingest.load import load_graph
+    from ogr.ingest.registry import DatasetRegistry
 
     config = get_default_config()
     client = TigerGraphClient(config)
@@ -99,11 +101,25 @@ def _build(corpus: str, vector_timeout_s: float) -> int:
         return 1
     print(f"chunk+embed {corpus} with {config.embedding_model} ...")
     chunks = chunk_and_embed_corpus(corpus, config.chunk_tokens, config.chunk_overlap)
-    print(f"  {len(chunks)} chunks; installing schema ...")
+    print(f"  {len(chunks)} chunks; installing schema (resets the graph and every loaded dataset) ...")
     install_schema(client)
+    # Same registry the API's multi-dataset build keeps; the reset above
+    # leaves exactly this one dataset in the graph.
+    registry = DatasetRegistry(Path(__file__).resolve().parents[3] / "out" / "datasets.json")
+    registry.reset(config.embedding_model, config.embedding_dim)
     docs, _report = parse_corpus(corpus)
     print(f"  loading {len(docs)} documents ...")
-    load_graph(client, docs, chunks)
+    load = load_graph(client, docs, chunks)
+    registry.record(
+        Path(corpus).stem,
+        ids={
+            "doc_ids": [d.doc_id for d in docs],
+            "event_ids": [d.event_id or d.doc_id for d in docs if d.is_olympic_event],
+            "chunk_ids": [c.chunk_id for c in chunks],
+        },
+        counts={"documents": load.documents, "events": load.olympic_events, "chunks": load.chunks},
+        file_bytes=Path(corpus).stat().st_size,
+    )
     print("  installing Q1-Q5 ...")
     try:
         install_queries(client)
