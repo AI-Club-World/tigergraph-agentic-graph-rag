@@ -19,7 +19,7 @@ describe('BenchmarksView (mock transport)', () => {
     const row = latestBox.closest('tr')!
     expect(within(row).getByText('eval_public')).toBeInTheDocument()
     expect(within(row).getByText('qwen2.5:7b-instruct')).toBeInTheDocument()
-    expect(within(row).getByRole('link', { name: 'Dashboard' })).toHaveAttribute('href', '/benchmarks?tab=dashboard&run=latest')
+    expect(within(row).getByRole('link', { name: 'Dashboard' })).toHaveAttribute('href', '/dashboard?tab=dashboard&run=latest')
     expect(screen.getByLabelText('Compare hidden')).toBeInTheDocument()
   })
 

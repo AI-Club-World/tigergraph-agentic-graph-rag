@@ -11,6 +11,14 @@ import type { BatchRecord } from './types'
  * (GET /runs is newest first) — live run ids are timestamps, so the fixture
  * default 'latest' never exists there.
  */
+/** Same params with `run` set (or removed) — keeps the Dashboard page's ?tab=. */
+function withRun(params: URLSearchParams, run: string): URLSearchParams {
+  const next = new URLSearchParams(params)
+  if (run) next.set('run', run)
+  else next.delete('run')
+  return next
+}
+
 export function useBatchRecords() {
   const [params, setParams] = useSearchParams()
   const explicitRun = params.get('run')
@@ -28,7 +36,7 @@ export function useBatchRecords() {
       listRuns()
         .then((runs) => {
           if (cancelled) return
-          if (runs.length) setParams({ run: runs[0].run_id }, { replace: true })
+          if (runs.length) setParams((prev) => withRun(prev, runs[0].run_id), { replace: true })
           else setError('No benchmark runs yet — start one from the Benchmarks view.')
         })
         .catch((e: unknown) => {
@@ -52,7 +60,7 @@ export function useBatchRecords() {
     }
   }, [runId, resolveNewest, setParams])
 
-  const setRunId = (next: string) => setParams(next ? { run: next } : {})
+  const setRunId = (next: string) => setParams((prev) => withRun(prev, next))
 
   // Dismissing an error leaves an empty view rather than a stuck "loading".
   const clearError = () => {

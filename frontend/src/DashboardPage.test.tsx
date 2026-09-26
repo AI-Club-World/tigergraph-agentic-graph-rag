@@ -1,14 +1,14 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it } from 'vitest'
-import { BenchmarksPage } from './BenchmarksPage'
+import { DashboardPage } from './DashboardPage'
 
-describe('BenchmarksPage', () => {
-  it('opens on the dashboard and switches to the run-benchmark tab', async () => {
+describe('DashboardPage', () => {
+  it('opens on the dashboard and switches to run-benchmark and eval tabs', async () => {
     await act(async () => {
       render(
-        <MemoryRouter initialEntries={['/benchmarks']}>
-          <BenchmarksPage />
+        <MemoryRouter initialEntries={['/dashboard']}>
+          <DashboardPage />
         </MemoryRouter>,
       )
     })
@@ -20,5 +20,10 @@ describe('BenchmarksPage', () => {
     })
     expect(screen.getByRole('tab', { name: 'Run benchmark' })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByRole('heading', { name: 'Runs & history' })).toBeInTheDocument()
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('tab', { name: 'Eval table' }))
+    })
+    expect(screen.getByRole('heading', { name: 'Per-question results' })).toBeInTheDocument()
   })
 })

@@ -263,12 +263,12 @@ see [Getting started](#getting-started) above.
 |---|---|---|
 | `/` | Three-column query comparison, live trace panel, verdict strip | FR-1 … FR-10 |
 | `/build` | Choose or upload a dataset (JSONL in `data/corpus/`), build it into the shared graph — other datasets stay loaded; an already-built dataset asks Rebuild or Cancel — with per-pipeline readiness | PLAN-004 Group 4, DP-6 A, DP-7 A |
-| `/benchmarks` | Two tabs: **Dashboard** (aggregate view over one batch run, TECHNICAL-SPEC §10) and **Run benchmark** (run, history, import/export, compare) | FR-13, FR-15 |
-| `/eval` | Every question × three pipelines, with drill-down | FR-20, PLAN-004 Group 5 |
+| `/dashboard` | Three tabs: **Dashboard** (aggregate view over one batch run, TECHNICAL-SPEC §10), **Run benchmark** (run, history, import/export, compare) and **Eval table** (every question × three pipelines, FR-20) | FR-13, FR-15, FR-20 |
 | `/history` | Every query, build and benchmark attempt (`out/history.jsonl`) with filters and search | — |
 
-`/benchmarks` (dashboard tab) and `/eval` read a run id from `?run=`; on a live
-backend they open the newest run, in mock mode `latest`. `/dashboard` redirects. The mock
+The Dashboard and Eval table tabs read a run id from `?run=`; on a live backend
+they open the newest run, in mock mode `latest`. `/benchmarks` and `/eval`
+redirect to their tabs. The mock
 transport ships two runs: `latest` (20 scored questions) and `hidden` (8
 questions with no gold, so the gold and score columns disappear — the same
 component renders the hidden set).

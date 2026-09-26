@@ -310,9 +310,9 @@ export function BenchmarksView() {
                           <td>{agentic?.median_tokens != null ? num(Math.round(agentic.median_tokens)) : '—'}</td>
                           <td>{agentic?.f1_per_1k_tokens != null ? dec(agentic.f1_per_1k_tokens, 3) : '—'}</td>
                           <td className="text nowrap">
-                            <Link to={`/benchmarks?tab=dashboard&run=${encodeURIComponent(r.run_id)}`}>Dashboard</Link>
+                            <Link to={`/dashboard?tab=dashboard&run=${encodeURIComponent(r.run_id)}`}>Dashboard</Link>
                             {' · '}
-                            <Link to={`/eval?run=${encodeURIComponent(r.run_id)}`}>Eval</Link>
+                            <Link to={`/dashboard?tab=eval&run=${encodeURIComponent(r.run_id)}`}>Eval</Link>
                             {' · '}
                             <button type="button" className="link" onClick={() => exportOne(r)} disabled={busy}>
                               Export
