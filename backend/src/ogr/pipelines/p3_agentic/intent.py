@@ -35,7 +35,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, ValidationError
 
 from ogr.common.contracts import TokenUsage
-from ogr.common.llm import _response_text, invoke_and_count
+from ogr.common.llm import _response_text, _status, invoke_and_count
 
 logger = logging.getLogger(__name__)
 
@@ -246,7 +246,7 @@ class IntentParser:
         correction: str | None = None
         for attempt in range(2):  # exactly one retry
             try:
-                raw = self._extract(question, correction)
+                raw = self._extract_or_downgrade(question, correction)
                 schema = self._validate(raw)
                 return _ground_in_question(schema, question)
             except (ValidationError, ValueError, TypeError) as e:
@@ -264,6 +264,20 @@ class IntentParser:
                     # Return a safe default: TRAVERSE with empty anchor (routes to loop)
                     return IntentSchema(operation="TRAVERSE")
         return IntentSchema(operation="TRAVERSE")
+
+    def _extract_or_downgrade(self, question: str, correction: str | None) -> dict[str, Any]:
+        """G-6 (LLM-ALLOCATION plan): the capability probe says 'yes' for every
+        OpenAI-compatible client, but some selectable NIM/Groq models reject a
+        tool request (HTTP 400/422). Ask the same model via the JSON-schema path."""
+        try:
+            return self._extract(question, correction)
+        except Exception as e:
+            if not self.supports_tool_calling or _status(e) not in (400, 422):
+                raise
+            logger.warning("Tool-calling rejected (%s); switching to the JSON-schema path", str(e)[:200])
+            self.supports_tool_calling = False
+            self.extraction_path = "json_schema"
+            return self._extract(question, correction)
 
     def _extract(self, question: str, correction: str | None = None) -> dict[str, Any]:
         if self.supports_tool_calling:
