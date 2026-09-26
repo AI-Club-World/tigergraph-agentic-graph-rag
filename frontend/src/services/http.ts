@@ -105,10 +105,11 @@ export function openSse(
     })
   }
 
+  // Any transport error ends the stream: the token is single-use, so the
+  // browser's automatic reconnect could only fail with 401.
   source.onerror = () => {
-    if (source.readyState === EventSource.CLOSED) {
-      onTransportError('Stream closed unexpectedly')
-    }
+    source.close()
+    onTransportError('Stream interrupted before the run finished')
   }
 
   return () => source.close()

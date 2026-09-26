@@ -29,11 +29,16 @@ export function SearchView() {
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [inFlight, setInFlight] = useState(false)
   const cancelRef = useRef<(() => void) | null>(null)
+  // Identifies the current run, so a late response from a superseded run
+  // (its result fetch outlives the stream cancel) is dropped.
+  const runRef = useRef(0)
 
   useEffect(() => () => cancelRef.current?.(), [])
 
   async function runQuery(query: string) {
     cancelRef.current?.()
+    const run = ++runRef.current
+    const current = () => run === runRef.current
     setColumns(RUNNING)
     setTrace([])
     setResult(null)
@@ -44,6 +49,7 @@ export function SearchView() {
     try {
       accepted = await submitQuery(query)
     } catch (error) {
+      if (!current()) return
       setSubmitError(error instanceof Error ? error.message : 'Could not reach the API')
       setColumns(IDLE)
       setInFlight(false)
@@ -62,16 +68,35 @@ export function SearchView() {
           },
         })),
       onDone: async () => {
-        setInFlight(false)
         try {
-          setResult(await getQueryResult(accepted.query_id))
+          const merged = await getQueryResult(accepted.query_id)
+          if (current()) setResult(merged)
         } catch (error) {
-          setSubmitError(error instanceof Error ? error.message : 'Could not load the merged result')
+          if (current()) setSubmitError(error instanceof Error ? error.message : 'Could not load the merged result')
+        } finally {
+          if (current()) setInFlight(false)
         }
       },
-      onError: (message) => {
-        setInFlight(false)
-        setSubmitError(message)
+      onError: async (message) => {
+        // The backend finishes the run and keeps its result even when the
+        // stream drops, so recover the columns from it where possible.
+        try {
+          const merged = await getQueryResult(accepted.query_id)
+          if (!current()) return
+          setColumns(Object.fromEntries(PIPELINE_IDS.map((p) => {
+            const record = merged.pipelines[p]
+            return [p, { status: record.status, record, error: record.error_detail }]
+          })) as Columns)
+          setResult(merged)
+        } catch {
+          if (!current()) return
+          setSubmitError(message)
+          setColumns((cols) => Object.fromEntries(PIPELINE_IDS.map((p) => [
+            p, cols[p].status === 'running' ? { status: 'error', record: null, error: message } : cols[p],
+          ])) as Columns)
+        } finally {
+          if (current()) setInFlight(false)
+        }
       },
     })
   }

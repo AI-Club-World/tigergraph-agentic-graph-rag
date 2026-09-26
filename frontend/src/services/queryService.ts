@@ -37,7 +37,6 @@ export function openQueryStream(
         trace: (data) => handlers.onTrace(data as TraceStep),
         pipeline: (data) => handlers.onPipeline(data as PipelineRecord),
         done: () => handlers.onDone(),
-        error: (data) => handlers.onError(String((data as { detail?: string }).detail ?? 'Pipeline error')),
       },
       handlers.onError,
     )

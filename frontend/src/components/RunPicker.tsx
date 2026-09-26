@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 
 interface Props {
   runId: string
@@ -7,6 +7,8 @@ interface Props {
 
 export function RunPicker({ runId, onChange }: Props) {
   const [value, setValue] = useState(runId)
+  // Follow the URL (back/forward, newest-run resolution), not just first render.
+  useEffect(() => setValue(runId), [runId])
 
   function submit(event: FormEvent) {
     event.preventDefault()

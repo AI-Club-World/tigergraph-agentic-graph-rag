@@ -55,7 +55,7 @@ export function EvalTable() {
 
     return [...list].sort((a, b) => {
       if (sortKey === 'qid') return a.qid.localeCompare(b.qid)
-      if (sortKey === 'qtype') return a.qtype.localeCompare(b.qtype) || a.qid.localeCompare(b.qid)
+      if (sortKey === 'qtype') return (a.qtype ?? '').localeCompare(b.qtype ?? '') || a.qid.localeCompare(b.qid)
       if (sortKey === 'gap') return gap(b) - gap(a)
       return (
         b.record.pipelines.agentic_graphrag.tokens.total -
@@ -190,7 +190,7 @@ export function EvalTable() {
                       >
                         <th scope="row" className="question-cell">
                           <code>{row.qid}</code>
-                          <span className="qtype-tag">{titleCase(row.qtype)}</span>
+                          <span className="qtype-tag">{titleCase(row.qtype ?? "unknown")}</span>
                           <p>{row.question}</p>
                         </th>
                         {hasGold && (

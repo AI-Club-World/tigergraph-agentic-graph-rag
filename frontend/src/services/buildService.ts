@@ -30,8 +30,6 @@ export function openBuildStream(
       {
         build: (data) => handlers.onEvent(data as BuildEvent),
         done: () => handlers.onDone(),
-        error: (data) =>
-          handlers.onError(String((data as { detail?: string }).detail ?? 'Build error')),
       },
       handlers.onError,
     )

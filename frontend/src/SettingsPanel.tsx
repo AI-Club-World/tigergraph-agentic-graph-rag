@@ -14,6 +14,7 @@ import {
   type ProviderInfo,
 } from './services/settingsService'
 import { config } from './config'
+import { triggerRecheckOnFailure } from './useServiceStatus'
 
 // ── Gear icon SVG ─────────────────────────────────────────────────────────────
 
@@ -73,9 +74,13 @@ export function SettingsPanel() {
     setModels([])
     setModelsError(null)
     if (!open || !draftProvider || !isPreset) return
+    // A slower catalog for a provider the user already left must not land
+    // under the one now selected.
+    let stale = false
     fetchModels(draftProvider)
-      .then(setModels)
-      .catch((e) => setModelsError(e instanceof Error ? e.message : 'Could not load models'))
+      .then((list) => { if (!stale) setModels(list) })
+      .catch((e) => { if (!stale) setModelsError(e instanceof Error ? e.message : 'Could not load models') })
+    return () => { stale = true }
   }, [open, draftProvider, isPreset])
 
   // Close on Escape
@@ -94,12 +99,18 @@ export function SettingsPanel() {
     setFeedback(null)
     const effectiveModel = customModel.trim() || draft.llm_model
     try {
+      // Only what changed: an embedding_model field resets the server's
+      // TigerGraph client, and an unchanged model need not rebuild the LLM.
       const providerChanged = settings !== null && draft.llm_provider !== settings.llm_provider
+      const modelChanged = providerChanged || effectiveModel !== settings?.llm_model
+      const embeddingChanged = draft.embedding_model !== settings?.embedding_model
       const updated = await saveSettings({
         ...(providerChanged ? { llm_provider: draft.llm_provider } : {}),
-        llm_model: effectiveModel,
-        embedding_model: draft.embedding_model,
+        ...(modelChanged ? { llm_model: effectiveModel } : {}),
+        ...(embeddingChanged ? { embedding_model: draft.embedding_model } : {}),
       })
+      // The health indicator reflects the old model until re-checked.
+      triggerRecheckOnFailure()
       setSettings(updated)
       setDraft({ llm_provider: updated.llm_provider, llm_model: updated.llm_model, embedding_model: updated.embedding_model })
       setCustomModel('')
@@ -112,7 +123,8 @@ export function SettingsPanel() {
   }
 
   const currentModel = draft?.llm_model ?? ''
-  const isCustom = models.length > 0 && !models.includes(currentModel)
+  const isCustom = currentModel !== '' && models.length > 0 && !models.includes(currentModel)
+  const canApply = !saving && Boolean(customModel.trim() || currentModel)
 
   return (
     <>
@@ -273,7 +285,7 @@ export function SettingsPanel() {
                     type="button"
                     className="btn-primary"
                     onClick={handleSave}
-                    disabled={saving}
+                    disabled={!canApply}
                   >
                     {saving ? 'Saving…' : 'Apply'}
                   </button>

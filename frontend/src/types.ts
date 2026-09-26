@@ -112,7 +112,7 @@ export interface BatchRecord {
   run_id: string
   qid: string
   question: string
-  qtype: QType
+  qtype: QType | null // Question.qtype is optional backend-side
   /** Gold variants, scored max-over-variants. Empty for the hidden set. */
   ground_truth: string[]
   gold_doc_ids: string[]

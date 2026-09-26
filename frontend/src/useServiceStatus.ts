@@ -40,7 +40,9 @@ function toState(s: string): ServiceState {
 
 async function fetchStatus(): Promise<{ db: ServiceResult; llm: ServiceResult }> {
   const res = await fetch(`${config.apiBaseUrl}/health/status`, {
-    signal: AbortSignal.timeout(15_000),
+    // The LLM probe is one real completion (no retries server-side); a cold
+    // large model can take >15 s, which would mark both services offline.
+    signal: AbortSignal.timeout(30_000),
   })
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
   return (await res.json()) as StatusResponse
