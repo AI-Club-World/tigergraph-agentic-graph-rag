@@ -245,7 +245,7 @@ export function BuildView() {
             <span className="dot" aria-hidden="true" />
             {syncLabel}
           </span>
-          <RequiresServices needs={['db']}>
+          <RequiresServices needs={['db', 'emb']}>
             <button type="button" className="btn-primary" onClick={run} disabled={running}>
               <Icon name="restart" size={16} className={running ? 'spin' : undefined} />
               {running ? 'Building…' : 'Start build'}

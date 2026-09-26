@@ -202,7 +202,7 @@ export function BenchmarksView() {
               <option key={d}>{d}</option>
             ))}
           </select>
-          <RequiresServices needs={['db', 'llm']}>
+          <RequiresServices needs={['db', 'llm', 'emb']}>
             <button type="button" onClick={run} disabled={busy || !dataset}>
               Run benchmark
             </button>

@@ -78,6 +78,8 @@ _queries: dict[str, dict[str, Any]] = {}
 _builds: dict[str, dict[str, Any]] = {}
 # Finished query/build entries kept for result reads; older ones are dropped.
 _MAX_RETAINED = 100
+# Per-dependency limit for /health/status; below the UI's 30 s poll timeout.
+HEALTH_CHECK_TIMEOUT_S = 20.0
 # One client for the process: its vocabulary cache and connection are reused
 # by every query and batch run instead of being rebuilt per request.
 _tg_client: TigerGraphClient | None = None
@@ -227,23 +229,31 @@ def patch_settings(body: SettingsPatch) -> dict[str, Any]:
 
 @app.get("/health/status")
 async def health_status(config: RunConfig = Depends(get_config)) -> dict[str, Any]:
-    """Check TigerGraph and LLM reachability in parallel. Unauthenticated — browser polls this."""
-    from ogr.verify import check_llm, check_tigergraph
+    """Check TigerGraph, the LLM and the embedding tier in parallel, each
+    under its own time limit, so one slow dependency (typically a cold
+    free-tier LLM) reports itself as slow instead of pushing the whole
+    response past the browser's timeout — which marked every service down.
+    Unauthenticated — the browser polls this."""
+    from ogr.verify import check_embedding, check_llm, check_tigergraph
 
-    def _timed(check) -> dict[str, Any]:
+    async def _timed(name: str, check, *args) -> dict[str, Any]:
         t0 = time.monotonic()
-        status, detail = check(config)
+        try:
+            status, detail = await asyncio.wait_for(asyncio.to_thread(check, *args), HEALTH_CHECK_TIMEOUT_S)
+        except TimeoutError:
+            status, detail = "FAIL", f"{name} did not answer within {HEALTH_CHECK_TIMEOUT_S:.0f} s"
         return {
             "status": "ok" if status == "OK" else status.lower(),
             "detail": detail,
             "latency_ms": round((time.monotonic() - t0) * 1000),
         }
 
-    db_result, llm_result = await asyncio.gather(
-        asyncio.to_thread(_timed, check_tigergraph),
-        asyncio.to_thread(_timed, check_llm),
+    db_result, llm_result, emb_result = await asyncio.gather(
+        _timed("TigerGraph", check_tigergraph, config, _get_client(config)),
+        _timed("LLM", check_llm, config),
+        _timed("Embedding", check_embedding, config),
     )
-    return {"db": db_result, "llm": llm_result}
+    return {"db": db_result, "llm": llm_result, "embedding": emb_result}
 
 
 # ---------------------------------------------------------------- /query ---

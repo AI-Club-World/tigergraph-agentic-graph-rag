@@ -32,10 +32,13 @@ export function useServiceContext(): ServiceStatus {
 const SERVICE_META = {
   db:  { label: 'Knowledge Base',    icon: '🗄' },
   llm: { label: 'Intelligent Engine', icon: '🧠' },
+  emb: { label: 'Embedding Model',   icon: '🧬' },
 } as const
 
+type ServiceKey = keyof typeof SERVICE_META
+
 function stateLabel(s: ServiceState): string {
-  return s === 'ok' ? 'Online' : s === 'skip' ? 'Skipped' : s === 'unknown' ? 'Checking…' : 'Offline'
+  return s === 'ok' ? 'Online' : s === 'skip' ? 'Degraded / skipped' : s === 'unknown' ? 'Checking…' : 'Offline'
 }
 
 function stateClass(s: ServiceState): string {
@@ -59,7 +62,7 @@ function Pill({
   state,
   detail,
 }: {
-  serviceKey: 'db' | 'llm'
+  serviceKey: ServiceKey
   state: ServiceState
   detail: string
 }) {
@@ -82,12 +85,13 @@ function Pill({
 // ── Status bar (header) ───────────────────────────────────────────────────────
 
 export function ServiceStatusBar() {
-  const { db, llm, dbDetail, llmDetail, checking, lastChecked, recheck } = useServiceContext()
+  const { db, llm, emb, dbDetail, llmDetail, embDetail, checking, lastChecked, recheck } = useServiceContext()
 
   return (
     <div className="svc-bar" aria-label="Service availability">
       <Pill serviceKey="db" state={db} detail={dbDetail} />
       <Pill serviceKey="llm" state={llm} detail={llmDetail} />
+      <Pill serviceKey="emb" state={emb} detail={embDetail} />
       <button
         type="button"
         className="svc-recheck"
@@ -105,7 +109,7 @@ export function ServiceStatusBar() {
 // ── Blocked-feature overlay ───────────────────────────────────────────────────
 
 interface BlockedProps {
-  needs: Array<'db' | 'llm'>
+  needs: ServiceKey[]
   children: ReactNode
 }
 

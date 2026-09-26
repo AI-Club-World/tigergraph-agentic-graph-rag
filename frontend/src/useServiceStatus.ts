@@ -15,8 +15,10 @@ export type ServiceState = 'unknown' | 'ok' | 'error' | 'skip'
 export interface ServiceStatus {
   db: ServiceState
   llm: ServiceState
+  emb: ServiceState
   dbDetail: string
   llmDetail: string
+  embDetail: string
   dbLatencyMs: number | null
   llmLatencyMs: number | null
   checking: boolean
@@ -32,13 +34,14 @@ interface ServiceResult {
 interface StatusResponse {
   db: ServiceResult
   llm: ServiceResult
+  embedding?: ServiceResult
 }
 
 function toState(s: string): ServiceState {
   return s === 'ok' ? 'ok' : s === 'skip' ? 'skip' : 'error'
 }
 
-async function fetchStatus(): Promise<{ db: ServiceResult; llm: ServiceResult }> {
+async function fetchStatus(): Promise<StatusResponse> {
   const res = await fetch(`${config.apiBaseUrl}/health/status`, {
     // The LLM probe is one real completion (no retries server-side); a cold
     // large model can take >15 s, which would mark both services offline.
@@ -60,8 +63,10 @@ export function triggerRecheckOnFailure(): void {
 export function useServiceStatus(): ServiceStatus {
   const [db, setDb] = useState<ServiceState>('unknown')
   const [llm, setLlm] = useState<ServiceState>('unknown')
+  const [emb, setEmb] = useState<ServiceState>('unknown')
   const [dbDetail, setDbDetail] = useState('')
   const [llmDetail, setLlmDetail] = useState('')
+  const [embDetail, setEmbDetail] = useState('')
   const [dbLatencyMs, setDbLatencyMs] = useState<number | null>(null)
   const [llmLatencyMs, setLlmLatencyMs] = useState<number | null>(null)
   const [checking, setChecking] = useState(false)
@@ -88,6 +93,8 @@ export function useServiceStatus(): ServiceStatus {
       setLlm(toState(result.llm.status))
       setLlmDetail(result.llm.detail ?? '')
       setLlmLatencyMs(result.llm.latency_ms ?? null)
+      setEmb(result.embedding ? toState(result.embedding.status) : 'unknown')
+      setEmbDetail(result.embedding?.detail ?? '')
       setLastChecked(new Date())
     } catch (err) {
       if (!mounted.current) return
@@ -96,6 +103,8 @@ export function useServiceStatus(): ServiceStatus {
       setDbDetail(msg)
       setLlm('error')
       setLlmDetail(msg)
+      setEmb('error')
+      setEmbDetail(msg)
       setLastChecked(new Date())
     } finally {
       if (mounted.current) setChecking(false)
@@ -119,8 +128,10 @@ export function useServiceStatus(): ServiceStatus {
   return {
     db,
     llm,
+    emb,
     dbDetail,
     llmDetail,
+    embDetail,
     dbLatencyMs,
     llmLatencyMs,
     checking,

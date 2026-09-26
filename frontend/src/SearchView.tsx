@@ -120,7 +120,7 @@ export function SearchView() {
 
   return (
     <div className="view search-view">
-      <RequiresServices needs={['db', 'llm']}>
+      <RequiresServices needs={['db', 'llm', 'emb']}>
         <section className="panel-x console">
           <header className="panel-x-head">
             <h2 className="panel-x-title">

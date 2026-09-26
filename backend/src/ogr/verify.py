@@ -30,7 +30,9 @@ def check_llm(config: RunConfig) -> tuple[str, str]:
         return FAIL, f"import failed: {e}"
 
     try:
-        model = get_chat_model(config)
+        # A short cap: reachability needs one token, and a reasoning model
+        # given the full LLM_MAX_TOKENS can think past the health timeout.
+        model = get_chat_model(config.model_copy(update={"llm_max_tokens": 32}))
     except Exception as e:
         return FAIL, f"could not construct client: {e}"
 
@@ -50,8 +52,12 @@ def check_llm(config: RunConfig) -> tuple[str, str]:
         return FAIL, f"{type(e).__name__}: {str(e)[:160]}"
 
 
-def check_tigergraph(config: RunConfig) -> tuple[str, str]:
-    """Open a connection and ask the server for its version."""
+def check_tigergraph(config: RunConfig, client=None) -> tuple[str, str]:
+    """Reach REST++ through the same connection and auth the queries use.
+
+    `echo` rather than `getVersion`: /version can be refused to a query-only
+    token (e.g. Savanna) while installed queries work, which showed the
+    database as down while it was serving queries."""
     if not config.tg_host:
         return SKIP, "TG_HOST is empty — paste the workspace endpoint from Savanna"
 
@@ -62,16 +68,51 @@ def check_tigergraph(config: RunConfig) -> tuple[str, str]:
 
     from ogr.graph.client import TigerGraphClient
 
-    client = TigerGraphClient(config)
+    client = client or TigerGraphClient(config)
     client._ensure_connection()
     if client.conn is None:
         return FAIL, "client could not be constructed — see the warning logged above"
 
     try:
-        version = client.conn.getVersion()
-        return OK, f"connected to {config.tg_host}, version {version}"
+        reply = client.conn.echo()
+        return OK, f"connected to {config.tg_host} (graph {config.tg_graphname}): {str(reply)[:80]}"
     except Exception as e:
         return FAIL, f"{type(e).__name__}: {str(e)[:200]}"
+
+
+def check_embedding(config: RunConfig) -> tuple[str, str]:
+    """Which bge-m3 tier would serve embeddings right now (DP-4 chain).
+
+    OK   = Cloudflare answered a one-text request.
+    SKIP = degraded but semantic: local bge-m3 (loaded or cached) serves.
+    FAIL = no working tier — vectors would be hash noise."""
+    import time
+
+    from ogr.common import embeddings
+
+    cf_note = "no Cloudflare credentials"
+    if config.cloudflare_account_id and config.cloudflare_api_token:
+        t0 = time.perf_counter()
+        try:
+            [vector] = embeddings._embed_cloudflare(
+                ["ok"], config.cloudflare_account_id, config.cloudflare_api_token
+            )
+            ms = (time.perf_counter() - t0) * 1000
+            return OK, f"Cloudflare {embeddings.CLOUDFLARE_MODEL}, {len(vector)}-dim, {ms:.0f} ms"
+        except Exception as e:
+            cf_note = f"Cloudflare failed ({type(e).__name__}: {str(e)[:120]})"
+
+    if embeddings._MODELS.get(embeddings.LOCAL_MODEL) is not None:
+        return SKIP, f"{cf_note}; local {embeddings.LOCAL_MODEL} loaded and serving"
+    try:
+        from huggingface_hub import try_to_load_from_cache
+
+        cached = isinstance(try_to_load_from_cache(embeddings.LOCAL_MODEL, "config.json"), str)
+    except Exception:
+        cached = False
+    if cached:
+        return SKIP, f"{cf_note}; local {embeddings.LOCAL_MODEL} cached (loads on first use)"
+    return FAIL, f"{cf_note}; local {embeddings.LOCAL_MODEL} not downloaded — vectors would be hash noise"
 
 
 def check_queries(config: RunConfig) -> tuple[str, str]:
