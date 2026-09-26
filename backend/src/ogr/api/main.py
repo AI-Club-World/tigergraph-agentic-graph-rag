@@ -112,6 +112,7 @@ class QueryRequest(BaseModel):
 
 
 class SettingsPatch(BaseModel):
+    llm_provider: Literal["gemini", "nvidia_nim", "groq"] | None = None
     llm_model: str | None = None
     embedding_model: str | None = None
 
@@ -159,10 +160,47 @@ def get_settings_endpoint() -> dict[str, Any]:
     }
 
 
+@router.get("/settings/providers")
+def get_providers() -> list[dict[str, Any]]:
+    """Selectable LLM providers; `configured` = its API key is set on the server."""
+    from ogr.common.llm import PROVIDER_PRESETS
+
+    cfg = get_default_config()
+    return [
+        {"id": pid, "label": p["label"], "configured": bool(getattr(cfg, p["key_field"]))}
+        for pid, p in PROVIDER_PRESETS.items()
+    ]
+
+
+@router.get("/settings/models")
+def get_provider_models(provider: Literal["gemini", "nvidia_nim", "groq"]) -> dict[str, Any]:
+    """Live text-model catalog of one provider."""
+    from ogr.common.llm import PROVIDER_PRESETS, list_models
+
+    key = getattr(get_default_config(), PROVIDER_PRESETS[provider]["key_field"])
+    try:
+        return {"provider": provider, "models": list_models(provider, key)}
+    except Exception as e:  # noqa: BLE001 - surfaced to the user, not swallowed
+        raise HTTPException(502, f"{provider}: could not list models ({str(e)[:200]})") from e
+
+
 @router.patch("/settings")
 def patch_settings(body: SettingsPatch) -> dict[str, Any]:
-    """Update runtime model/embedding without a server restart."""
+    """Update runtime model/embedding without a server restart. The selected
+    LLM applies to all three pipelines: each run snapshots config once."""
     global _tg_client
+    if body.llm_provider is not None:
+        from ogr.common.llm import PROVIDER_PRESETS
+
+        if not body.llm_model:
+            raise HTTPException(422, "llm_model is required when changing llm_provider")
+        preset = PROVIDER_PRESETS[body.llm_provider]
+        key = getattr(get_default_config(), preset["key_field"])
+        if not key:
+            raise HTTPException(400, f"{preset['key_field'].upper()} is not set on the server")
+        _runtime_overrides.update(
+            llm_provider=body.llm_provider, llm_base_url=preset["base_url"] or None, llm_api_key=key
+        )
     if body.llm_model is not None:
         _runtime_overrides["llm_model"] = body.llm_model
         # Clear cached model instance so next request builds a new client.

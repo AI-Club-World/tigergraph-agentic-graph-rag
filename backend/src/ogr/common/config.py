@@ -90,6 +90,10 @@ class RunConfig(BaseModel):
     llm_model: str = Field(default_factory=lambda: _env("LLM_MODEL", "qwen2.5:7b-instruct"))
     llm_base_url: str | None = Field(default_factory=lambda: _env("LLM_BASE_URL", "http://localhost:11434/v1"))
     llm_api_key: str | None = Field(default_factory=lambda: _env("LLM_API_KEY") or None)
+    # Keys for the runtime-selectable presets (common/llm.py PROVIDER_PRESETS).
+    # NVIDIA_API_KEY is declared with the embedding settings below.
+    gemini_api_key: str = Field(default_factory=lambda: _env("GEMINI_API_KEY", ""))
+    groq_api_key: str = Field(default_factory=lambda: _env("GROQ_API_KEY", ""))
     llm_temperature: float = Field(default_factory=lambda: float(_env("LLM_TEMPERATURE", "0.0")))
     llm_max_tokens: int = Field(default_factory=lambda: int(_env("LLM_MAX_TOKENS", "1024")))
     # Gemini thinking level (minimal|low|medium|high; empty = provider

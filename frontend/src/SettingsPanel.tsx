@@ -6,10 +6,12 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   EMBEDDING_OPTIONS,
-  MODELS_BY_PROVIDER,
+  fetchModels,
+  fetchProviders,
   fetchSettings,
   saveSettings,
   type AppSettings,
+  type ProviderInfo,
 } from './services/settingsService'
 import { config } from './config'
 
@@ -34,21 +36,15 @@ function GearIcon() {
   )
 }
 
-// ── Helpers ────────────────────────────────────────────────────────────────────
-
-function providerModels(provider: string): string[] {
-  const key = provider.toLowerCase()
-  // gemini / google_genai are aliases for the google preset list
-  if (key === 'gemini' || key === 'google_genai') return MODELS_BY_PROVIDER.google
-  return MODELS_BY_PROVIDER[key] ?? []
-}
-
 // ── Main component ─────────────────────────────────────────────────────────────
 
 export function SettingsPanel() {
   const [open, setOpen] = useState(false)
   const [settings, setSettings] = useState<AppSettings | null>(null)
-  const [draft, setDraft] = useState<{ llm_model: string; embedding_model: string } | null>(null)
+  const [draft, setDraft] = useState<{ llm_provider: string; llm_model: string; embedding_model: string } | null>(null)
+  const [providers, setProviders] = useState<ProviderInfo[]>([])
+  const [models, setModels] = useState<string[]>([])
+  const [modelsError, setModelsError] = useState<string | null>(null)
   const [customModel, setCustomModel] = useState('')
   const [saving, setSaving] = useState(false)
   const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null)
@@ -61,11 +57,26 @@ export function SettingsPanel() {
     fetchSettings()
       .then((s) => {
         setSettings(s)
-        setDraft({ llm_model: s.llm_model, embedding_model: s.embedding_model })
+        setDraft({ llm_provider: s.llm_provider, llm_model: s.llm_model, embedding_model: s.embedding_model })
         setCustomModel('')
       })
       .catch(() => setFeedback({ ok: false, text: 'Could not load current settings.' }))
+    fetchProviders()
+      .then(setProviders)
+      .catch(() => setProviders([]))
   }, [open])
+
+  // Live model catalog for the chosen provider
+  const draftProvider = draft?.llm_provider
+  const isPreset = providers.some((p) => p.id === draftProvider)
+  useEffect(() => {
+    setModels([])
+    setModelsError(null)
+    if (!open || !draftProvider || !isPreset) return
+    fetchModels(draftProvider)
+      .then(setModels)
+      .catch((e) => setModelsError(e instanceof Error ? e.message : 'Could not load models'))
+  }, [open, draftProvider, isPreset])
 
   // Close on Escape
   useEffect(() => {
@@ -83,14 +94,16 @@ export function SettingsPanel() {
     setFeedback(null)
     const effectiveModel = customModel.trim() || draft.llm_model
     try {
+      const providerChanged = settings !== null && draft.llm_provider !== settings.llm_provider
       const updated = await saveSettings({
+        ...(providerChanged ? { llm_provider: draft.llm_provider } : {}),
         llm_model: effectiveModel,
         embedding_model: draft.embedding_model,
       })
       setSettings(updated)
-      setDraft({ llm_model: updated.llm_model, embedding_model: updated.embedding_model })
+      setDraft({ llm_provider: updated.llm_provider, llm_model: updated.llm_model, embedding_model: updated.embedding_model })
       setCustomModel('')
-      setFeedback({ ok: true, text: `Saved — now using ${updated.llm_model}` })
+      setFeedback({ ok: true, text: `Saved — all pipelines now use ${updated.llm_provider} / ${updated.llm_model}` })
     } catch (e) {
       setFeedback({ ok: false, text: e instanceof Error ? e.message : 'Save failed' })
     } finally {
@@ -98,7 +111,6 @@ export function SettingsPanel() {
     }
   }
 
-  const models = settings ? providerModels(settings.llm_provider) : []
   const currentModel = draft?.llm_model ?? ''
   const isCustom = models.length > 0 && !models.includes(currentModel)
 
@@ -158,10 +170,27 @@ export function SettingsPanel() {
 
             {settings && draft && (
               <>
-                {/* Provider badge (read-only) */}
+                {/* Provider selector — applies to all three pipelines */}
                 <div className="settings-field">
-                  <span className="label">Provider</span>
-                  <span className="settings-badge">{settings.llm_provider}</span>
+                  <label htmlFor="llm-provider" className="label">Provider</label>
+                  <select
+                    id="llm-provider"
+                    value={draft.llm_provider}
+                    onChange={(e) => {
+                      const next = e.target.value
+                      setDraft((d) => d && { ...d, llm_provider: next, llm_model: next === settings.llm_provider ? settings.llm_model : '' })
+                      setCustomModel('')
+                    }}
+                  >
+                    {!providers.some((p) => p.id === settings.llm_provider) && (
+                      <option value={settings.llm_provider}>{settings.llm_provider} (server default)</option>
+                    )}
+                    {providers.map((p) => (
+                      <option key={p.id} value={p.id} disabled={!p.configured}>
+                        {p.label}{p.configured ? '' : ' — API key not set'}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 {/* LLM model selector */}
@@ -186,7 +215,9 @@ export function SettingsPanel() {
                       ))}
                     </div>
                   ) : (
-                    <p className="muted small">No preset models for this provider.</p>
+                    <p className="muted small">
+                      {modelsError ?? (isPreset ? 'Loading models…' : 'No model list for this provider — enter a model ID.')}
+                    </p>
                   )}
                   <div className="settings-custom-row">
                     <label htmlFor="custom-model" className="label">Custom model ID</label>

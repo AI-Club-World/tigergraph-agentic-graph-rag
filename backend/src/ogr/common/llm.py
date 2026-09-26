@@ -4,10 +4,13 @@ Built on LangChain's ChatOpenAI / provider abstractions per PLAT-08 / LLM-01.
 
 from __future__ import annotations
 
+import json
 import logging
 import random
+import re
 import threading
 import time
+import urllib.request
 from typing import Any
 
 from ogr.common.config import RunConfig, get_default_config
@@ -54,6 +57,53 @@ def get_chat_model(config: RunConfig) -> Any:
 # vLLM, llama.cpp, OpenRouter, ...) and reached through LLM_BASE_URL.
 ANTHROPIC_PROVIDERS = frozenset({"anthropic", "claude"})
 GOOGLE_PROVIDERS = frozenset({"google", "gemini", "google_genai"})
+
+
+# Runtime-selectable providers (LLM-ALLOCATION plan G-4). `key_field` names the
+# RunConfig field holding the key; keys come from the environment only.
+# "gemini" uses the native Gemini client, the others the OpenAI-compatible one.
+PROVIDER_PRESETS: dict[str, dict[str, str]] = {
+    "gemini": {
+        "label": "Google Gemini (AI Studio)",
+        "base_url": "",
+        "models_url": "https://generativelanguage.googleapis.com/v1beta/openai/models",
+        "key_field": "gemini_api_key",
+    },
+    "nvidia_nim": {
+        "label": "NVIDIA NIM",
+        "base_url": "https://integrate.api.nvidia.com/v1",
+        "models_url": "https://integrate.api.nvidia.com/v1/models",
+        "key_field": "nvidia_api_key",
+    },
+    "groq": {
+        "label": "Groq",
+        "base_url": "https://api.groq.com/openai/v1",
+        "models_url": "https://api.groq.com/openai/v1/models",
+        "key_field": "groq_api_key",
+    },
+}
+
+# Model types that cannot answer a text prompt: embedding, reranking,
+# retrieval, speech, image generation, OCR, safety classifiers. Filtering by
+# type — not a hand-picked list — keeps every text model the catalog serves.
+_NON_TEXT_MODEL = re.compile(
+    r"embed|rerank|retriev|bge|clip|whisper|parakeet|canary|tts|speech|audio|asr|riva|"
+    r"ocr|deplot|kosmos|flux|diffusion|sdxl|image|imagen|veo|live|guard|safety|reward"
+)
+
+
+def list_models(provider: str, api_key: str) -> list[str]:
+    """Text model ids the provider serves right now (live catalog, not a snapshot)."""
+    preset = PROVIDER_PRESETS[provider]
+    request = urllib.request.Request(preset["models_url"], headers={"Authorization": f"Bearer {api_key}"})
+    with urllib.request.urlopen(request, timeout=15) as response:
+        rows = json.loads(response.read())["data"]
+    ids = sorted({row["id"].removeprefix("models/") for row in rows})
+    ids = [i for i in ids if not _NON_TEXT_MODEL.search(i.lower())]
+    if provider == "gemini":
+        # Flash and Flash-Lite only (task scope); Pro is not a free-tier option.
+        ids = [i for i in ids if "flash" in i]
+    return ids
 
 
 def _build_chat_model(config: RunConfig) -> Any:
