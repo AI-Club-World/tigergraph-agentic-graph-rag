@@ -91,9 +91,9 @@ class RunConfig(BaseModel):
     llm_base_url: str | None = Field(default_factory=lambda: _env("LLM_BASE_URL", "http://localhost:11434/v1"))
     llm_api_key: str | None = Field(default_factory=lambda: _env("LLM_API_KEY") or None)
     # Keys for the runtime-selectable presets (common/llm.py PROVIDER_PRESETS).
-    # NVIDIA_API_KEY is declared with the embedding settings below.
     gemini_api_key: str = Field(default_factory=lambda: _env("GEMINI_API_KEY", ""))
     groq_api_key: str = Field(default_factory=lambda: _env("GROQ_API_KEY", ""))
+    nvidia_api_key: str = Field(default_factory=lambda: _env("NVIDIA_API_KEY", ""))
     llm_temperature: float = Field(default_factory=lambda: float(_env("LLM_TEMPERATURE", "0.0")))
     llm_max_tokens: int = Field(default_factory=lambda: int(_env("LLM_MAX_TOKENS", "1024")))
     # Gemini thinking level (minimal|low|medium|high; empty = provider
@@ -114,14 +114,13 @@ class RunConfig(BaseModel):
     llm_max_retries: int = Field(default_factory=lambda: int(_env("LLM_MAX_RETRIES", "5")))
 
     # Embeddings — bge-m3 on every tier (common/embeddings.py). Credentials
-    # are env-only; a tier whose credentials are empty is skipped.
+    # are env-only; Cloudflare is skipped when they are empty.
     embedding_model: str = Field(
         default_factory=lambda: _env("EMBEDDING_MODEL", "@cf/baai/bge-m3")
     )
     embedding_dim: int = Field(default_factory=lambda: int(_env("EMBEDDING_DIM", "1024")))
     cloudflare_account_id: str = Field(default_factory=lambda: _env("CLOUDFLARE_ACCOUNT_ID", ""))
     cloudflare_api_token: str = Field(default_factory=lambda: _env("CLOUDFLARE_API_TOKEN", ""))
-    nvidia_api_key: str = Field(default_factory=lambda: _env("NVIDIA_API_KEY", ""))
 
     # TigerGraph connection
     tg_host: str = Field(default_factory=lambda: _env("TG_HOST", "http://localhost"))

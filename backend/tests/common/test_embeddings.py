@@ -50,13 +50,12 @@ class TestModelLoadFailure:
 
 
 class TestProviderChain:
-    """DP-4: Cloudflare -> NVIDIA NIM -> local -> hash, one model on every tier."""
+    """DP-4: Cloudflare -> local -> hash, one model (bge-m3) on every tier."""
 
     @staticmethod
-    def _creds(monkeypatch, cloudflare=True, nvidia=True):
+    def _creds(monkeypatch, cloudflare=True):
         monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "acct" if cloudflare else "")
         monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "cf-token" if cloudflare else "")
-        monkeypatch.setenv("NVIDIA_API_KEY", "nv-key" if nvidia else "")
 
     def test_cloudflare_first_and_vectors_normalized(self, monkeypatch):
         self._creds(monkeypatch)
@@ -73,19 +72,7 @@ class TestProviderChain:
         assert payload == {"text": ["a", "b"]} and token == "cf-token"
         assert embedding_backend() == "cloudflare"
 
-    def test_cloudflare_failure_falls_back_to_nvidia_bge_m3(self, monkeypatch):
-        self._creds(monkeypatch)
-
-        def fake_post(url, payload, token, timeout_s=60.0):
-            if "cloudflare" in url:
-                raise OSError("cloudflare down")
-            assert payload["model"] == "baai/bge-m3" and token == "nv-key"
-            return {"data": [{"index": 1, "embedding": [0.0, 2.0]}, {"index": 0, "embedding": [2.0, 0.0]}]}
-
-        monkeypatch.setattr(embeddings_module, "_post_json", fake_post)
-        assert embed_texts(["first", "second"]) == [[1.0, 0.0], [0.0, 1.0]]
-
-    def test_remote_failures_fall_back_to_local_bge_m3(self, monkeypatch):
+    def test_cloudflare_failure_falls_back_to_local_bge_m3(self, monkeypatch):
         self._creds(monkeypatch)
 
         def fail(*_a, **_k):
@@ -103,21 +90,17 @@ class TestProviderChain:
         assert embed_query("q") == [1.0, 0.0]
         assert loaded == ["BAAI/bge-m3"]
 
-    def test_tier_without_credentials_is_skipped(self, monkeypatch):
+    def test_no_credentials_means_no_remote_call(self, monkeypatch):
         self._creds(monkeypatch, cloudflare=False)
-        urls = []
 
-        def fake_post(url, payload, token, timeout_s=60.0):
-            urls.append(url)
-            return {"data": [{"index": 0, "embedding": [1.0]}]}
+        def fail(*_a, **_k):
+            raise AssertionError("remote tier called without credentials")
 
-        monkeypatch.setattr(embeddings_module, "_post_json", fake_post)
-        embed_query("q")
-        assert urls == [embeddings_module.NVIDIA_EMBEDDINGS_URL]
-        assert embedding_backend() == "nvidia_nim"
+        monkeypatch.setattr(embeddings_module, "_post_json", fail)
+        assert len(embed_query("q")) == 1024
 
     def test_large_inputs_are_sent_in_batches(self, monkeypatch):
-        self._creds(monkeypatch, nvidia=False)
+        self._creds(monkeypatch)
         sizes = []
 
         def fake_post(url, payload, token, timeout_s=60.0):

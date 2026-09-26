@@ -77,13 +77,15 @@ def test_list_models_drops_only_non_text_types(monkeypatch):
     ids = [
         "meta/llama-3.3-70b-instruct", "nvidia/nv-embedqa-e5-v5", "baai/bge-m3",
         "nvidia/llama-3.2-nv-rerankqa-1b-v2", "deepseek-ai/deepseek-v4-flash", "meta/llama-guard-4-12b",
-        "microsoft/phi-4-multimodal-instruct",
+        "microsoft/phi-4-multimodal-instruct", "google/diffusiongemma-26b-a4b-it",
+        "nvidia/riva-translate-4b-instruct-v2", "nvidia/ai-synthetic-video-detector", "nvidia/nemotron-parse",
     ]
     monkeypatch.setattr(
         llm_module.urllib.request, "urlopen", lambda req, timeout: _Resp({"data": [{"id": i} for i in ids]})
     )
     assert llm_module.list_models("nvidia_nim", "k") == [
-        "deepseek-ai/deepseek-v4-flash", "meta/llama-3.3-70b-instruct", "microsoft/phi-4-multimodal-instruct",
+        "deepseek-ai/deepseek-v4-flash", "google/diffusiongemma-26b-a4b-it", "meta/llama-3.3-70b-instruct",
+        "microsoft/phi-4-multimodal-instruct", "nvidia/riva-translate-4b-instruct-v2",
     ]
 
 

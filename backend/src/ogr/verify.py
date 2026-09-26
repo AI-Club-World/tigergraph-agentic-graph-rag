@@ -37,8 +37,10 @@ def check_llm(config: RunConfig) -> tuple[str, str]:
     try:
         from langchain_core.messages import HumanMessage
 
+        # One attempt, no backoff: the UI polls this with a 15 s timeout, and a
+        # retried 429 would outlast it and mark every service offline.
         _, tokens, source, latency = invoke_and_count(
-            model, [HumanMessage(content="Reply with the single word: ok")]
+            model, [HumanMessage(content="Reply with the single word: ok")], max_retries=0
         )
         return OK, (
             f"{config.llm_provider}/{config.llm_model} responded in {latency:.0f} ms, "

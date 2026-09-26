@@ -15,7 +15,7 @@
       "thinking_level": "minimal"
     },
     "embedding_service": {
-      "embedding_model_service": "cloudflare, nvidia_nim, local (first available)",
+      "embedding_model_service": "cloudflare, local (first available)",
       "model_name": "@cf/baai/bge-m3",
       "dimension": 1024,
       "similarity": "COSINE"

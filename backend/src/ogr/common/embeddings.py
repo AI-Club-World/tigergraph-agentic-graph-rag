@@ -3,10 +3,12 @@ One model — BAAI bge-m3, 1024-dim — for ingestion and every pipeline's query
 path, so the index and the queries are always embedded by the same model.
 
 The model is served by the first host that works (DP-4, LLM-ALLOCATION plan):
-Cloudflare Workers AI `@cf/baai/bge-m3` → NVIDIA NIM `baai/bge-m3` → local
-sentence-transformers `BAAI/bge-m3` → hash fallback. A host is skipped when
-its credentials are absent. Every tier runs the same model, so a vector from
-any tier lives in the one index space.
+Cloudflare Workers AI `@cf/baai/bge-m3` → local sentence-transformers
+`BAAI/bge-m3` → hash fallback. Cloudflare is skipped when its credentials are
+absent. Every tier runs the same model, so a vector from any tier lives in the
+one index space. (NVIDIA NIM retired `baai/bge-m3` on 2026-08-25 — HTTP 410 —
+and hosts no other bge-m3, so it cannot be a tier: a different NVIDIA model
+would put query vectors in a different space from the index.)
 """
 
 from __future__ import annotations
@@ -21,9 +23,7 @@ import urllib.request
 logger = logging.getLogger(__name__)
 
 CLOUDFLARE_MODEL = "@cf/baai/bge-m3"
-NVIDIA_MODEL = "baai/bge-m3"
 LOCAL_MODEL = "BAAI/bge-m3"
-NVIDIA_EMBEDDINGS_URL = "https://integrate.api.nvidia.com/v1/embeddings"
 # Texts per HTTP request; keeps each request well under provider size limits.
 REMOTE_BATCH_SIZE = 50
 
@@ -62,7 +62,13 @@ def _post_json(url: str, payload: dict, token: str, timeout_s: float = 60.0) -> 
     request = urllib.request.Request(
         url,
         data=json.dumps(payload).encode("utf-8"),
-        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        # Explicit User-Agent: Cloudflare-fronted APIs (Groq, Workers AI) reject
+        # urllib's default one with error 1010 / HTTP 403.
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            "User-Agent": "ogr/0.1",
+        },
     )
     with urllib.request.urlopen(request, timeout=timeout_s) as response:
         return json.loads(response.read())
@@ -71,15 +77,6 @@ def _post_json(url: str, payload: dict, token: str, timeout_s: float = 60.0) -> 
 def _embed_cloudflare(texts: list[str], account_id: str, token: str) -> list[list[float]]:
     url = f"https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/{CLOUDFLARE_MODEL}"
     return _post_json(url, {"text": texts}, token)["result"]["data"]
-
-
-def _embed_nvidia(texts: list[str], token: str) -> list[list[float]]:
-    body = _post_json(
-        NVIDIA_EMBEDDINGS_URL,
-        {"model": NVIDIA_MODEL, "input": texts, "encoding_format": "float"},
-        token,
-    )
-    return [row["embedding"] for row in sorted(body["data"], key=lambda row: row["index"])]
 
 
 def _remote_tiers() -> list[tuple[str, object]]:
@@ -93,13 +90,11 @@ def _remote_tiers() -> list[tuple[str, object]]:
             "cloudflare",
             lambda batch: _embed_cloudflare(batch, cfg.cloudflare_account_id, cfg.cloudflare_api_token),
         ))
-    if cfg.nvidia_api_key:
-        tiers.append(("nvidia_nim", lambda batch: _embed_nvidia(batch, cfg.nvidia_api_key)))
     return tiers
 
 
 def embedding_backend(model_name: str | None = None) -> str:
-    """Primary tier — 'cloudflare', 'nvidia_nim', 'sentence-transformers' or
+    """Primary tier — 'cloudflare', 'sentence-transformers' or
     'hash_fallback' — recorded in each batch run's header so a degraded run is
     visible in its results (NFR-4)."""
     tiers = _remote_tiers()

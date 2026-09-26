@@ -44,5 +44,5 @@ export async function fetchModels(provider: string): Promise<string[]> {
 }
 
 export const EMBEDDING_OPTIONS = [
-  { value: '@cf/baai/bge-m3', label: 'BGE-M3 (BAAI) — Cloudflare → NVIDIA NIM → local', dim: 1024 },
+  { value: '@cf/baai/bge-m3', label: 'BGE-M3 (BAAI) — Cloudflare → local', dim: 1024 },
 ] as const

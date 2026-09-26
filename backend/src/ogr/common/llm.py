@@ -101,18 +101,24 @@ PROVIDER_PRESETS: dict[str, dict[str, str]] = {
 }
 
 # Model types that cannot answer a text prompt: embedding, reranking,
-# retrieval, speech, image generation, OCR, safety classifiers. Filtering by
-# type — not a hand-picked list — keeps every text model the catalog serves.
+# retrieval, speech, image/video generation or detection, document parsing,
+# OCR, safety/reward classifiers. Filtering by type — not a hand-picked list —
+# keeps every text model the catalog serves (checked against the live NIM
+# catalog, 2026-09-26: text-diffusion LLMs and riva-translate stay).
 _NON_TEXT_MODEL = re.compile(
-    r"embed|rerank|retriev|bge|clip|whisper|parakeet|canary|tts|speech|audio|asr|riva|"
-    r"ocr|deplot|kosmos|flux|diffusion|sdxl|image|imagen|veo|live|guard|safety|reward"
+    r"embed|rerank|retriev|bge|clip|whisper|parakeet|canary|tts|speech|audio|asr|"
+    r"ocr|deplot|kosmos|flux|stable-diffusion|sdxl|image|imagen|veo|live|detector|nemotron-parse|"
+    r"guard|safety|reward"
 )
 
 
 def list_models(provider: str, api_key: str) -> list[str]:
     """Text model ids the provider serves right now (live catalog, not a snapshot)."""
     preset = PROVIDER_PRESETS[provider]
-    request = urllib.request.Request(preset["models_url"], headers={"Authorization": f"Bearer {api_key}"})
+    # Explicit User-Agent: Groq's CDN rejects urllib's default one (error 1010).
+    request = urllib.request.Request(
+        preset["models_url"], headers={"Authorization": f"Bearer {api_key}", "User-Agent": "ogr/0.1"}
+    )
     with urllib.request.urlopen(request, timeout=15) as response:
         rows = json.loads(response.read())["data"]
     ids = sorted({row["id"].removeprefix("models/") for row in rows})
