@@ -57,7 +57,7 @@ Audit classified every step of P1/P2/P3 and ingestion. **No existing LLM call is
 | **A** *(Recommended)* | Cloudflare creds absent → existing hash fallback, logged + recorded as `hash_fallback` in run header (parity with today). Creds present but request fails → raise | Keeps offline unit tests working; a live API error is never silently turned into noise |
 | B | Always raise when embedding is unavailable | Strictest; tests need a mock for every embedding path |
 
-**Resolved: C (user)** — fallback chain, one model throughout so vectors stay in one space: **Cloudflare `@cf/baai/bge-m3` → NVIDIA NIM `baai/bge-m3` (`/v1/embeddings`) → local `BAAI/bge-m3` (sentence-transformers)**. A tier is skipped when its credentials are absent. The existing hash fallback remains the last resort (logged, recorded as `hash_fallback` in the run header) so offline tests still run. Assumption to verify on first live run: the three hosts return the same dense (CLS, normalised) vector up to fp16 noise — check cosine ≥ 0.99 on a sample text.
+**Resolved: C (user)** — fallback chain, one model throughout so vectors stay in one space: **Cloudflare `@cf/baai/bge-m3` → NVIDIA NIM `baai/bge-m3` (`/v1/embeddings`) → local `BAAI/bge-m3` (sentence-transformers)**. A tier is skipped when its credentials are absent. *Amended:* NIM tier removed — NIM returns 410 Gone for `baai/bge-m3` (end of life 2026-08-25); chain is Cloudflare → local → hash (see audit §7, §8). The existing hash fallback remains the last resort (logged, recorded as `hash_fallback` in the run header) so offline tests still run. Assumption to verify on first live run: the three hosts return the same dense (CLS, normalised) vector up to fp16 noise — check cosine ≥ 0.99 on a sample text.
 
 ---
 
@@ -67,7 +67,7 @@ Audit classified every step of P1/P2/P3 and ingestion. **No existing LLM call is
 
 #### [MODIFY] `backend/src/ogr/common/embeddings.py`
 - Tier 1 Cloudflare Workers AI client (stdlib `urllib`): `POST .../ai/run/@cf/baai/bge-m3`, `{"text": [...]}`, read `result.data`.
-- Tier 2 NVIDIA NIM: `POST https://integrate.api.nvidia.com/v1/embeddings`, `{"model": "baai/bge-m3", "input": [...]}`, read `data[].embedding`.
+- ~~Tier 2 NVIDIA NIM `baai/bge-m3`~~ — removed: model retired by NVIDIA (HTTP 410).
 - Tier 3 local `sentence-transformers` `BAAI/bge-m3` (existing loader).
 - Tier 4 existing hash fallback. Batch size 50; L2-normalise every tier.
 - `embedding_backend()` → first available tier name (DP-4).

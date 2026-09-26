@@ -144,6 +144,31 @@ Provider endpoints (OpenAI-compatible model listing — `GET {base}/models`, Bea
 - **DP-1** Reranker in P1 vs AD-9 → **P3 only**; P1 stays the unfiltered baseline.
 - **DP-2** Reranker host → **Cloudflare `@cf/baai/bge-reranker-base`**.
 - **DP-3** Rate limit → **retry same provider up to `LLM_MAX_RETRIES`, then stop the run** and ask the user to switch model and restart. No cross-provider fallback.
-- **DP-4** Embedding failure → **same-model chain: Cloudflare bge-m3 → NVIDIA NIM `baai/bge-m3` → local `BAAI/bge-m3`** (then existing hash fallback, recorded). Same model on every tier, so the single-embedding-model rule holds.
+- **DP-4** Embedding failure → **same-model chain: Cloudflare bge-m3 → local `BAAI/bge-m3`** (then existing hash fallback, recorded). Same model on every tier, so the single-embedding-model rule holds. *Amended 2026-09-26:* the chosen NVIDIA NIM tier was removed — a live probe of `POST integrate.api.nvidia.com/v1/embeddings` returns `410 Gone: "The model 'baai/bge-m3' has reached its end of life on 2026-08-25"`, and the live NIM catalog has no other bge-m3; substituting a different NVIDIA model would put query vectors in a different space from the index.
 
 Sources consulted for provider facts: [Cloudflare bge-m3](https://developers.cloudflare.com/workers-ai/models/bge-m3/), [Cloudflare bge-reranker-base](https://developers.cloudflare.com/workers-ai/models/bge-reranker-base/), [NVIDIA NIM free tier](https://itsfree.ai/provider/nvidia-nim/).
+
+---
+
+## 8. Verification pass (2026-09-26) — defects found and fixed
+
+Method: live end-to-end run of the real backend and frontend (Chromium via Playwright) against a local OpenAI-compatible stub LLM, direct probes of the live NVIDIA / Groq / Cloudflare / Gemini endpoints, and two independent code reviews (backend, frontend) verified against both sides of each interface. Backend 383 → 422 tests; frontend 11/20 → 20/20 passing; `ruff`, `tsc`, `vite build` clean.
+
+| Area | Defect | Fix |
+|---|---|---|
+| CI | 9 frontend tests failed (`RequiresServices` threw without its provider); `npm run build` failed (`test` key vs vite `defineConfig`); 2 ruff errors | provider-less render allowed; vitest `defineConfig`; lint fixed; `tests/conftest.py` keeps the suite off the network |
+| Providers | urllib default User-Agent rejected by Cloudflare-fronted APIs (Groq: error 1010 / 403) | explicit User-Agent on every urllib call |
+| Embeddings | NIM `baai/bge-m3` retired (410) | tier removed (DP-4 amendment above) |
+| NIM catalog | filter dropped text LLMs (`diffusiongemma`, `riva-translate`) and kept image/video models | filter checked against the live 82-model catalog: 63 text models kept |
+| Build | `POST /build` marked RAG ready after local chunk+embed (even with TigerGraph down), emitted stage names the UI does not know, per-stage/zero elapsed, no vector-readiness gate; Build button required the LLM | real stages, ready only when answerable, elapsed from build start, `wait_until_ready` gate, build needs TigerGraph only |
+| Build | failed CREATE/INSTALL QUERY reported as success | install verified via `getInstalledQueries` |
+| P3 | HAS_CHUNK fallback returned every chunk in the graph with empty text (`getEdgesByType` misuse) | per-document `getEdges` + `getVerticesById` |
+| P2/P3 | venue questions ran Q4 PREV_EDITION (empty); underspecified LOOKUP answered from the previous edition; temporal traversal ignored the Games anchor | shared `first_loop_tool`: Q4 HELD_AT→Q1 for venues, Q1 for named events, anchor edition resolved before Q4; P2 still one query |
+| P2/P3 | Q1 Document fallback rows had no content/citation | vertex rows flattened with `doc_id` |
+| Accounting | `LLM_REPORTS_TOKEN_USAGE` honoured by P2 generation only | every LLM call in every pipeline |
+| API | P3 setup blocked the event loop per query; health LLM probe retried past the UI timeout | setup in a worker thread; probe is one attempt, UI timeout 30 s |
+| UI | SSE drop left columns spinning; stale results across runs; model-list race; empty-model Apply; every Apply reset the TigerGraph client; Dashboard/Eval opened non-existent run `latest`; RunPicker desync; null `qtype` crash | fixed individually |
+
+**Not changed (flagged):** when a loop iteration adds no new evidence, P3 repeats the same traversal/fallback until the step budget. It costs no LLM tokens (the verdict is reused), and existing tests (`test_unsatisfiable_loop_stops_on_step_budget`, `test_unchanged_evidence_reuses_the_groundedness_verdict`) specify that stop reason, so stopping early with `no_further_action_available` is left as a decision.
+
+**Still unverified (needs real credentials):** Cloudflare bge-m3 / reranker response shapes, Gemini/Groq/NIM chat with real keys, and a full build + benchmark against TigerGraph Savanna.

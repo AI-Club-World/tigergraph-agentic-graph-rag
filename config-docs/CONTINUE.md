@@ -91,7 +91,7 @@ Estimates are BUILD-PLAN's own (S=1, M=2, L=3 points; 1pt ≈ half a day).
 |---|---|---|---|
 | 1 | `GRAPH-01` schema + idempotent install | 2 | Vertex/edge types per TECHNICAL-SPEC §2, endpoints pinned |
 | 2 | `GRAPH-02` infobox parser + sport derivation | 2 | Parsed `OlympicEvent` rows + a coverage report |
-| 3 | `GRAPH-04` chunk + embed **all 2,951 docs** | 2 | Chunks with 384-dim vectors in TigerGraph |
+| 3 | `GRAPH-04` chunk + embed **all 2,951 docs** | 2 | Chunks with 1024-dim (bge-m3) vectors in TigerGraph |
 | 4 | `GRAPH-05` load vertices/edges | 1 | A populated graph, `PREV_EDITION`/`NEXT_EDITION` resolved |
 | 5 | `GRAPH-06` vector-readiness gate | 1 | Polls `/restpp/vector/status` for `Ready_for_query` |
 | 6 | **`GRAPH-07` write and install Q1–Q5** | 3 | **Makes the existing client actually work** |
