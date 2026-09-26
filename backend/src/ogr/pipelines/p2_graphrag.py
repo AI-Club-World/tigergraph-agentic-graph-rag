@@ -42,7 +42,7 @@ from ogr.pipelines.p3_agentic.agents.aggregation import run_aggregation
 from ogr.pipelines.p3_agentic.agents.entity_linking import EntityLinker, ResolvedAnchors, narrow_to_games
 from ogr.pipelines.p3_agentic.agents.graph_traversal import run_graph_traversal
 from ogr.pipelines.p3_agentic.intent import IntentParser, IntentSchema
-from ogr.pipelines.p3_agentic.router import route
+from ogr.pipelines.p3_agentic.router import first_loop_tool, route
 
 logger = logging.getLogger(__name__)
 
@@ -142,10 +142,16 @@ def run_p2_graphrag(
 
     # Step 2 — exactly ONE query. No evidence check, no fallback, no loop.
     selected = select_single_query(intent)
-    if selected == "lookup":
+    # A loop route runs the first query of the step P3 would start with
+    # (router.first_loop_tool): Q1 for a named non-TRAVERSE event, Q4 HELD_AT
+    # for a venue, Q4 PREV_EDITION otherwise. P3 chains further; P2 stops.
+    first = first_loop_tool(intent, anchors) if selected == "traverse" else None
+    if selected == "lookup" or first == "lookup":
         result = _run_lookup(tg_client, intent, anchors)
     elif selected == "aggregate":
         result = run_aggregation(tg_client, intent, anchors)
+    elif first == "venue":
+        result = run_graph_traversal(tg_client, anchors, edge_type="HELD_AT")
     else:
         result = run_graph_traversal(tg_client, anchors)
 

@@ -48,7 +48,7 @@ DEFAULT_MAX_TOKENS_PER_QUERY = 20_000
 
 # Tools reachable inside the loop: one traversal tool per iteration, plus the
 # two evidence-evaluator fallbacks (DP-2).
-PRIMARY_LOOP_TOOLS = frozenset({"traversal", "multi_hop"})
+PRIMARY_LOOP_TOOLS = frozenset({"traversal", "multi_hop", "lookup"})
 FALLBACK_TOOLS = frozenset({"similarity_search", "document_retrieval"})
 
 

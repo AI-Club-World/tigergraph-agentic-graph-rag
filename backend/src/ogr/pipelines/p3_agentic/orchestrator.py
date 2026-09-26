@@ -104,11 +104,11 @@ def build_p3_graph(
     from ogr.pipelines.p3_agentic.agents.document_retrieval import run_document_retrieval
     from ogr.pipelines.p3_agentic.agents.entity_linking import narrow_to_games
     from ogr.pipelines.p3_agentic.agents.graph_traversal import run_graph_traversal
-    from ogr.pipelines.p3_agentic.agents.multi_hop import run_multi_hop
+    from ogr.pipelines.p3_agentic.agents.multi_hop import run_multi_hop, run_venue_events
     from ogr.pipelines.p3_agentic.agents.similarity_search import run_similarity_search
     from ogr.pipelines.p3_agentic.evidence import EvidenceEvaluation, evaluate_evidence
     from ogr.pipelines.p3_agentic.intent import IntentParser
-    from ogr.pipelines.p3_agentic.router import route
+    from ogr.pipelines.p3_agentic.router import first_loop_tool, route
     from ogr.pipelines.p3_agentic.stopping import should_stop
     from ogr.pipelines.p3_agentic.strategy import detect_strategy_change
     from ogr.pipelines.p3_agentic.trace import TraceRecorder
@@ -291,21 +291,32 @@ def build_p3_graph(
                 "path_taken": ["traversal"],
             }
 
-        # Choose appropriate traversal type based on operation
-        if intent and intent.operation == "TRAVERSE":
-            # Check if it's temporal (has title/event_id) or multi-hop
-            if getattr(anchors, "title", None) or getattr(anchors, "event_id", None):
-                result = run_multi_hop(tg_client, intent, anchors)
-                tool_name = "multi_hop"
-                q_name = "Q4→Q1"
-            else:
-                result = run_graph_traversal(tg_client, anchors)
-                tool_name = "traversal"
-                q_name = "Q4"
+        # Same first-step choice P2 makes (router.first_loop_tool).
+        tool = first_loop_tool(intent, anchors) if intent else "traversal"
+        if tool == "lookup":
+            t0 = time.perf_counter()
+            rows = narrow_to_games(
+                tg_client._run_query("q1_lookup", {
+                    "title": anchors.title or "",
+                    "event_id": anchors.event_id or "",
+                    "target_field": intent.target_field or "",
+                }) or [],
+                anchors.games,
+            )
+            result = AgentResult(
+                evidence=rows, chunks_returned=len(rows), citations_count=len(rows),
+                latency_ms=(time.perf_counter() - t0) * 1000.0, notes="Q1 lookup on the named event",
+            )
+            tool_name, q_name = "lookup", "Q1"
+        elif tool == "multi_hop":
+            result = run_multi_hop(tg_client, intent, anchors)
+            tool_name, q_name = "multi_hop", "Q1→Q4→Q1"
+        elif tool == "venue":
+            result = run_venue_events(tg_client, intent, anchors)
+            tool_name, q_name = "multi_hop", "Q4(HELD_AT)→Q1"
         else:
             result = run_graph_traversal(tg_client, anchors)
-            tool_name = "traversal"
-            q_name = "Q4"
+            tool_name, q_name = "traversal", "Q4"
 
         if recorder:
             recorder.record("graph_traversal", q_name, result, path_name=tool_name)

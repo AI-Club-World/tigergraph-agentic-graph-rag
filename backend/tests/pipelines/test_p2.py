@@ -127,6 +127,33 @@ class TestExactlyOneQuery:
         assert record.status == "done"
 
 
+    def test_underspecified_lookup_with_a_title_runs_q1_not_q4(self):
+        """Q4 PREV_EDITION on a named event answers from its previous edition."""
+        config = RunConfig()
+        client = _CountingClient(config)
+        run_p2_graphrag(
+            "What were the details of the men's marathon at the 2016 Olympics?",
+            client=client, config=config,
+            model=_model({"operation": "LOOKUP", "anchor": {"title": "Men's marathon"}, "constraints": []}),
+            entity_linker=_linker(),
+        )
+        assert client.calls == ["q1_lookup"]
+
+    def test_venue_question_traverses_held_at(self):
+        config = RunConfig()
+        client = _CountingClient(config)
+        seen = []
+        original = client._run_query
+        client._run_query = lambda name, params: seen.append(params.get("edge_type")) or original(name, params)
+        run_p2_graphrag(
+            "Who won gold in the event held at Olympic Stadium?",
+            client=client, config=config,
+            model=_model({"operation": "LOOKUP", "anchor": {"venue": "Olympic Stadium"}, "constraints": []}),
+            entity_linker=_linker(),
+        )
+        assert client.calls == ["q4_traverse"] and seen == ["HELD_AT"]
+
+
 class TestRecordConformance:
     def _run(self):
         config = RunConfig()

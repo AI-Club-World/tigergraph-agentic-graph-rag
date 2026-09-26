@@ -27,6 +27,7 @@ from ogr.pipelines.p3_agentic.intent import IntentSchema
 logger = logging.getLogger(__name__)
 
 RouteDecision = Literal["lookup_direct", "scoped_aggregate", "loop"]
+LoopTool = Literal["lookup", "multi_hop", "venue", "traversal"]
 
 
 def is_fully_specified(intent: IntentSchema) -> bool:
@@ -65,3 +66,20 @@ def route(intent: IntentSchema) -> RouteDecision:
     # TRAVERSE or any unrecognised operation → loop
     logger.debug("Router: %s → loop", intent.operation)
     return "loop"
+
+
+def first_loop_tool(intent: IntentSchema, anchors) -> LoopTool:
+    """The tool a `loop` route starts with — shared by P3 (every iteration)
+    and P2 (its single step), so the two differ only by the loop.
+
+      named event, not TRAVERSE -> lookup     (Q1 on that event; Q4 would
+                                               answer from its previous edition)
+      named event, TRAVERSE     -> multi_hop  (resolve event, Q4, Q1)
+      venue only                -> venue      (Q4 HELD_AT; a venue matches no event name)
+      otherwise                 -> traversal  (Q4 on whatever anchor exists)
+    """
+    if getattr(anchors, "title", None) or getattr(anchors, "event_id", None):
+        return "multi_hop" if intent.operation == "TRAVERSE" else "lookup"
+    if getattr(anchors, "venue", None):
+        return "venue"
+    return "traversal"

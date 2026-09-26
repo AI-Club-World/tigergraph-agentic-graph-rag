@@ -22,7 +22,7 @@ from __future__ import annotations
 ROUTE_TO_EXPECTED_TOOLS = {
     "lookup_direct": {"lookup"},
     "scoped_aggregate": {"aggregation"},
-    "loop": {"traversal", "similarity_search", "document_retrieval", "multi_hop", "aggregation"},
+    "loop": {"traversal", "similarity_search", "document_retrieval", "multi_hop", "aggregation", "lookup"},
 }
 
 
