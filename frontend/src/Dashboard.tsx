@@ -1,3 +1,4 @@
+import { Notice } from './components/Notice'
 import { useMemo } from 'react'
 import { BarChart, ScatterPlot, type ScatterSeries } from './components/Charts'
 import { PIPELINE_COLORS } from './components/colors'
@@ -26,7 +27,7 @@ function scoresBy(records: BatchRecord[], pipeline: PipelineId, key: keyof Pipel
 }
 
 export function Dashboard() {
-  const { runId, setRunId, records, error, loading } = useBatchRecords()
+  const { runId, setRunId, records, error, clearError, loading } = useBatchRecords()
 
   const scored = useMemo(() => (records ?? []).filter((r) => r.scores !== null), [records])
 
@@ -117,7 +118,7 @@ export function Dashboard() {
       </header>
 
       {loading && <p className="muted pad">Loading run "{runId}"…</p>}
-      {error && <p className="error-box pad">{error}</p>}
+      {error && <Notice onClose={clearError}>{error}</Notice>}
 
       {records && !scored.length && (
         <p className="note pad">

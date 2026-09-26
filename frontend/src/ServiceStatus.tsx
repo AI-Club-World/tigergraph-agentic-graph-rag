@@ -9,6 +9,7 @@
  */
 
 import { createContext, useContext, type ReactNode } from 'react'
+import { Icon, type IconName } from './components/Icon'
 import { config } from './config'
 import { type ServiceState, type ServiceStatus, useServiceStatus } from './useServiceStatus'
 
@@ -30,10 +31,10 @@ export function useServiceContext(): ServiceStatus {
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 const SERVICE_META = {
-  db:  { label: 'Knowledge Base',    icon: '🗄' },
-  llm: { label: 'Intelligent Engine', icon: '🧠' },
-  emb: { label: 'Embedding Model',   icon: '🧬' },
-} as const
+  db: { label: 'Knowledge Base (TigerGraph)', icon: 'hub' },
+  llm: { label: 'Intelligent Engine (LLM)', icon: 'bot' },
+  emb: { label: 'Embedding Model', icon: 'layers' },
+} as const satisfies Record<string, { label: string; icon: IconName }>
 
 type ServiceKey = keyof typeof SERVICE_META
 
@@ -77,7 +78,7 @@ function Pill({
       role="status"
     >
       <span className="svc-dot" aria-hidden="true" />
-      <span className="svc-icon" aria-hidden="true">{icon}</span>
+      <span className="svc-icon" aria-hidden="true"><Icon name={icon} size={15} /></span>
     </span>
   )
 }

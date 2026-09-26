@@ -1,3 +1,4 @@
+import { Notice } from './components/Notice'
 import { Fragment, useMemo, useState } from 'react'
 import { PIPELINE_COLORS } from './components/colors'
 import { RunPicker } from './components/RunPicker'
@@ -35,7 +36,7 @@ function disagree(record: BatchRecord): boolean {
 type SortKey = 'qid' | 'qtype' | 'gap' | 'tokens'
 
 export function EvalTable() {
-  const { runId, setRunId, records, error, loading } = useBatchRecords()
+  const { runId, setRunId, records, error, clearError, loading } = useBatchRecords()
   const [qtypeFilter, setQtypeFilter] = useState<QType | 'all'>('all')
   const [pipelineFilter, setPipelineFilter] = useState<PipelineId | 'all'>('all')
   const [onlyDisagreeing, setOnlyDisagreeing] = useState(false)
@@ -81,7 +82,7 @@ export function EvalTable() {
       </header>
 
       {loading && <p className="muted pad">Loading run "{runId}"…</p>}
-      {error && <p className="error-box pad">{error}</p>}
+      {error && <Notice onClose={clearError}>{error}</Notice>}
 
       {records && (
         <>

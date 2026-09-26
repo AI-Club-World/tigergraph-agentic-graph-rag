@@ -1,3 +1,4 @@
+import { Notice } from './components/Notice'
 import { useEffect, useRef, useState } from 'react'
 import { Icon, type IconName } from './components/Icon'
 import { StatusBadge } from './components/StatusBadge'
@@ -335,7 +336,9 @@ export function BuildView() {
               .join(', ')}.</>
           )}
         </p>
-        {uploadNote && <p className={uploadNote.ok ? 'flash' : 'error-box pad'}>{uploadNote.text}</p>}
+        {uploadNote && (
+          <Notice tone={uploadNote.ok ? 'ok' : 'error'} onClose={() => setUploadNote(null)}>{uploadNote.text}</Notice>
+        )}
         {confirm && (
           <div className="confirm-box" role="alertdialog" aria-label="Confirm build">
             <p>{confirm.message}</p>
@@ -357,7 +360,7 @@ export function BuildView() {
         )}
       </section>
 
-      {error && <p className="error-box pad">{error}</p>}
+      {error && <Notice onClose={() => setError(null)}>{error}</Notice>}
 
       <section className="panel-x flow">
         <header className="flow-head">

@@ -1,3 +1,4 @@
+import { Notice } from './components/Notice'
 import { useEffect, useRef, useState } from 'react'
 import { Icon } from './components/Icon'
 import { QueryInput } from './components/QueryInput'
@@ -139,7 +140,7 @@ export function SearchView() {
           {announcement}
         </p>
 
-        {submitError && <p className="error-box pad">{submitError}</p>}
+        {submitError && <Notice onClose={() => setSubmitError(null)}>{submitError}</Notice>}
 
         {result ? (
           <VerdictStrip verdict={result.verdict} />

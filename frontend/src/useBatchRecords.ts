@@ -54,5 +54,11 @@ export function useBatchRecords() {
 
   const setRunId = (next: string) => setParams(next ? { run: next } : {})
 
-  return { runId, setRunId, records, error, loading: !records && !error }
+  // Dismissing an error leaves an empty view rather than a stuck "loading".
+  const clearError = () => {
+    setError(null)
+    setRecords([])
+  }
+
+  return { runId, setRunId, records, error, clearError, loading: !records && !error }
 }

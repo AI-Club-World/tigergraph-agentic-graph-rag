@@ -1,3 +1,4 @@
+import { Notice } from './components/Notice'
 /**
  * SettingsPanel — gear-icon button + slide-over modal for picking
  * the LLM model and embedding model at runtime (no server restart needed).
@@ -185,9 +186,9 @@ export function SettingsPanel() {
             )}
 
             {feedback && (
-              <p className={feedback.ok ? 'flash' : 'error-box pad'} role="status">
+              <Notice tone={feedback.ok ? 'ok' : 'error'} role="status" onClose={() => setFeedback(null)}>
                 {feedback.text}
-              </p>
+              </Notice>
             )}
 
             {settings && draft && (

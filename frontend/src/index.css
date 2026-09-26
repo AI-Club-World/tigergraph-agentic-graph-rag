@@ -1320,3 +1320,18 @@ table.matrix .section-row th { background: var(--bg-sunken); text-align: left; f
   font-size: 0.9rem;
 }
 .dataset-upload:hover { border-color: var(--accent); }
+
+/* Dismissible banners */
+.notice { display: flex; align-items: flex-start; gap: 0.75rem; }
+.notice-text { flex: 1; }
+.notice-close {
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 0.25rem;
+  opacity: 0.7;
+}
+.notice-close:hover { opacity: 1; }

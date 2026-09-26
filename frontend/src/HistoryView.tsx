@@ -1,3 +1,4 @@
+import { Notice } from './components/Notice'
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { ms, num, titleCase } from './format'
 import { getHistory, type Trial, type TrialKind } from './services/historyService'
@@ -83,7 +84,7 @@ export function HistoryView() {
         <span className="muted small">{trials ? `${visible.length} of ${trials.length}` : ''}</span>
       </div>
 
-      {error && <p className="error-box pad">{error}</p>}
+      {error && <Notice onClose={() => setError(null)}>{error}</Notice>}
       {!trials && !error && <p className="muted">Loading…</p>}
       {trials && trials.length === 0 && <p className="muted">No attempts recorded yet.</p>}
 

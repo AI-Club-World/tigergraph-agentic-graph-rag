@@ -1,3 +1,4 @@
+import { Notice } from './components/Notice'
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { ScatterPlot, type ScatterSeries } from './components/Charts'
@@ -215,11 +216,11 @@ export function BenchmarksView() {
       </header>
 
       {message && (
-        <p className={message.tone === 'ok' ? 'flash' : 'error-box pad'} role="status">
+        <Notice tone={message.tone} role="status" onClose={() => setMessage(null)}>
           {message.text}
-        </p>
+        </Notice>
       )}
-      {error && <p className="error-box pad">{error}</p>}
+      {error && <Notice onClose={() => setError(null)}>{error}</Notice>}
       {!runs && !error && <p className="muted pad">Loading benchmark history…</p>}
 
       {runs && (
