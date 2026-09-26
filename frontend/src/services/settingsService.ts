@@ -54,6 +54,5 @@ export const MODELS_BY_PROVIDER: Record<string, string[]> = {
 }
 
 export const EMBEDDING_OPTIONS = [
-  { value: 'BAAI/bge-small-en-v1.5', label: 'BGE Small EN v1.5 (BAAI)', dim: 384 },
-  { value: 'sentence-transformers/all-MiniLM-L6-v2', label: 'all-MiniLM-L6-v2 (sentence-transformers)', dim: 384 },
+  { value: '@cf/baai/bge-m3', label: 'BGE-M3 (BAAI) — Cloudflare → NVIDIA NIM → local', dim: 1024 },
 ] as const

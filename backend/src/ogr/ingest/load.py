@@ -225,7 +225,7 @@ def load_graph(
         ("Document", v_document), ("OlympicEvent", v_event), ("Games", v_games),
         ("Sport", v_sport), ("Venue", v_venue), ("Chunk", v_chunk),
     ):
-        # Chunk rows carry a 384-float vector each, so they go in smaller
+        # Chunk rows carry a 1024-float vector each, so they go in smaller
         # windows to keep any single request a sane size.
         size = max(1, batch_size // 5) if vtype == "Chunk" else batch_size
         _flush(conn, "V", (vtype,), payload, size)

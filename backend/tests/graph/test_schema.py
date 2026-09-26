@@ -40,9 +40,9 @@ class TestSchemaFile:
             assert f"CREATE DIRECTED EDGE {edge} (FROM {frm}, TO {to}" in text
         assert "PREV_EDITION" in text and "NEXT_EDITION" in text
 
-    def test_vector_attributes_are_384_dim_cosine(self):
+    def test_vector_attributes_are_1024_dim_cosine(self):
         text = SCHEMA_PATH.read_text(encoding="utf-8")
-        assert text.count('DIMENSION=384, METRIC="COSINE"') == 2
+        assert text.count('DIMENSION=1024, METRIC="COSINE"') == 2
 
     def test_install_is_idempotent_by_dropping_first(self):
         text = SCHEMA_PATH.read_text(encoding="utf-8")

@@ -16,7 +16,7 @@ class TestEmbedTexts:
     def test_one_vector_per_input_text(self):
         vectors = embed_texts(["hello", "world", "hello"])
         assert len(vectors) == 3
-        assert all(len(v) == 384 for v in vectors)
+        assert all(len(v) == 1024 for v in vectors)
 
     def test_matches_embed_query_for_the_same_text(self):
         """Batch and single-text paths must agree — two embedding
@@ -33,8 +33,8 @@ class TestModelLoadFailure:
         monkeypatch.setitem(sys.modules, "sentence_transformers", None)  # import now fails
         monkeypatch.setattr(embeddings_module, "_MODELS", {})
         with caplog.at_level(logging.ERROR, logger="ogr.common.embeddings"):
-            assert embedding_backend("some/model") == "hash_fallback"
-        assert "some/model" in caplog.text and "NOT semantic" in caplog.text
+            assert embedding_backend() == "hash_fallback"
+        assert "BAAI/bge-m3" in caplog.text and "NOT semantic" in caplog.text
 
     def test_cache_is_keyed_by_model_name(self, monkeypatch):
         class _Fake:
@@ -47,3 +47,83 @@ class TestModelLoadFailure:
         assert get_embedding_model("model-a").name == "model-a"
         assert get_embedding_model("model-b").name == "model-b"
         assert get_embedding_model("model-a") is get_embedding_model("model-a")
+
+
+class TestProviderChain:
+    """DP-4: Cloudflare -> NVIDIA NIM -> local -> hash, one model on every tier."""
+
+    @staticmethod
+    def _creds(monkeypatch, cloudflare=True, nvidia=True):
+        monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "acct" if cloudflare else "")
+        monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "cf-token" if cloudflare else "")
+        monkeypatch.setenv("NVIDIA_API_KEY", "nv-key" if nvidia else "")
+
+    def test_cloudflare_first_and_vectors_normalized(self, monkeypatch):
+        self._creds(monkeypatch)
+        calls = []
+
+        def fake_post(url, payload, token, timeout_s=60.0):
+            calls.append((url, payload, token))
+            return {"result": {"data": [[3.0, 4.0] for _ in payload["text"]]}}
+
+        monkeypatch.setattr(embeddings_module, "_post_json", fake_post)
+        assert embed_texts(["a", "b"]) == [[0.6, 0.8], [0.6, 0.8]]
+        url, payload, token = calls[0]
+        assert url.endswith("/accounts/acct/ai/run/@cf/baai/bge-m3")
+        assert payload == {"text": ["a", "b"]} and token == "cf-token"
+        assert embedding_backend() == "cloudflare"
+
+    def test_cloudflare_failure_falls_back_to_nvidia_bge_m3(self, monkeypatch):
+        self._creds(monkeypatch)
+
+        def fake_post(url, payload, token, timeout_s=60.0):
+            if "cloudflare" in url:
+                raise OSError("cloudflare down")
+            assert payload["model"] == "baai/bge-m3" and token == "nv-key"
+            return {"data": [{"index": 1, "embedding": [0.0, 2.0]}, {"index": 0, "embedding": [2.0, 0.0]}]}
+
+        monkeypatch.setattr(embeddings_module, "_post_json", fake_post)
+        assert embed_texts(["first", "second"]) == [[1.0, 0.0], [0.0, 1.0]]
+
+    def test_remote_failures_fall_back_to_local_bge_m3(self, monkeypatch):
+        self._creds(monkeypatch)
+
+        def fail(*_a, **_k):
+            raise OSError("down")
+
+        class _Local:
+            def encode(self, texts, normalize_embeddings, batch_size):
+                return [[1.0, 0.0] for _ in texts]
+
+        loaded = []
+        monkeypatch.setattr(embeddings_module, "_post_json", fail)
+        monkeypatch.setattr(
+            embeddings_module, "get_embedding_model", lambda name="BAAI/bge-m3": loaded.append(name) or _Local()
+        )
+        assert embed_query("q") == [1.0, 0.0]
+        assert loaded == ["BAAI/bge-m3"]
+
+    def test_tier_without_credentials_is_skipped(self, monkeypatch):
+        self._creds(monkeypatch, cloudflare=False)
+        urls = []
+
+        def fake_post(url, payload, token, timeout_s=60.0):
+            urls.append(url)
+            return {"data": [{"index": 0, "embedding": [1.0]}]}
+
+        monkeypatch.setattr(embeddings_module, "_post_json", fake_post)
+        embed_query("q")
+        assert urls == [embeddings_module.NVIDIA_EMBEDDINGS_URL]
+        assert embedding_backend() == "nvidia_nim"
+
+    def test_large_inputs_are_sent_in_batches(self, monkeypatch):
+        self._creds(monkeypatch, nvidia=False)
+        sizes = []
+
+        def fake_post(url, payload, token, timeout_s=60.0):
+            sizes.append(len(payload["text"]))
+            return {"result": {"data": [[1.0] for _ in payload["text"]]}}
+
+        monkeypatch.setattr(embeddings_module, "_post_json", fake_post)
+        assert len(embed_texts(["t"] * 120)) == 120
+        assert sizes == [50, 50, 20]

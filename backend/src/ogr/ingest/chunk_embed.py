@@ -18,8 +18,8 @@ approximation from the corpus's own `approx_tokens` field (chars/4), which is
 a document-level accounting number, not a chunking rule; the two are not
 expected to agree exactly.
 
-Embedding is local (`BAAI/bge-small-en-v1.5` by default, 384-dim,
-COSINE) — no LLM, no provider call, zero cost (AD-6). Loading the resulting
+Embedding is bge-m3 (1024-dim, COSINE) via `common/embeddings.py` — an
+embedding model, no LLM call (AD-6). Loading the resulting
 chunks into TigerGraph is GRAPH-05's job, not this module's; this module's
 output is a plain list of `Chunk` objects a caller can embed and hand to a
 loader.

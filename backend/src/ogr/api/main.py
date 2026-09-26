@@ -118,8 +118,7 @@ class SettingsPatch(BaseModel):
 
 # Embedding dim is fixed per supported model; unknown models keep current dim.
 _EMBEDDING_DIMS: dict[str, int] = {
-    "BAAI/bge-small-en-v1.5": 384,
-    "sentence-transformers/all-MiniLM-L6-v2": 384,
+    "@cf/baai/bge-m3": 1024,
 }
 
 

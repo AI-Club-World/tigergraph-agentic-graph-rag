@@ -30,7 +30,7 @@ def run_similarity_search(
     query: str,
     k: int = 10,
     embedding_model: str | None = None,
-    embedding_dim: int = 384,
+    embedding_dim: int = 1024,
     candidate_set: list[str] | None = None,
     triggered_by: str = "scope_coverage_fail",
 ) -> AgentResult:

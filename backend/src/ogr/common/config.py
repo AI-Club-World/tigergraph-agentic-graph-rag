@@ -109,11 +109,15 @@ class RunConfig(BaseModel):
     llm_backoff_base_s: float = Field(default_factory=lambda: float(_env("LLM_BACKOFF_BASE_S", "2")))
     llm_max_retries: int = Field(default_factory=lambda: int(_env("LLM_MAX_RETRIES", "5")))
 
-    # Embeddings
+    # Embeddings — bge-m3 on every tier (common/embeddings.py). Credentials
+    # are env-only; a tier whose credentials are empty is skipped.
     embedding_model: str = Field(
-        default_factory=lambda: _env("EMBEDDING_MODEL", "BAAI/bge-small-en-v1.5")
+        default_factory=lambda: _env("EMBEDDING_MODEL", "@cf/baai/bge-m3")
     )
-    embedding_dim: int = Field(default_factory=lambda: int(_env("EMBEDDING_DIM", "384")))
+    embedding_dim: int = Field(default_factory=lambda: int(_env("EMBEDDING_DIM", "1024")))
+    cloudflare_account_id: str = Field(default_factory=lambda: _env("CLOUDFLARE_ACCOUNT_ID", ""))
+    cloudflare_api_token: str = Field(default_factory=lambda: _env("CLOUDFLARE_API_TOKEN", ""))
+    nvidia_api_key: str = Field(default_factory=lambda: _env("NVIDIA_API_KEY", ""))
 
     # TigerGraph connection
     tg_host: str = Field(default_factory=lambda: _env("TG_HOST", "http://localhost"))
