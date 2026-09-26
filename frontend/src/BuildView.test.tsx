@@ -71,56 +71,61 @@ describe('BuildView reducer', () => {
     expect(within(column('graphrag')).getByText('Not started')).toBeInTheDocument()
   })
 
-  it('keeps ready sticky and keeps the previous stage on the ready event', async () => {
+  it('keeps ready sticky and shows Ready as the final stage', async () => {
     await start()
     await emit(event({ stage: 'embed_chunks', items_done: 10 }))
     await emit(event({ stage: 'pipeline_ready', status: 'ready', items_done: 1, items_total: 1 }))
 
     const rag = column('rag')
     expect(rag.dataset.status).toBe('ready')
-    expect(within(rag).getByText('Ready')).toBeInTheDocument()
-    expect(within(rag).getByText('Embed Chunks')).toBeInTheDocument()
+    expect(within(rag).getAllByText('Ready').length).toBeGreaterThan(0)
+    expect(within(rag).queryByText('Embed Chunks')).toBeNull()
 
-    // A later non-ready event updates the stage but cannot demote the column.
-    await emit(event({ stage: 'vector_index', status: 'running', items_done: 2, items_total: 5 }))
-    expect(column('rag').dataset.status).toBe('ready')
-    expect(within(column('rag')).getByText('Vector Index')).toBeInTheDocument()
-
+    // A later event cannot demote the column or bring back a stage name.
     await emit(event({ stage: 'vector_index', status: 'error', items_done: 2, items_total: 5 }))
     expect(column('rag').dataset.status).toBe('ready')
+    expect(within(column('rag')).queryByText('Vector Index')).toBeNull()
   })
 
-  it('advances counters with max() while progress is overwritten', async () => {
+  it('shows each pipeline only its own data', async () => {
     await start()
-    await emit(event({ stage: 'parse_infoboxes', items_done: 50, items_total: 100 }))
-    await emit(event({ stage: 'parse_infoboxes', items_done: 30, items_total: 100 }))
+    await emit(event({ stage: 'parse_infoboxes', items_done: 50, items_total: 100, pipeline_affected: ['graphrag', 'agentic_graphrag'] }))
+    await emit(event({ stage: 'chunk_documents', items_done: 800, items_total: 800, status: 'done', pipeline_affected: ['rag', 'agentic_graphrag'] }))
+    await emit(event({ stage: 'embed_chunks', items_done: 800, items_total: 800, status: 'done', pipeline_affected: ['rag', 'agentic_graphrag'] }))
+    await emit(event({ stage: 'load_vertices', items_done: 120, items_total: 0, status: 'done', pipeline_affected: ['graphrag', 'agentic_graphrag'] }))
+    await emit(event({ stage: 'load_edges', items_done: 300, items_total: 0, status: 'done', pipeline_affected: ['graphrag', 'agentic_graphrag'] }))
 
     const rag = column('rag')
-    expect(metric(rag, 'Documents')).toBe('50')
-    expect(within(rag).getByText('30 / 100 items')).toBeInTheDocument()
+    expect(metric(rag, 'Chunks')).toBe('800')
+    expect(metric(rag, 'Vectors')).toBe('800')
+    expect(within(rag).queryByText('Entities')).toBeNull()
 
-    // chunk_documents and embed_chunks share the chunks counter.
-    await emit(event({ stage: 'chunk_documents', items_done: 800, items_total: 800 }))
-    await emit(event({ stage: 'embed_chunks', items_done: 200, items_total: 800 }))
-    expect(metric(column('rag'), 'Chunks')).toBe('800')
+    const graph = column('graphrag')
+    expect(metric(graph, 'Documents')).toBe('50')
+    expect(metric(graph, 'Entities')).toBe('120')
+    expect(metric(graph, 'Relationships')).toBe('300')
+    expect(within(graph).queryByText('Vectors')).toBeNull()
 
-    // A stage outside the map owns no counter.
-    await emit(event({ stage: 'vector_index', items_done: 9999, items_total: 9999 }))
-    expect(metric(column('rag'), 'Documents')).toBe('50')
-    expect(metric(column('rag'), 'Chunks')).toBe('800')
-    expect(metric(column('rag'), 'Vertices')).toBe('0')
-    expect(metric(column('rag'), 'Edges')).toBe('0')
+    const agentic = column('agentic_graphrag')
+    expect(metric(agentic, 'Entities')).toBe('120')
+    expect(metric(agentic, 'Vectors')).toBe('800')
   })
 
-  it('accumulates tokens and logs every event', async () => {
+  it('reports percent complete, weighted by stage', async () => {
     await start()
-    await emit(event({ tokens: 3 }))
-    await emit(event({ tokens: 4 }))
-    await emit(event({ stage: 'pipeline_ready', status: 'ready', tokens: 5 }))
+    await emit(event({ stage: 'chunk_documents', status: 'done', items_done: 10, items_total: 10, pipeline_affected: ['rag'] }))
+    await emit(event({ stage: 'embed_chunks', status: 'running', items_done: 5, items_total: 10, pipeline_affected: ['rag'] }))
+    // rag stages weigh 75 (remove_previous excluded); done 5 + 40 * 0.5 = 25 -> 33%
+    expect(within(column('rag')).getByText('33% complete')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Building… \d+%/ })).toBeInTheDocument()
+  })
 
-    const rag = column('rag')
-    expect(within(rag).getByText('LLM tokens: 12 (local embedding model)')).toBeInTheDocument()
-    expect(within(rag).getByText('3 stage events')).toBeInTheDocument()
+  it('says building uses the embedding model, not an LLM', async () => {
+    await start()
+    await emit(event({ stage: 'embed_chunks', status: 'done', note: '@cf/baai/bge-m3 via cloudflare' }))
+    expect(within(column('rag')).getByText('Embedding model: @cf/baai/bge-m3 via cloudflare — no LLM calls')).toBeInTheDocument()
+    expect(within(column('graphrag')).getByText('Graph only — no embeddings, no LLM calls')).toBeInTheDocument()
+    expect(within(column('rag')).getByText('1 stage events')).toBeInTheDocument()
   })
 })
 

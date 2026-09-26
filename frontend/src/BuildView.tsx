@@ -5,15 +5,22 @@ import { StatusBadge } from './components/StatusBadge'
 import { ms, num, titleCase } from './format'
 import { RequiresServices } from './ServiceStatus'
 import { openBuildStream, startBuild, type BuildOptions } from './services/buildService'
-import { datasetNameFor, listCorpora, uploadCorpus, type CorporaResponse } from './services/datasetService'
+import {
+  datasetNameFor,
+  listCorpora,
+  uploadCorpus,
+  type BuiltInfo,
+  type CorporaResponse,
+} from './services/datasetService'
 import { ApiError } from './services/http'
 import { PIPELINE_IDS, PIPELINE_LABELS, type BuildEvent, type PipelineId } from './types'
 
 interface Counters {
   documents: number
   chunks: number
-  vertices: number
-  edges: number
+  vectors: number
+  entities: number
+  relationships: number
 }
 
 interface BuildColumn {
@@ -22,8 +29,9 @@ interface BuildColumn {
   itemsDone: number
   itemsTotal: number
   elapsedMs: number
-  tokens: number
   counters: Counters
+  /** Embedding model and tier from the embed stage — building calls no LLM. */
+  embedding: string | null
   log: BuildEvent[]
 }
 
@@ -34,9 +42,58 @@ interface BuildColumn {
 const STAGE_COUNTER: Record<string, keyof Counters> = {
   parse_infoboxes: 'documents',
   chunk_documents: 'chunks',
-  embed_chunks: 'chunks',
-  load_vertices: 'vertices',
-  load_edges: 'edges',
+  embed_chunks: 'vectors',
+  load_vertices: 'entities',
+  load_edges: 'relationships',
+}
+
+/** What each pipeline is built from: RAG answers from chunk vectors,
+ *  GraphRAG from the graph, Agentic GraphRAG from the graph with vector
+ *  search as a fallback tool — so each column shows only its own data. */
+const PIPELINE_METRICS: Record<PipelineId, Array<[string, keyof Counters]>> = {
+  rag: [['Chunks', 'chunks'], ['Vectors', 'vectors']],
+  graphrag: [['Documents', 'documents'], ['Entities', 'entities'], ['Relationships', 'relationships']],
+  agentic_graphrag: [['Entities', 'entities'], ['Relationships', 'relationships'], ['Vectors', 'vectors']],
+}
+
+/** Relative cost of each stage (embedding dominates), for percent complete. */
+const STAGE_WEIGHTS: Record<string, number> = {
+  parse_infoboxes: 5,
+  chunk_documents: 5,
+  embed_chunks: 40,
+  schema_install: 5,
+  remove_previous: 5,
+  load_vertices: 10,
+  load_edges: 5,
+  load_chunks: 10,
+  install_graph_queries: 5,
+  vector_index: 10,
+}
+
+/** The stages each pipeline waits on (matches the backend's fan-out). */
+const PIPELINE_STAGES: Record<PipelineId, string[]> = {
+  rag: ['chunk_documents', 'embed_chunks', 'schema_install', 'remove_previous', 'load_chunks',
+    'install_graph_queries', 'vector_index'],
+  graphrag: ['parse_infoboxes', 'schema_install', 'remove_previous', 'load_vertices', 'load_edges',
+    'install_graph_queries'],
+  agentic_graphrag: Object.keys(STAGE_WEIGHTS),
+}
+
+/** Percent of this pipeline's build done: finished stages count fully, the
+ *  running one by its items. remove_previous only counts on a rebuild. */
+function percentComplete(pipeline: PipelineId, column: BuildColumn): number {
+  if (column.status === 'ready') return 100
+  const latest = new Map(column.log.map((e) => [e.stage, e]))
+  const stages = PIPELINE_STAGES[pipeline].filter((s) => s !== 'remove_previous' || latest.has(s))
+  const total = stages.reduce((sum, s) => sum + STAGE_WEIGHTS[s], 0)
+  const done = stages.reduce((sum, s) => {
+    const event = latest.get(s)
+    if (!event) return sum
+    if (event.status === 'done') return sum + STAGE_WEIGHTS[s]
+    const fraction = event.items_total ? Math.min(1, event.items_done / event.items_total) : 0
+    return sum + STAGE_WEIGHTS[s] * fraction
+  }, 0)
+  return total ? Math.min(99, Math.floor((done / total) * 100)) : 0
 }
 
 const EMPTY: BuildColumn = {
@@ -45,8 +102,8 @@ const EMPTY: BuildColumn = {
   itemsDone: 0,
   itemsTotal: 0,
   elapsedMs: 0,
-  tokens: 0,
-  counters: { documents: 0, chunks: 0, vertices: 0, edges: 0 },
+  counters: { documents: 0, chunks: 0, vectors: 0, entities: 0, relationships: 0 },
+  embedding: null,
   log: [],
 }
 
@@ -63,14 +120,40 @@ function apply(column: BuildColumn, event: BuildEvent): BuildColumn {
 
   return {
     status: event.status === 'ready' ? 'ready' : column.status === 'ready' ? 'ready' : event.status,
-    stage: event.status === 'ready' ? column.stage : event.stage,
+    // Ready is the pipeline's final state, not the last stage it passed.
+    stage: event.status === 'ready' || column.status === 'ready' ? 'ready' : event.stage,
     itemsDone: event.items_done,
     itemsTotal: event.items_total,
     elapsedMs: event.elapsed_ms,
-    tokens: column.tokens + event.tokens,
     counters,
+    embedding: event.stage === 'embed_chunks' && event.note && event.status === 'done' ? event.note : column.embedding,
     log: [...column.log, event],
   }
+}
+
+/** Columns for datasets already in the graph (after a reload, no live build):
+ *  every pipeline ready, totals over all loaded datasets. */
+function restoredColumns(datasets: Record<string, BuiltInfo>): Record<PipelineId, BuildColumn> {
+  const entries = Object.values(datasets)
+  const sum = (key: keyof BuiltInfo) => entries.reduce((n, d) => n + (Number(d[key]) || 0), 0)
+  const latest = [...entries].sort((a, b) => a.built_at.localeCompare(b.built_at)).at(-1)
+  const counters: Counters = {
+    documents: sum('documents'),
+    chunks: sum('chunks'),
+    vectors: entries.reduce((n, d) => n + (d.vectors ?? d.chunks ?? 0), 0),
+    entities: entries.reduce((n, d) => n + (d.entities ?? d.documents + (d.events ?? 0)), 0),
+    relationships: sum('relationships'),
+  }
+  const column = (pipeline: PipelineId): BuildColumn => ({
+    ...EMPTY,
+    status: 'ready',
+    stage: 'ready',
+    elapsedMs: latest?.ready_ms?.[pipeline] ?? 0,
+    counters: { ...counters },
+    embedding: latest?.embedding_backend ? `@cf/baai/bge-m3 via ${latest.embedding_backend}` : null,
+    log: [],
+  })
+  return { rag: column('rag'), graphrag: column('graphrag'), agentic_graphrag: column('agentic_graphrag') }
 }
 
 const PIPELINE_ICONS: Record<PipelineId, IconName> = {
@@ -95,24 +178,24 @@ interface StageGroup {
 const STAGE_GROUPS: StageGroup[] = [
   {
     title: 'Foundation Layer',
-    detail: 'Docs • Chunks • Embeddings • Vector index',
+    detail: 'Chunks • Embeddings • Vector index (RAG)',
     icon: 'grid',
     gate: 'rag',
-    stages: ['parse_infoboxes', 'chunk_documents', 'embed_chunks', 'vector_index'],
+    stages: ['chunk_documents', 'embed_chunks', 'load_chunks', 'vector_index'],
   },
   {
     title: 'Graph Indexing',
-    detail: 'Schema • Vertices • Edges • Graph queries',
+    detail: 'Entities • Relationships • Graph queries (GraphRAG)',
     icon: 'tree',
     gate: 'graphrag',
-    stages: ['schema_install', 'remove_previous', 'load_vertices', 'load_edges', 'install_graph_queries'],
+    stages: ['parse_infoboxes', 'schema_install', 'remove_previous', 'load_vertices', 'load_edges', 'install_graph_queries'],
   },
   {
     title: 'Agentic Tooling',
-    detail: 'Tool registry • Router',
+    detail: 'Graph tools + vector fallback (Agentic GraphRAG)',
     icon: 'sync',
     gate: 'agentic_graphrag',
-    stages: ['register_agent_tools'],
+    stages: ['install_graph_queries', 'vector_index'],
   },
 ]
 
@@ -161,6 +244,14 @@ export function BuildView() {
     listCorpora()
       .then((data) => {
         setCorpora(data)
+        // After a reload there is no live build: show what the graph holds.
+        if (Object.keys(data.graph.datasets).length) {
+          setColumns((current) =>
+            PIPELINE_IDS.every((p) => current[p].status === 'idle' && current[p].log.length === 0)
+              ? restoredColumns(data.graph.datasets)
+              : current,
+          )
+        }
         setDataset((current) => {
           const names = data.corpora.map((c) => c.name)
           if (select && names.includes(select)) return select
@@ -230,8 +321,16 @@ export function BuildView() {
   const allReady = groups.every((g) => g.state === 'done')
   const activeGroup = groups.findIndex((g) => g.state === 'running')
   const elapsed = Math.max(...PIPELINE_IDS.map((p) => columns[p].elapsedMs))
-  const vertices = Math.max(...PIPELINE_IDS.map((p) => columns[p].counters.vertices))
-  const edges = Math.max(...PIPELINE_IDS.map((p) => columns[p].counters.edges))
+  const vertices = Math.max(...PIPELINE_IDS.map((p) => columns[p].counters.entities))
+  const edges = Math.max(...PIPELINE_IDS.map((p) => columns[p].counters.relationships))
+  const percents = Object.fromEntries(PIPELINE_IDS.map((p) => [p, percentComplete(p, columns[p])])) as Record<
+    PipelineId,
+    number
+  >
+  // Agentic GraphRAG waits on every stage, so its percent is the whole build's.
+  const overall = percents.agentic_graphrag
+  const restored = !running && PIPELINE_IDS.every((p) => columns[p].status === 'ready' && columns[p].log.length === 0)
+  const loadedDatasets = corpora ? Object.entries(corpora.graph.datasets) : []
 
   // A stage that ended in error fails the build even though the stream closed cleanly.
   const failedAt = PIPELINE_IDS.map((p) => columns[p]).find((c) => c.status === 'error')?.stage ?? null
@@ -251,8 +350,8 @@ export function BuildView() {
   const syncState = error || stageFailed ? 'failed' : running ? 'running' : allReady ? 'complete' : 'idle'
   const syncLabel = {
     failed: 'Build failed',
-    running: `Sync running: +${secs(elapsed)}`,
-    complete: `Build complete: ${secs(elapsed)}`,
+    running: `Building · ${overall}% · ${secs(elapsed)}`,
+    complete: restored ? `Ready · ${loadedDatasets.length} dataset(s) loaded` : `Build complete: ${secs(elapsed)}`,
     idle: 'Idle',
   }[syncState]
 
@@ -288,77 +387,72 @@ export function BuildView() {
             <span className="dot" aria-hidden="true" />
             {syncLabel}
           </span>
+          <div className="dataset-picker">
+            <label htmlFor="build-dataset" className="sr-only">Dataset</label>
+            <select
+              id="build-dataset"
+              value={dataset}
+              onChange={(e) => { setDataset(e.target.value); setConfirm(null) }}
+              disabled={running}
+              title='JSONL in data/corpus/, one {"doc_id", "title", "text", "url"} per line. A new dataset is added alongside those already loaded.'
+            >
+              {(corpora?.corpora ?? [{ name: dataset, documents: 0, size_bytes: 0, built: null }]).map((c) => (
+                <option key={c.name} value={c.name}>
+                  {c.name} — {num(c.documents)} docs{c.built ? ' · built' : ''}
+                </option>
+              ))}
+            </select>
+            <label className="dataset-upload" title="Add a JSONL dataset">
+              Upload…
+              <input
+                type="file"
+                accept=".jsonl,.ndjson,application/x-ndjson"
+                hidden
+                disabled={running}
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  if (file) void upload(file)
+                  e.target.value = ''
+                }}
+              />
+            </label>
+          </div>
           <RequiresServices needs={['db', 'emb']}>
             <button type="button" className="btn-primary" onClick={() => run()} disabled={running || !!confirm}>
               <Icon name="restart" size={16} className={running ? 'spin' : undefined} />
-              {running ? 'Building…' : 'Start build'}
+              {running ? `Building… ${overall}%` : 'Start build'}
             </button>
           </RequiresServices>
+          {loadedDatasets.length > 0 && (
+            <span className="muted small">
+              In graph: {loadedDatasets.map(([name, info]) => `${name} (${num(info.documents)} docs)`).join(', ')}
+            </span>
+          )}
         </div>
       </header>
 
-      <section className="panel-x dataset-panel" aria-label="Dataset">
-        <div className="dataset-row">
-          <label htmlFor="build-dataset" className="section-label">Dataset</label>
-          <select
-            id="build-dataset"
-            value={dataset}
-            onChange={(e) => { setDataset(e.target.value); setConfirm(null) }}
-            disabled={running}
-          >
-            {(corpora?.corpora ?? [{ name: dataset, documents: 0, size_bytes: 0, built: null }]).map((c) => (
-              <option key={c.name} value={c.name}>
-                {c.name} — {num(c.documents)} docs{c.built ? ' · built' : ''}
-              </option>
-            ))}
-          </select>
-          <label className="secondary dataset-upload">
-            Upload JSONL…
-            <input
-              type="file"
-              accept=".jsonl,.ndjson,application/x-ndjson"
-              hidden
-              disabled={running}
-              onChange={(e) => {
-                const file = e.target.files?.[0]
-                if (file) void upload(file)
-                e.target.value = ''
-              }}
-            />
-          </label>
-        </div>
-        <p className="muted small">
-          Each line: {'{"doc_id", "title", "text", "url"}'}. Building a new dataset adds it to the graph and keeps the
-          datasets already loaded.
-          {corpora && Object.keys(corpora.graph.datasets).length > 0 && (
-            <> Loaded: {Object.entries(corpora.graph.datasets)
-              .map(([name, info]) => `${name} (${num(info.documents)} docs)`)
-              .join(', ')}.</>
-          )}
-        </p>
-        {uploadNote && (
-          <Notice tone={uploadNote.ok ? 'ok' : 'error'} onClose={() => setUploadNote(null)}>{uploadNote.text}</Notice>
-        )}
-        {confirm && (
-          <div className="confirm-box" role="alertdialog" aria-label="Confirm build">
-            <p>{confirm.message}</p>
-            <div className="confirm-actions">
-              <button type="button" className="secondary" onClick={() => setConfirm(null)}>
-                Cancel
+      {uploadNote && (
+        <Notice tone={uploadNote.ok ? 'ok' : 'error'} onClose={() => setUploadNote(null)}>{uploadNote.text}</Notice>
+      )}
+      {confirm && (
+        <div className="confirm-box" role="alertdialog" aria-label="Confirm build">
+          <p>{confirm.message}</p>
+          <div className="confirm-actions">
+            <button type="button" className="secondary" onClick={() => setConfirm(null)}>
+              Cancel
+            </button>
+            {confirm.code === 'already_built' ? (
+              <button type="button" className="btn-primary" onClick={() => run({ rebuild: true })}>
+                Rebuild {dataset}
               </button>
-              {confirm.code === 'already_built' ? (
-                <button type="button" className="btn-primary" onClick={() => run({ rebuild: true })}>
-                  Rebuild {dataset}
-                </button>
-              ) : (
-                <button type="button" className="btn-primary danger" onClick={() => run({ reset: true })}>
-                  Reset graph and build
-                </button>
-              )}
-            </div>
+            ) : (
+              <button type="button" className="btn-primary danger" onClick={() => run({ reset: true })}>
+                Reset graph and build
+              </button>
+            )}
           </div>
-        )}
-      </section>
+        </div>
+      )}
 
       {error && <Notice onClose={() => setError(null)}>{error}</Notice>}
 
@@ -399,8 +493,7 @@ export function BuildView() {
       <div className="columns">
         {PIPELINE_IDS.map((pipeline) => {
           const column = columns[pipeline]
-          const progress = column.itemsTotal ? column.itemsDone / column.itemsTotal : 0
-          const pct = Math.round(progress * 100)
+          const pct = percents[pipeline]
           // 'done' means one stage finished and the next has not started yet.
           const active = column.status === 'running' || column.status === 'done'
           return (
@@ -410,7 +503,10 @@ export function BuildView() {
                   <Icon name={PIPELINE_ICONS[pipeline]} size={20} className="pipe-color" />
                   {PIPELINE_LABELS[pipeline]}
                 </h3>
-                <StatusBadge status={column.status} />
+                <span className="bcard-status">
+                  {active && <span className="pipe-color bcard-pct">{pct}%</span>}
+                  <StatusBadge status={column.status} />
+                </span>
               </header>
 
               <div className="bcard-body">
@@ -424,9 +520,11 @@ export function BuildView() {
 
                 <div className="progress-meta">
                   <span>
-                    {num(column.itemsDone)} / {num(column.itemsTotal)} items
+                    {column.status === 'ready'
+                      ? 'Answerable'
+                      : `${titleCase(column.stage ?? 'waiting')}: ${num(column.itemsDone)} / ${num(column.itemsTotal)} items`}
                   </span>
-                  <span className="pipe-color">{pct}%</span>
+                  <span className="pipe-color">{pct}% complete</span>
                 </div>
                 <div
                   className="progress"
@@ -434,22 +532,27 @@ export function BuildView() {
                   aria-valuenow={pct}
                   aria-valuemin={0}
                   aria-valuemax={100}
-                  aria-label={`${PIPELINE_LABELS[pipeline]} stage progress`}
+                  aria-label={`${PIPELINE_LABELS[pipeline]} build progress`}
                 >
                   <div className="progress-bar" style={{ width: `${pct}%` }} />
                 </div>
 
                 <div className="stat-grid three">
-                  <Stat label="Elapsed" value={ms(column.elapsedMs)} tone={active ? 'pipe-color' : undefined} />
-                  <Stat label="Documents" value={num(column.counters.documents)} />
-                  <Stat label="Chunks" value={num(column.counters.chunks)} />
-                  <Stat label="Vertices" value={num(column.counters.vertices)} />
-                  <Stat label="Edges" value={num(column.counters.edges)} />
+                  <Stat
+                    label={column.status === 'ready' ? 'Time to ready' : 'Elapsed'}
+                    value={ms(column.elapsedMs)}
+                    tone={active ? 'pipe-color' : undefined}
+                  />
+                  {PIPELINE_METRICS[pipeline].map(([label, key]) => (
+                    <Stat key={key} label={label} value={num(column.counters[key])} />
+                  ))}
                 </div>
 
                 <p className="token-row">
                   <Icon name="chip" size={15} className="pipe-color" />
-                  LLM tokens: {num(column.tokens)} (local embedding model)
+                  {pipeline === 'graphrag'
+                    ? 'Graph only — no embeddings, no LLM calls'
+                    : `Embedding model: ${column.embedding ?? '@cf/baai/bge-m3'} — no LLM calls`}
                 </p>
 
                 <details className="stage-log" open={active || undefined}>
@@ -538,7 +641,7 @@ export function BuildView() {
                 <Icon name="circle" size={22} />
               </span>
               <div>
-                <span className="stat-label">Total Vertices</span>
+                <span className="stat-label">Graph entities</span>
                 <span className="density-value">{num(vertices)}</span>
               </div>
             </div>
@@ -547,7 +650,7 @@ export function BuildView() {
                 <Icon name="share" size={22} />
               </span>
               <div>
-                <span className="stat-label">Total Edges</span>
+                <span className="stat-label">Relationships</span>
                 <span className="density-value">{num(edges)}</span>
               </div>
             </div>

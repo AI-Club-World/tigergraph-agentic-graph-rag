@@ -8,6 +8,12 @@ export interface BuiltInfo {
   events: number
   chunks: number
   file_bytes: number
+  // Present for datasets built with per-pipeline metrics.
+  entities?: number
+  relationships?: number
+  vectors?: number
+  embedding_backend?: string
+  ready_ms?: Partial<Record<'rag' | 'graphrag' | 'agentic_graphrag', number>>
 }
 
 export interface Corpus {
