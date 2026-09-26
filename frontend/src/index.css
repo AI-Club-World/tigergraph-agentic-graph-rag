@@ -121,7 +121,7 @@ button.link {
   text-underline-offset: 2px;
 }
 
-input[type='text'], input:not([type]), select {
+input[type='text'], input[type='search'], input:not([type]), select {
   font: inherit;
   background: var(--bg-sunken);
   color: var(--text);
@@ -1311,3 +1311,12 @@ table.matrix .section-row th { background: var(--bg-sunken); text-align: left; f
 .history-row { cursor: pointer; }
 .history-detail pre { margin: 0; white-space: pre-wrap; font-size: 0.8rem; }
 .error-text { color: var(--bad, #c53030); }
+.dataset-upload {
+  background: var(--bg-sunken);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.45rem 0.9rem;
+  font-size: 0.9rem;
+}
+.dataset-upload:hover { border-color: var(--accent); }

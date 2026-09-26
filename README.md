@@ -262,12 +262,13 @@ see [Getting started](#getting-started) above.
 | Route | Screen | Covers |
 |---|---|---|
 | `/` | Three-column query comparison, live trace panel, verdict strip | FR-1 … FR-10 |
-| `/build` | Three-column ingestion build with per-pipeline readiness | PLAN-004 Group 4, DP-6 A, DP-7 A |
-| `/dashboard` | Aggregate benchmark view over one batch run | TECHNICAL-SPEC §10 |
+| `/build` | Choose or upload a dataset (JSONL in `data/corpus/`), build it into the shared graph — other datasets stay loaded; an already-built dataset asks Rebuild or Cancel — with per-pipeline readiness | PLAN-004 Group 4, DP-6 A, DP-7 A |
+| `/benchmarks` | Two tabs: **Dashboard** (aggregate view over one batch run, TECHNICAL-SPEC §10) and **Run benchmark** (run, history, import/export, compare) | FR-13, FR-15 |
 | `/eval` | Every question × three pipelines, with drill-down | FR-20, PLAN-004 Group 5 |
-| `/benchmarks` | Benchmark history: run a benchmark, import/export past runs as JSON, compare runs side by side | FR-13, FR-15 |
+| `/history` | Every query, build and benchmark attempt (`out/history.jsonl`) with filters and search | — |
 
-`/dashboard` and `/eval` read a run id from `?run=` (default `latest`). The mock
+`/benchmarks` (dashboard tab) and `/eval` read a run id from `?run=`; on a live
+backend they open the newest run, in mock mode `latest`. `/dashboard` redirects. The mock
 transport ships two runs: `latest` (20 scored questions) and `hidden` (8
 questions with no gold, so the gold and score columns disappear — the same
 component renders the hidden set).
@@ -331,7 +332,10 @@ boundary. The real branch is already written against the spec'd endpoints:
 | `submitQuery` | `POST /query` → `202 {query_id, stream_token}` |
 | `openQueryStream` | `GET /query/{id}/stream?token=…` (SSE) |
 | `getQueryResult` | `GET /query/{id}/result` |
-| `startBuild` | `POST /build` → `202 {build_id, stream_token}` |
+| `listCorpora` | `GET /corpora` — datasets in `data/corpus/` and which are loaded (`out/datasets.json`) |
+| `uploadCorpus` | `POST /corpora/{name}` — body is the JSONL (`doc_id`, `text` required per line) |
+| `startBuild` | `POST /build` `{dataset, rebuild, reset}` → `202 {build_id, stream_token}`; `409 {code: already_built \| reset_required \| build_running}` asks first |
+| `getHistory` | `GET /history?kind=` — every attempt, newest first |
 | `openBuildStream` | `GET /build/{id}/stream?token=…` (SSE) |
 | `getBatchRecords` | `GET /batch/{run_id}/records` |
 | `listRuns` | `GET /runs` — one summary per stored run: `run_config` metadata plus per-pipeline EM/F1/P/R, tokens, latency, errors, F1 per 1k tokens |
@@ -352,9 +356,11 @@ cannot send headers (DP-8).
 | `trace` | one `TraceStep` | fills the trace panel as the agent works |
 | `pipeline` | one `PipelineRecord` | lets a column render the moment *its* pipeline finishes, independent of the other two (FR-3, FR-4) |
 | `done` | any | all three settled; the UI then fetches `/query/{id}/result` for the verdict |
-| `error` | `{detail}` | stream-level failure |
 
-`GET /build/{id}/stream` emits `build` (one `BuildEvent`), `done` and `error`.
+
+`GET /build/{id}/stream` emits `build` (one `BuildEvent`) and `done`; a failed
+stage is a `build` event with `status: error`. A dropped stream is recovered
+from `GET /query/{id}/result` (query) or shown as failed.
 `BuildEvent.status` is `running | done | error | ready`; a `ready` event flips
 the readiness badge for the pipelines it names.
 

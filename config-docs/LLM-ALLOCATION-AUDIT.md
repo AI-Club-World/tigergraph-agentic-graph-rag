@@ -172,3 +172,18 @@ Method: live end-to-end run of the real backend and frontend (Chromium via Playw
 **Not changed (flagged):** when a loop iteration adds no new evidence, P3 repeats the same traversal/fallback until the step budget. It costs no LLM tokens (the verdict is reused), and existing tests (`test_unsatisfiable_loop_stops_on_step_budget`, `test_unchanged_evidence_reuses_the_groundedness_verdict`) specify that stop reason, so stopping early with `no_further_action_available` is left as a decision.
 
 **Still unverified (needs real credentials):** Cloudflare bge-m3 / reranker response shapes, Gemini/Groq/NIM chat with real keys, and a full build + benchmark against TigerGraph Savanna.
+
+---
+
+## 9. Follow-up round (2026-09-26) — user-requested changes
+
+| Request | Change |
+|---|---|
+| Choose dataset to build; keep other datasets | `GET /corpora`, `POST /corpora/{name}` (JSONL upload), `POST /build {dataset, rebuild, reset}`. The graph keeps every loaded dataset; the schema (which drops the graph) is installed only on the first build or an explicit reset. Registry `out/datasets.json` records per-dataset vertex ids. |
+| Same dataset twice → rebuild or cancel | `409 already_built` → Build view prompt; Rebuild deletes that dataset's documents/events/chunks (ids another dataset also wrote are kept) and reloads. A graph built before tracking, or with another embedding size, returns `409 reset_required` (full reset, confirmed by the user). |
+| Embedding indicator | Third header pill: Cloudflare bge-m3 probe (online), local bge-m3 loaded/cached (degraded), none (offline). |
+| LLM / DB indicators wrong | Each check bounded separately (20 s) — a slow LLM probe used to time out the whole response and the UI marked the DB down too; TigerGraph checked with REST++ `echo` on the shared client (a query token can be refused `/version`); LLM probe capped at 32 tokens. |
+| Dashboard and Benchmarks overlap | One Benchmarks page: Dashboard tab + Run benchmark tab. |
+| Capture every trial | `out/history.jsonl` via `common/trials.py` (queries, builds incl. refused/needs-confirmation, benchmarks incl. refused); `GET /history`; History tab. |
+| NVIDIA: Free Endpoint only | NGC catalog search (`llm_config.nvidia_free_endpoints` in `server_config.json`, env-overridable) matched to NIM ids, cached 1 h. **Unverified**: NGC is unreachable from the development sandbox, so the query format is a best-known default; when it fails or matches nothing the UI lists every text model with an explicit note. |
+| Search models by name | Filter box in Settings. |
