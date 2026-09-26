@@ -94,6 +94,7 @@ def build_p3_graph(
 
     from ogr.common.contracts import Citation, PipelineRecord, TokenUsage, format_evidence_context
     from ogr.common.llm import invoke_llm_with_answer_contract, resolve_tool_calling_support
+    from ogr.common.rerank import rerank
     from ogr.pipelines.p3_agentic.agents.agent_result import AgentResult
     from ogr.pipelines.p3_agentic.agents.aggregation import run_aggregation
     from ogr.pipelines.p3_agentic.agents.document_retrieval import run_document_retrieval
@@ -389,6 +390,9 @@ def build_p3_graph(
                     doc_ids=doc_ids or None,
                     triggered_by=eval_result.fallback_trigger,
                 )
+                # HAS_CHUNK returns every chunk in document order; best first
+                # lets groundedness and the [:20] context see the relevant ones.
+                doc_result.evidence = rerank(question, doc_result.evidence)
                 if recorder:
                     recorder.record(
                         "document_retrieval",
@@ -417,8 +421,13 @@ def build_p3_graph(
         path_taken = state.get("path_taken", [])
         recorder: TraceRecorder = _state_store.get("recorder")
 
+        # Structured graph rows first, in retrieval order; prose chunks from
+        # the fallbacks reranked against the question before truncation (G-2).
+        prose_sources = ("similarity_search", "document_retrieval")
+        structured = [e for e in evidence if e.get("source") not in prose_sources]
+        prose = rerank(question, [e for e in evidence if e.get("source") in prose_sources])
         # Same renderer as P2 (structured rows keep every field).
-        context = format_evidence_context(evidence[:20], empty="No relevant evidence found.")
+        context = format_evidence_context((structured + prose)[:20], empty="No relevant evidence found.")
 
         try:
             answer, explanation, tokens, token_source, latency_ms = invoke_llm_with_answer_contract(
