@@ -1286,3 +1286,16 @@ table.matrix .section-row th { background: var(--bg-sunken); text-align: left; f
 }
 .confirm-actions { display: flex; gap: 0.5rem; justify-content: flex-end; }
 .btn-primary.danger { background: var(--bad, #c53030); border-color: var(--bad, #c53030); }
+
+/* Benchmarks page tabs (Dashboard | Run benchmark) */
+.tabs { display: flex; gap: 0.25rem; border-bottom: 1px solid var(--border, #d0d7de); margin-bottom: 1rem; }
+.tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+.tab.active { border-bottom-color: var(--accent, #1f6feb); font-weight: 600; }

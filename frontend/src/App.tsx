@@ -1,13 +1,19 @@
-import { NavLink, Route, Routes } from 'react-router-dom'
+import { Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom'
 import { SearchView } from './SearchView'
 import { BuildView } from './BuildView'
-import { Dashboard } from './Dashboard'
 import { EvalTable } from './EvalTable'
-import { BenchmarksView } from './BenchmarksView'
+import { BenchmarksPage } from './BenchmarksPage'
 import { config } from './config'
 import { useTheme } from './useTheme'
 import { ServiceStatusBar, ServiceStatusProvider } from './ServiceStatus'
 import { SettingsPanel } from './SettingsPanel'
+
+/** The dashboard is now a tab of Benchmarks; old links keep their ?run=. */
+function DashboardRedirect() {
+  const params = new URLSearchParams(useLocation().search)
+  params.set('tab', 'dashboard')
+  return <Navigate to={`/benchmarks?${params.toString()}`} replace />
+}
 
 function SunIcon() {
   return (
@@ -42,9 +48,8 @@ export function App() {
               Search
             </NavLink>
             <NavLink to="/build">Build</NavLink>
-            <NavLink to="/dashboard">Dashboard</NavLink>
-            <NavLink to="/eval">Eval table</NavLink>
             <NavLink to="/benchmarks">Benchmarks</NavLink>
+            <NavLink to="/eval">Eval table</NavLink>
           </nav>
           <div className="head-right">
             {config.useMockApi && (
@@ -70,9 +75,9 @@ export function App() {
           <Routes>
             <Route path="/" element={<SearchView />} />
             <Route path="/build" element={<BuildView />} />
-            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/dashboard" element={<DashboardRedirect />} />
             <Route path="/eval" element={<EvalTable />} />
-            <Route path="/benchmarks" element={<BenchmarksView />} />
+            <Route path="/benchmarks" element={<BenchmarksPage />} />
             <Route path="*" element={<p className="pad">Not found.</p>} />
           </Routes>
         </main>

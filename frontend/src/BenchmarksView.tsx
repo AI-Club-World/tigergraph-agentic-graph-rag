@@ -189,7 +189,7 @@ export function BenchmarksView() {
     <div className="view">
       <header className="view-head bench-head">
         <div>
-          <h2>Benchmarks</h2>
+          <h2>Runs &amp; history</h2>
           <p className="muted">
             Every benchmark execution is kept as history with its model, dataset and embedding
             metadata. Select two or more runs to compare them against the first one selected.
@@ -309,7 +309,7 @@ export function BenchmarksView() {
                           <td>{agentic?.median_tokens != null ? num(Math.round(agentic.median_tokens)) : '—'}</td>
                           <td>{agentic?.f1_per_1k_tokens != null ? dec(agentic.f1_per_1k_tokens, 3) : '—'}</td>
                           <td className="text nowrap">
-                            <Link to={`/dashboard?run=${encodeURIComponent(r.run_id)}`}>Dashboard</Link>
+                            <Link to={`/benchmarks?tab=dashboard&run=${encodeURIComponent(r.run_id)}`}>Dashboard</Link>
                             {' · '}
                             <Link to={`/eval?run=${encodeURIComponent(r.run_id)}`}>Eval</Link>
                             {' · '}
