@@ -5,7 +5,9 @@ export const config = {
   apiKey: env.VITE_API_KEY ?? '',
   // Set VITE_USE_MOCK_API=true only for local fixture-backed development.
   // Default is false (live backend).
-  useMockApi: (env.VITE_USE_MOCK_API ?? 'false').toLowerCase() !== 'false',
+  // Only an explicit "true" turns mocks on: an empty or mistyped value must
+  // not silently serve fixture data as if it were live.
+  useMockApi: (env.VITE_USE_MOCK_API ?? 'false').trim().toLowerCase() === 'true',
   mockLatencyScale: Number(env.VITE_MOCK_LATENCY_SCALE ?? '1'),
   defaultRunId: env.VITE_DEFAULT_RUN_ID ?? 'latest',
   // ⚠ Replace admin@example.com with the real admin address via VITE_ADMIN_EMAIL.

@@ -17,6 +17,7 @@ import {
 } from './services/settingsService'
 import { config } from './config'
 import { triggerRecheckOnFailure } from './useServiceStatus'
+import { useDialogFocus } from './components/useDialogFocus'
 
 /** Seconds the panel stays open after a successful Apply. */
 export const AUTO_CLOSE_S = 10
@@ -110,13 +111,8 @@ export function SettingsPanel() {
     return () => clearTimeout(timer)
   }, [closeIn])
 
-  // Close on Escape
-  useEffect(() => {
-    if (!open) return
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [open])
+  // Focus in, Tab trapped, Escape closes (a nested dialog's Escape closes only it).
+  useDialogFocus(modalRef, open, () => setOpen(false))
 
   if (config.useMockApi) return null // settings require live backend
 

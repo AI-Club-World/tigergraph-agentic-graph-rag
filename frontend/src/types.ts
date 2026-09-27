@@ -26,6 +26,7 @@ export const QTYPES: readonly QType[] = [
 export type PipelineStatus = 'running' | 'done' | 'error'
 
 export type AgentType =
+  | 'orchestrator'
   | 'entity_linking'
   | 'graph_traversal'
   | 'similarity_search'
@@ -33,6 +34,7 @@ export type AgentType =
   | 'aggregation'
   | 'multi_hop_reasoning'
   | 'evidence_evaluation'
+  | 'answer_generation'
 
 export interface TokenUsage {
   input: number
@@ -80,8 +82,9 @@ export interface PipelineRecord {
 }
 
 export interface Verdict {
-  token_multiplier_vs_rag: number
-  token_multiplier_vs_graphrag: number
+  /** null when undefined: the baseline spent no tokens. */
+  token_multiplier_vs_rag: number | null
+  token_multiplier_vs_graphrag: number | null
   accuracy_delta_vs_rag: number | 'n/a'
   accuracy_delta_vs_graphrag: number | 'n/a'
   summary_line: string

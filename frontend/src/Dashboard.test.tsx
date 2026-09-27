@@ -117,8 +117,8 @@ describe('Dashboard worth-it table', () => {
     expect((await worthItRow('Multi Hop'))[3]).toBe('Overkill')
     expect((await worthItRow('Aggregation'))[3]).toBe('Marginal')
     expect(await worthItRow('Lookup')).toEqual(['1', '-1.00', '1.00×', 'Overkill'])
-    // All five qtypes are listed, even at n = 0.
-    expect(await worthItRow('Superlative')).toEqual(['0', '0.00', '0.00×', 'Overkill'])
+    // All five qtypes are listed, even at n = 0 — with no verdict, since there is no data.
+    expect(await worthItRow('Superlative')).toEqual(['0', 'No questions of this type in the run'])
   })
 
   it('leaves zero-RAG-token questions out of the token ratio mean', async () => {
@@ -146,5 +146,30 @@ describe('Dashboard worth-it table', () => {
       ),
     ).toBeInTheDocument()
     expect(screen.queryByText('Is the agent worth it, per question type?')).not.toBeInTheDocument()
+  })
+})
+
+describe('Dashboard without ground truth', () => {
+  it('still compares cost, latency and errors across the three pipelines', async () => {
+    const hidden = record('h1', 'lookup', { rag: 0, agentic: 0 }, { rag: 100, agentic: 900 }, false)
+    const failed = record('h2', 'lookup', { rag: 0, agentic: 0 }, { rag: 100, agentic: 0 }, false)
+    failed.record.pipelines.agentic_graphrag = {
+      ...failed.record.pipelines.agentic_graphrag, status: 'error', error_detail: 'timeout',
+    }
+    mocked.getBatchRecords.mockResolvedValue([hidden, failed])
+    renderDashboard()
+    const header = await screen.findByRole('rowheader', { name: 'Agentic GraphRAG' })
+    const cells = within(header.closest('tr') as HTMLElement).getAllByRole('cell').map((c) => c.textContent)
+    // answered, errors, median tokens — the errored answer is not a zero-token answer
+    expect(cells.slice(0, 3)).toEqual(['1', '1', '900'])
+  })
+
+  it('survives a record missing a pipeline (an imported run)', async () => {
+    const partial = record('p1', 'lookup', { rag: 1, agentic: 1 }, { rag: 100, agentic: 200 })
+    delete (partial.record.pipelines as Partial<typeof partial.record.pipelines>).graphrag
+    delete (partial.scores as Partial<NonNullable<typeof partial.scores>>).graphrag
+    mocked.getBatchRecords.mockResolvedValue([partial])
+    renderDashboard()
+    expect(await screen.findByText('Cost, latency and reliability')).toBeInTheDocument()
   })
 })

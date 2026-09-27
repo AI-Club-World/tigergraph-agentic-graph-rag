@@ -152,7 +152,9 @@ function restoredColumns(datasets: Record<string, BuiltInfo>): Record<PipelineId
     stage: 'ready',
     elapsedMs: latest?.ready_ms?.[pipeline] ?? 0,
     counters: { ...counters },
-    embedding: latest?.embedding_backend ? `@cf/baai/bge-m3 via ${latest.embedding_backend}` : null,
+    embedding: latest?.embedding_backend
+      ? `${latest.embedding_model ?? 'embedding model'} via ${latest.embedding_backend}`
+      : null,
     log: [],
   })
   return { rag: column('rag'), graphrag: column('graphrag'), agentic_graphrag: column('agentic_graphrag') }
@@ -232,6 +234,7 @@ export function BuildView() {
   const [buildId, setBuildId] = useState<string | null>(null)
   const [running, setRunning] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const uploadRef = useRef<HTMLInputElement>(null)
   const cancelRef = useRef<(() => void) | null>(null)
   // Datasets: which corpus to build, and the rebuild/reset question the
   // server asks when the build would replace existing data.
@@ -267,37 +270,45 @@ export function BuildView() {
   }
   useEffect(() => refreshCorpora(), [])
 
-  // After a reload, pick up a build still running on the server: replay its
-  // events, then follow it by polling until it ends.
-  useEffect(() => {
-    let stopped = false
-    let timer: ReturnType<typeof setTimeout> | undefined
+  // Follow a build on the server by polling /build/current: after a reload
+  // (a build still running), or when this page's live stream drops — the
+  // build goes on regardless, so the page keeps showing it.
+  const followTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const unmounted = useRef(false)
+  function followServer(first: boolean) {
     const replay = (events: BuildEvent[]) => {
       const next = initialColumns()
       for (const event of events) for (const p of event.pipeline_affected) next[p] = apply(next[p], event)
       return next
     }
-    const follow = async (first: boolean) => {
+    const follow = async (initial: boolean) => {
       let current
       try {
         current = await getCurrentBuild()
       } catch {
+        // A failed poll while following is retried; on page load it just means no backend yet.
+        if (!initial && !unmounted.current) followTimer.current = setTimeout(() => void follow(false), 4000)
         return
       }
-      if (stopped || !current || (first && !current.running)) return
+      if (unmounted.current || !current || (initial && !current.running)) return
       if (cancelRef.current) return // a build started from this page streams itself
       setBuildId(current.build_id)
       if (current.dataset) setDataset(current.dataset)
       setColumns(replay(current.events))
       setRunning(current.running)
-      if (current.running) timer = setTimeout(() => void follow(false), 2000)
+      if (current.running) followTimer.current = setTimeout(() => void follow(false), 2000)
       else refreshCorpora()
     }
-    void follow(true)
+    void follow(first)
+  }
+  useEffect(() => {
+    followServer(true)
     return () => {
-      stopped = true
-      if (timer) clearTimeout(timer)
+      unmounted.current = true
+      if (followTimer.current) clearTimeout(followTimer.current)
     }
+    // Mount only: followServer reads state through setters and refs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const corpusList = corpora?.corpora ?? []
@@ -377,9 +388,11 @@ export function BuildView() {
         setRunning(false)
         refreshCorpora()
       },
-      onError: (message) => {
-        setError(message)
-        setRunning(false)
+      onError: () => {
+        // The stream dropped, not the build: keep showing it by polling.
+        cancelRef.current = null
+        setUploadNote({ ok: true, text: 'Live updates were interrupted — following the build by polling.' })
+        followServer(false)
       },
     })
   }
@@ -401,7 +414,10 @@ export function BuildView() {
   const loadedDatasets = corpora ? Object.entries(corpora.graph.datasets) : []
 
   // A stage that ended in error fails the build even though the stream closed cleanly.
-  const failedAt = PIPELINE_IDS.map((p) => columns[p]).find((c) => c.status === 'error')?.stage ?? null
+  const failedColumn = PIPELINE_IDS.map((p) => columns[p]).find((c) => c.status === 'error')
+  const failedAt = failedColumn?.stage ?? null
+  // Why it failed, in view: the server's note on the failing stage.
+  const failedNote = failedColumn?.log.filter((e) => e.status === 'error').at(-1)?.note ?? null
   const stageFailed = failedAt !== null
 
   const phase = stageFailed
@@ -484,12 +500,23 @@ export function BuildView() {
                 Rename
               </button>
             )}
-            <label className="dataset-upload" title="Add a JSONL dataset">
+            {/* A real button (keyboard reachable) opening a hidden file input. */}
+            <button
+              type="button"
+              className="dataset-upload"
+              title="Add a JSONL dataset"
+              disabled={running}
+              onClick={() => uploadRef.current?.click()}
+            >
               Upload…
-              <input
+            </button>
+            <input
+                ref={uploadRef}
                 type="file"
                 accept=".jsonl,.ndjson,application/x-ndjson"
                 hidden
+                aria-hidden="true"
+                tabIndex={-1}
                 disabled={running}
                 onChange={(e) => {
                   const file = e.target.files?.[0]
@@ -500,7 +527,6 @@ export function BuildView() {
                   e.target.value = ''
                 }}
               />
-            </label>
           </div>
           <RequiresServices needs={['db', 'emb']}>
             <button type="button" className="btn-primary" onClick={() => run()} disabled={running || !!confirm}>
@@ -570,6 +596,9 @@ export function BuildView() {
       )}
 
       {error && <Notice onClose={() => setError(null)}>{error}</Notice>}
+      {!running && stageFailed && failedNote && (
+        <Notice>Build failed at {titleCase(failedAt ?? '')}: {failedNote}</Notice>
+      )}
 
       <section className="panel-x flow">
         <header className="flow-head">
@@ -667,7 +696,7 @@ export function BuildView() {
                   <Icon name="chip" size={15} className="pipe-color" />
                   {pipeline === 'graphrag'
                     ? 'Graph only — no embeddings, no LLM calls'
-                    : `Embedding model: ${column.embedding ?? '@cf/baai/bge-m3'} — no LLM calls`}
+                    : `Embedding model: ${column.embedding ?? 'the active model (Settings)'} — no LLM calls`}
                 </p>
 
                 <details className="stage-log" open={active || undefined}>
@@ -697,7 +726,7 @@ export function BuildView() {
                           <code>{event.stage}</code>
                           <span className="log-status">{event.status}</span>
                           <span className="log-time">{ms(event.elapsed_ms)}</span>
-                          {current && <p className="log-note">{event.note}</p>}
+                          {(current || event.status === 'error') && <p className="log-note">{event.note}</p>}
                         </li>
                       )
                     })}

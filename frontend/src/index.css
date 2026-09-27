@@ -1413,3 +1413,4 @@ table.matrix .section-row th { background: var(--bg-sunken); text-align: left; f
 .embed-option li.con::marker { content: '− '; color: var(--bad, #c53030); }
 .embed-evict { display: grid; gap: 0.35rem; border: 1px solid var(--warn, #b7791f); border-radius: 8px; padding: 0.6rem 0.75rem; }
 .embed-pick { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.stop-waiting { margin-top: 0.5rem; }

@@ -104,7 +104,18 @@ export function HistoryView() {
           <tbody>
             {visible.map((t) => (
               <Fragment key={t.id}>
-                <tr onClick={() => setOpen(open === t.id ? null : t.id)} className="history-row">
+                <tr
+                  onClick={() => setOpen(open === t.id ? null : t.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      setOpen(open === t.id ? null : t.id)
+                    }
+                  }}
+                  tabIndex={0}
+                  aria-expanded={open === t.id}
+                  className="history-row"
+                >
                   <td>{new Date(t.at).toLocaleString()}</td>
                   <td>{titleCase(t.kind)}</td>
                   <td>

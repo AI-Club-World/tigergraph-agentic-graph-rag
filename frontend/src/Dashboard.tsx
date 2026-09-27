@@ -23,7 +23,20 @@ const METRICS: Array<{ key: keyof PipelineScores; label: string; note?: string }
 ]
 
 function scoresBy(records: BatchRecord[], pipeline: PipelineId, key: keyof PipelineScores) {
-  return records.flatMap((r) => (r.scores ? [r.scores[pipeline][key]] : []))
+  return records.flatMap((r) => {
+    const value = r.scores?.[pipeline]?.[key]
+    return typeof value === 'number' ? [value] : []
+  })
+}
+
+/** A pipeline's record on one question, or undefined (an imported run may lack one). */
+function recordOf(r: BatchRecord, pipeline: PipelineId) {
+  return r.record.pipelines[pipeline]
+}
+
+/** The agentic record's trace; empty when absent. */
+function agenticTrace(r: BatchRecord) {
+  return recordOf(r, 'agentic_graphrag')?.trace ?? []
 }
 
 export function Dashboard() {
@@ -36,9 +49,48 @@ export function Dashboard() {
       pipeline,
       em: mean(scoresBy(scored, pipeline, 'em')),
       f1: mean(scoresBy(scored, pipeline, 'f1')),
-      medianTokens: median(scored.map((r) => r.record.pipelines[pipeline].tokens.total)),
+      completeness: mean(scoresBy(scored, pipeline, 'completeness')),
+      medianTokens: median(scored.flatMap((r) => {
+        const pr = recordOf(r, pipeline)
+        return pr && pr.status !== 'error' ? [pr.tokens.total] : []
+      })),
     }))
   }, [scored])
+
+  // Cost, latency and reliability per pipeline over every question — shown
+  // whether or not the run has ground truth (the hidden set has none).
+  // Errored answers are counted, not averaged in as zero-token answers.
+  const costs = useMemo(() => {
+    return PIPELINE_IDS.map((pipeline) => {
+      const all = (records ?? []).flatMap((r) => (recordOf(r, pipeline) ? [recordOf(r, pipeline)!] : []))
+      const answered = all.filter((pr) => pr.status !== 'error')
+      return {
+        pipeline,
+        n: all.length,
+        errors: all.length - answered.length,
+        medianTokens: median(answered.map((pr) => pr.tokens.total)),
+        meanInput: mean(answered.map((pr) => pr.tokens.input)),
+        meanOutput: mean(answered.map((pr) => pr.tokens.output)),
+        meanLatency: mean(answered.map((pr) => pr.latency_ms)),
+        meanCitations: mean(answered.map((pr) => pr.citations_count)),
+      }
+    })
+  }, [records])
+
+  // What the agent did: invocations, tokens and time per agent type.
+  const agentUsage = useMemo(() => {
+    const byAgent = new Map<string, { calls: number; tokens: number; latency: number }>()
+    for (const r of records ?? []) {
+      for (const step of agenticTrace(r)) {
+        const row = byAgent.get(step.agent_type) ?? { calls: 0, tokens: 0, latency: 0 }
+        row.calls += 1
+        row.tokens += step.tokens.input + step.tokens.output
+        row.latency += step.latency_ms
+        byAgent.set(step.agent_type, row)
+      }
+    }
+    return [...byAgent.entries()].sort((a, b) => b[1].calls - a[1].calls)
+  }, [records])
 
   const perQtype = useMemo(() => {
     return QTYPES.map((qtype) => {
@@ -49,8 +101,9 @@ export function Dashboard() {
       // defined ratio and is left out rather than folding Infinity/NaN in.
       const multiplier = mean(
         rows.flatMap((r) => {
-          const ragTokens = r.record.pipelines.rag.tokens.total
-          return ragTokens ? [r.record.pipelines.agentic_graphrag.tokens.total / ragTokens] : []
+          const ragTokens = recordOf(r, 'rag')?.tokens.total ?? 0
+          const agenticTokens = recordOf(r, 'agentic_graphrag')?.tokens.total
+          return ragTokens && agenticTokens !== undefined ? [agenticTokens / ragTokens] : []
         }),
       )
       return { qtype, n: rows.length, rows, emGap, multiplier }
@@ -62,11 +115,11 @@ export function Dashboard() {
       PIPELINE_IDS.map((pipeline) => ({
         name: PIPELINE_LABELS[pipeline],
         color: PIPELINE_COLORS[pipeline],
-        points: scored.map((r) => ({
-          x: r.record.pipelines[pipeline].tokens.total,
-          y: r.scores![pipeline].f1,
-          label: `${r.qid} (${r.qtype})`,
-        })),
+        points: scored.flatMap((r) => {
+          const pr = recordOf(r, pipeline)
+          const sc = r.scores?.[pipeline]
+          return pr && sc ? [{ x: pr.tokens.total, y: sc.f1, label: `${r.qid} (${r.qtype})` }] : []
+        }),
       })),
     [scored],
   )
@@ -74,7 +127,7 @@ export function Dashboard() {
   const stepCounts = useMemo(() => {
     const counts = new Map<number, number>()
     for (const r of records ?? []) {
-      const n = r.record.pipelines.agentic_graphrag.trace?.length ?? 0
+      const n = agenticTrace(r).length
       counts.set(n, (counts.get(n) ?? 0) + 1)
     }
     return [...counts.entries()]
@@ -85,7 +138,7 @@ export function Dashboard() {
   const stopReasons = useMemo(() => {
     const counts = new Map<string, number>()
     for (const r of records ?? []) {
-      const reason = r.record.pipelines.agentic_graphrag.stop_reason ?? 'none'
+      const reason = recordOf(r, 'agentic_graphrag')?.stop_reason ?? 'none'
       counts.set(reason, (counts.get(reason) ?? 0) + 1)
     }
     return [...counts.entries()]
@@ -95,12 +148,8 @@ export function Dashboard() {
 
   const strategyChanges = useMemo(() => {
     const runs = records ?? []
-    const changed = runs.filter((r) => r.record.pipelines.agentic_graphrag.strategy_changed).length
-    const steps = runs.reduce(
-      (sum, r) =>
-        sum + (r.record.pipelines.agentic_graphrag.trace ?? []).filter((s) => s.strategy_change).length,
-      0,
-    )
+    const changed = runs.filter((r) => recordOf(r, 'agentic_graphrag')?.strategy_changed).length
+    const steps = runs.reduce((sum, r) => sum + agenticTrace(r).filter((s) => s.strategy_change).length, 0)
     return { runs: runs.length, changed, steps }
   }, [records])
 
@@ -138,6 +187,7 @@ export function Dashboard() {
                     <th>Pipeline</th>
                     <th>EM</th>
                     <th>F1</th>
+                    <th title="Alias of retrieval recall against the gold documents">Completeness</th>
                     <th>Median tokens</th>
                   </tr>
                 </thead>
@@ -150,6 +200,7 @@ export function Dashboard() {
                       </th>
                       <td>{dec(row.em)}</td>
                       <td>{dec(row.f1)}</td>
+                      <td>{dec(row.completeness)}</td>
                       <td>{num(Math.round(row.medianTokens))}</td>
                     </tr>
                   ))}
@@ -168,7 +219,13 @@ export function Dashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {perQtype.map((row) => (
+                  {perQtype.map((row) => row.n === 0 ? (
+                    <tr key={row.qtype}>
+                      <th scope="row">{titleCase(row.qtype)}</th>
+                      <td>0</td>
+                      <td className="muted" colSpan={3}>No questions of this type in the run</td>
+                    </tr>
+                  ) : (
                     <tr key={row.qtype}>
                       <th scope="row">{titleCase(row.qtype)}</th>
                       <td>{row.n}</td>
@@ -247,6 +304,70 @@ export function Dashboard() {
             <section className="panel">
               <h3>Accuracy against tokens</h3>
               <ScatterPlot series={scatter} xLabel="tokens.total" yLabel="F1" />
+            </section>
+          )}
+
+          <section className="panel">
+            <h3>Cost, latency and reliability</h3>
+            <table className="matrix">
+              <thead>
+                <tr>
+                  <th>Pipeline</th>
+                  <th>Answered</th>
+                  <th>Errors</th>
+                  <th>Median tokens</th>
+                  <th>Mean input</th>
+                  <th>Mean output</th>
+                  <th>Mean latency</th>
+                  <th>Mean citations</th>
+                </tr>
+              </thead>
+              <tbody>
+                {costs.map((row) => (
+                  <tr key={row.pipeline}>
+                    <th scope="row">
+                      <i className="swatch" style={{ background: PIPELINE_COLORS[row.pipeline] }} />
+                      {PIPELINE_LABELS[row.pipeline]}
+                    </th>
+                    <td>{num(row.n - row.errors)}</td>
+                    <td className={row.errors ? 'loss' : undefined}>{num(row.errors)}</td>
+                    <td>{num(Math.round(row.medianTokens))}</td>
+                    <td>{num(Math.round(row.meanInput))}</td>
+                    <td>{num(Math.round(row.meanOutput))}</td>
+                    <td>{`${(row.meanLatency / 1000).toFixed(1)} s`}</td>
+                    <td>{dec(row.meanCitations)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="muted small">Over answered questions; errored answers are counted, not averaged in.</p>
+          </section>
+
+          {agentUsage.length > 0 && (
+            <section className="panel">
+              <h3>Agentic trace: agents invoked</h3>
+              <table className="matrix">
+                <thead>
+                  <tr>
+                    <th>Agent</th>
+                    <th>Invocations</th>
+                    <th>Tokens</th>
+                    <th>Tokens / call</th>
+                    <th>Time / call</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {agentUsage.map(([agent, row]) => (
+                    <tr key={agent}>
+                      <th scope="row">{titleCase(agent)}</th>
+                      <td>{num(row.calls)}</td>
+                      <td>{num(row.tokens)}</td>
+                      <td>{num(Math.round(row.tokens / row.calls))}</td>
+                      <td>{`${Math.round(row.latency / row.calls)} ms`}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </section>
           )}
 

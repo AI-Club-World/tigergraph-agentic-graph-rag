@@ -683,29 +683,39 @@ async def _run_query(query_id: str, query: str, queue: asyncio.Queue, config: Ru
     started = time.monotonic()
     await asyncio.gather(_rag(), _graphrag(), _agentic())
 
-    query_record = aggregate_query(query_id=query_id, query_text=query, records=records)
-    _queries[query_id]["record"] = query_record
-    statuses = {r.status for r in records.values()}
-    _trials().append(
-        "query",
-        "done" if statuses == {"done"} else "error" if statuses == {"error"} else "partial",
-        subject=query,
-        query_id=query_id,
-        duration_ms=round((time.monotonic() - started) * 1000),
-        tokens=sum(r.tokens.total for r in records.values()),
-        pipelines={
-            name: {
-                "status": r.status,
-                "tokens": r.tokens.total,
-                "latency_ms": round(r.latency_ms),
-                "error": r.error_detail,
-            }
-            for name, r in records.items()
-        },
-        error="; ".join(f"{n}: {r.error_detail}" for n, r in records.items() if r.error_detail) or None,
-        **_model_fields(config),
-    )
-    await queue.put(("done", None))
+    # The stream always ends with "done", even if aggregation or the trial log
+    # fails — otherwise the browser waits on a run that is already over.
+    try:
+        query_record = aggregate_query(query_id=query_id, query_text=query, records=records)
+        _queries[query_id]["record"] = query_record
+        statuses = {r.status for r in records.values()}
+        _trials().append(
+            "query",
+            "done" if statuses == {"done"} else "error" if statuses == {"error"} else "partial",
+            subject=query,
+            query_id=query_id,
+            duration_ms=round((time.monotonic() - started) * 1000),
+            tokens=sum(r.tokens.total for r in records.values()),
+            pipelines={
+                name: {
+                    "status": r.status,
+                    "tokens": r.tokens.total,
+                    "latency_ms": round(r.latency_ms),
+                    "error": r.error_detail,
+                }
+                for name, r in records.items()
+            },
+            error="; ".join(f"{n}: {r.error_detail}" for n, r in records.items() if r.error_detail) or None,
+            **_model_fields(config),
+        )
+    except Exception as e:  # noqa: BLE001 - the per-pipeline records are still served
+        logger.error("Query %s finished but could not be aggregated: %s", query_id, e)
+        if _queries[query_id].get("record") is None:
+            _queries[query_id]["record"] = QueryLevelRecord(
+                query_id=query_id, query_text=query, pipelines=records
+            )
+    finally:
+        await queue.put(("done", None))
 
 
 @router.get("/query/{query_id}/result")

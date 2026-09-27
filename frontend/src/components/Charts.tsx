@@ -47,7 +47,8 @@ export function ScatterPlot({
   const w = 640
   const h = 300
   const pad = { top: 16, right: 16, bottom: 44, left: 52 }
-  const xMax = Math.max(...all.map((p) => p.x)) * 1.05
+  // At least 1: an all-zero run (every point at 0 tokens) must not divide by zero.
+  const xMax = Math.max(1, ...all.map((p) => p.x)) * 1.05
   const plotW = w - pad.left - pad.right
   const plotH = h - pad.top - pad.bottom
   const sx = (x: number) => pad.left + (x / xMax) * plotW

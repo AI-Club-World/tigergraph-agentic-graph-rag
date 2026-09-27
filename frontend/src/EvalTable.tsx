@@ -29,7 +29,7 @@ function normalize(text: string): string {
 }
 
 function disagree(record: BatchRecord): boolean {
-  const answers = PIPELINE_IDS.map((p) => normalize(record.record.pipelines[p].answer))
+  const answers = PIPELINE_IDS.map((p) => normalize(record.record.pipelines[p]?.answer ?? ''))
   return new Set(answers).size > 1
 }
 
@@ -52,7 +52,7 @@ export function EvalTable() {
     if (onlyDisagreeing) list = list.filter(disagree)
 
     const gap = (r: BatchRecord) =>
-      r.scores ? r.scores.agentic_graphrag.em - r.scores.rag.em : 0
+      r.scores ? (r.scores.agentic_graphrag?.em ?? 0) - (r.scores.rag?.em ?? 0) : 0
 
     return [...list].sort((a, b) => {
       if (sortKey === 'qid') return a.qid.localeCompare(b.qid)
@@ -203,6 +203,13 @@ export function EvalTable() {
                         {shownPipelines.flatMap((pipeline) => {
                           const pr = row.record.pipelines[pipeline]
                           const sc = row.scores?.[pipeline]
+                          // Every row has as many cells as the header, whatever it lacks.
+                          const scoreCols = hasGold ? 4 : 1
+                          if (!pr) {
+                            return Array.from({ length: 3 + scoreCols }, (_, i) => (
+                              <td key={`${pipeline}-none-${i}`} className="muted">—</td>
+                            ))
+                          }
                           const cells = [
                             <td key={`${pipeline}-a`} className="answer-cell">
                               {pr.answer}
@@ -222,6 +229,11 @@ export function EvalTable() {
                               <td key={`${pipeline}-p`}>{dec(sc.precision)}</td>,
                               <td key={`${pipeline}-r`}>{dec(sc.recall)}</td>,
                             )
+                          } else if (hasGold) {
+                            // A run mixing scored and unscored questions: no gold for this one.
+                            for (const k of ['em', 'f1', 'p', 'r']) {
+                              cells.push(<td key={`${pipeline}-${k}`} className="muted">—</td>)
+                            }
                           } else {
                             cells.push(<td key={`${pipeline}-c`}>{pr.citations_count}</td>)
                           }

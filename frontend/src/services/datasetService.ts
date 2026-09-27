@@ -13,6 +13,8 @@ export interface BuiltInfo {
   relationships?: number
   vectors?: number
   embedding_backend?: string
+  /** The embedding model the build wrote (a catalog key). */
+  embedding_model?: string
   ready_ms?: Partial<Record<'rag' | 'graphrag' | 'agentic_graphrag', number>>
 }
 

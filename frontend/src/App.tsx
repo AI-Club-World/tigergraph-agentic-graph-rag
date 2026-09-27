@@ -1,3 +1,4 @@
+import type React from 'react'
 import { Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom'
 import { SearchView } from './SearchView'
 import { BuildView } from './BuildView'
@@ -7,6 +8,12 @@ import { config } from './config'
 import { useTheme } from './useTheme'
 import { ServiceStatusBar, ServiceStatusProvider } from './ServiceStatus'
 import { SettingsPanel } from './SettingsPanel'
+import { ErrorBoundary } from './components/ErrorBoundary'
+
+function RouteBoundary({ children }: { children: React.ReactNode }) {
+  // Navigating away from a screen that failed clears the error.
+  return <ErrorBoundary resetKey={useLocation().pathname}>{children}</ErrorBoundary>
+}
 
 /** Benchmarks and the eval table are tabs of Dashboard; old links keep ?run=. */
 function TabRedirect({ tab }: { tab: string }) {
@@ -72,6 +79,7 @@ export function App() {
         </header>
 
         <main>
+          <RouteBoundary>
           <Routes>
             <Route path="/" element={<SearchView />} />
             <Route path="/build" element={<BuildView />} />
@@ -81,6 +89,7 @@ export function App() {
             <Route path="/history" element={<HistoryView />} />
             <Route path="*" element={<p className="pad">Not found.</p>} />
           </Routes>
+          </RouteBoundary>
         </main>
 
         <footer className="app-foot">

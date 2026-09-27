@@ -4,7 +4,8 @@
  * decision dialog. Every refusal shown here is also enforced by the server.
  */
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useDialogFocus } from './useDialogFocus'
 import {
   completeEmbedding,
   fetchEmbeddingPlan,
@@ -33,6 +34,8 @@ function stateLabel(m: EmbeddingModelStatus): string {
       return 'Failed · resumable'
     case 'evicting':
       return 'Being removed'
+    case 'indexing':
+      return 'Indexing · Complete to finish'
     default:
       return 'Not stored'
   }
@@ -108,6 +111,8 @@ export function EmbeddingSettings() {
       await refresh()
     } catch (e) {
       setActionError(e instanceof Error ? e.message : 'Request failed')
+      // The refusal often means the state moved on (a build or job started).
+      void refresh()
     } finally {
       setBusy(false)
     }
@@ -148,7 +153,7 @@ export function EmbeddingSettings() {
               </span>
             </span>
             <span className="settings-embed-dim muted small">{m.dim}d</span>
-            {m.state === 'incomplete' && m.key !== job?.model && (
+            {(m.state === 'incomplete' || m.state === 'indexing') && m.key !== job?.model && (
               <button
                 type="button"
                 className="secondary embed-complete-btn"
@@ -170,13 +175,14 @@ export function EmbeddingSettings() {
           )}
         </div>
       )}
-      {actionError && <p className="error-text small" role="alert">{actionError}</p>}
+      {actionError && !plan && <p className="error-text small" role="alert">{actionError}</p>}
       {plan && (
         <EmbeddingSwitchDialog
           plan={plan}
           labels={labels}
           busy={busy}
-          onCancel={() => setPlan(null)}
+          error={actionError}
+          onCancel={() => { setPlan(null); setActionError(null) }}
           onConfirm={(mode, evict) => void act(() => switchEmbedding(plan.target.key, mode, evict))}
         />
       )}
@@ -188,15 +194,18 @@ interface DialogProps {
   plan: EmbeddingPlan
   labels: Record<string, string>
   busy: boolean
+  error?: string | null
   onCancel: () => void
   onConfirm: (mode?: SwitchMode, evict?: string) => void
 }
 
 /** The informed decision: two options with pros/cons from the real state,
  *  nothing preselected, eviction mandatory at the cap. */
-export function EmbeddingSwitchDialog({ plan, labels, busy, onCancel, onConfirm }: DialogProps) {
+export function EmbeddingSwitchDialog({ plan, labels, busy, error, onCancel, onConfirm }: DialogProps) {
   const [mode, setMode] = useState<SwitchMode | null>(null)
   const [evict, setEvict] = useState<string | null>(null)
+  const ref = useRef<HTMLDivElement>(null)
+  useDialogFocus(ref, true, onCancel)
   const target = plan.target
   const name = (k: string | null) => (k ? labels[k] ?? k : '')
   const storedList = plan.stored.map((k) => `${name(k)}${k === plan.active ? ' (active)' : ''}`).join(', ') || 'none'
@@ -207,7 +216,7 @@ export function EmbeddingSwitchDialog({ plan, labels, busy, onCancel, onConfirm 
 
   return (
     <div className="embed-dialog-backdrop" role="presentation">
-      <div className="embed-dialog" role="dialog" aria-modal="true" aria-labelledby="embed-dialog-title">
+      <div className="embed-dialog" role="dialog" aria-modal="true" aria-labelledby="embed-dialog-title" ref={ref}>
         <h3 id="embed-dialog-title">Switch embeddings to {target.label}</h3>
         <p className="embed-cap" data-testid="cap-status">
           {plan.stored.length}/{plan.cap} models currently stored: {storedList}.
@@ -283,6 +292,7 @@ export function EmbeddingSwitchDialog({ plan, labels, busy, onCancel, onConfirm 
           </fieldset>
         )}
 
+        {error && <p className="error-text small" role="alert">{error}</p>}
         <div className="confirm-actions">
           <button type="button" className="secondary" onClick={onCancel}>
             Cancel

@@ -52,7 +52,10 @@ export async function fetchModels(provider: string): Promise<{ models: string[];
 
 // ── Embedding models (config-docs/EMBEDDING-SWITCHING.md) ─────────────────────
 
-export type EmbeddingState = 'complete' | 'incomplete' | 'building' | 'failed' | 'not_stored' | 'evicting'
+export type EmbeddingState =
+  | 'complete' | 'incomplete' | 'building' | 'failed' | 'not_stored' | 'evicting'
+  /** Written, but the vector index is not confirmed queryable yet. */
+  | 'indexing'
 
 export interface EmbeddingModelStatus {
   key: string

@@ -13,6 +13,24 @@ import { PIPELINE_IDS, type PipelineId, type QueryLevelRecord, type TraceStep } 
 
 type Columns = Record<PipelineId, ColumnState>
 
+const RESULT_POLL_MS = 3000
+const RESULT_WAIT_MS = 10 * 60 * 1000
+
+/** The merged result, polling while the server reports it still running. */
+async function resultWhenReady(queryId: string, current: () => boolean): Promise<QueryLevelRecord | null> {
+  const deadline = Date.now() + RESULT_WAIT_MS
+  for (;;) {
+    try {
+      return await getQueryResult(queryId)
+    } catch (error) {
+      const running = error instanceof ApiError && error.status === 409
+      if (!running || Date.now() > deadline) throw error
+      await new Promise((resolve) => setTimeout(resolve, RESULT_POLL_MS))
+      if (!current()) return null
+    }
+  }
+}
+
 const IDLE: Columns = {
   rag: { status: 'idle', record: null, error: null },
   graphrag: { status: 'idle', record: null, error: null },
@@ -90,10 +108,11 @@ export function SearchView() {
       },
       onError: async (message) => {
         // The backend finishes the run and keeps its result even when the
-        // stream drops, so recover the columns from it where possible.
+        // stream drops, so recover the columns from it — waiting while the
+        // server still says it is running (409) rather than failing at once.
         try {
-          const merged = await getQueryResult(accepted.query_id)
-          if (!current()) return
+          const merged = await resultWhenReady(accepted.query_id, current)
+          if (!current() || !merged) return
           setColumns(Object.fromEntries(PIPELINE_IDS.map((p) => {
             const record = merged.pipelines[p]
             return [p, { status: record.status, record, error: record.error_detail }]
@@ -110,6 +129,17 @@ export function SearchView() {
         }
       },
     })
+  }
+
+  function stopWaiting() {
+    // The server finishes the run on its own; this page just stops following it.
+    cancelRef.current?.()
+    cancelRef.current = null
+    runRef.current += 1
+    setInFlight(false)
+    setColumns((cols) => Object.fromEntries(PIPELINE_IDS.map((p) => [
+      p, cols[p].status === 'running' ? { status: 'error', record: null, error: 'Stopped waiting' } : cols[p],
+    ])) as Columns)
   }
 
   const agentic = columns.agentic_graphrag
@@ -144,6 +174,11 @@ export function SearchView() {
             </span>
           </header>
           <QueryInput onSubmit={(query) => void runQuery(query)} disabled={inFlight} />
+          {inFlight && (
+            <button type="button" className="secondary stop-waiting" onClick={stopWaiting}>
+              Stop waiting
+            </button>
+          )}
         </section>
         {mismatch && (
           <EmbeddingMismatchDialog

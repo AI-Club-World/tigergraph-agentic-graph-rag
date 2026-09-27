@@ -22,7 +22,10 @@ function withRun(params: URLSearchParams, run: string): URLSearchParams {
 export function useBatchRecords() {
   const [params, setParams] = useSearchParams()
   const explicitRun = params.get('run')
-  const resolveNewest = !explicitRun && !config.useMockApi && !import.meta.env.VITE_DEFAULT_RUN_ID
+  // 'latest' is the fixtures' name for the newest run; live, it means "open
+  // the newest run" too (live run ids are timestamps, never 'latest').
+  const defaultIsNewest = !import.meta.env.VITE_DEFAULT_RUN_ID || import.meta.env.VITE_DEFAULT_RUN_ID === 'latest'
+  const resolveNewest = !explicitRun && !config.useMockApi && defaultIsNewest
   const runId = explicitRun ?? config.defaultRunId
   const [records, setRecords] = useState<BatchRecord[] | null>(null)
   const [error, setError] = useState<string | null>(null)

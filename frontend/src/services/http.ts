@@ -29,9 +29,16 @@ async function parse<T>(res: Response): Promise<T> {
     let code: string | undefined
     let structured: Record<string, unknown> | undefined
     try {
-      const body = (await res.json()) as { detail?: string | { code?: string; message?: string } }
+      const body = (await res.json()) as {
+        detail?: string | { code?: string; message?: string } | { loc?: unknown[]; msg?: string }[]
+      }
       if (typeof body.detail === 'string') detail = body.detail
-      else if (body.detail) {
+      else if (Array.isArray(body.detail)) {
+        // FastAPI validation errors (422): a list of {loc, msg}.
+        detail = body.detail
+          .map((d) => [d.loc?.slice(1).join('.'), d.msg].filter(Boolean).join(': '))
+          .join('; ') || detail
+      } else if (body.detail) {
         detail = body.detail.message ?? detail
         code = body.detail.code
         structured = body.detail as Record<string, unknown>

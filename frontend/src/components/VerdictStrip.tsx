@@ -15,7 +15,15 @@ function Bar({ fraction, tone }: { fraction: number; tone: string }) {
   )
 }
 
-function RatioCard({ label, value, tone }: { label: string; value: number; tone: 'rag' | 'graphrag' }) {
+function RatioCard({ label, value, tone }: { label: string; value: number | null; tone: 'rag' | 'graphrag' }) {
+  if (value === null || value === undefined) {
+    return (
+      <div className="vcard" title="The baseline spent no tokens (it errored or did not run)">
+        <span className="vcard-label">{label}</span>
+        <span className="vcard-value">N/A<span className="vcard-unit">no baseline tokens</span></span>
+      </div>
+    )
+  }
   return (
     <div className="vcard" title={`Bar scale 0–${RATIO_SCALE}×`}>
       <span className="vcard-label">{label}</span>

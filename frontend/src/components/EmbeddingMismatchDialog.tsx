@@ -1,3 +1,6 @@
+import { useRef } from 'react'
+import { useDialogFocus } from './useDialogFocus'
+
 /**
  * Shown when the server blocks a query because the selected embedding model
  * has no complete embeddings for the data (409 embedding_mismatch). The
@@ -25,9 +28,11 @@ interface Props {
 
 export function EmbeddingMismatchDialog({ mismatch, onPick, onCancel }: Props) {
   const { selected, available } = mismatch
+  const ref = useRef<HTMLDivElement>(null)
+  useDialogFocus(ref, true, onCancel)
   return (
     <div className="embed-dialog-backdrop" role="presentation">
-      <div className="embed-dialog" role="alertdialog" aria-modal="true" aria-labelledby="mismatch-title">
+      <div className="embed-dialog" role="alertdialog" aria-modal="true" aria-labelledby="mismatch-title" ref={ref}>
         <h3 id="mismatch-title">No matching embeddings for {selected.label}</h3>
         <p>{mismatch.message}</p>
         {available.length > 0 ? (
