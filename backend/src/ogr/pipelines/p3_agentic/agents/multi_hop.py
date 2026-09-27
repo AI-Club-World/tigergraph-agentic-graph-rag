@@ -22,7 +22,11 @@ from typing import Any
 
 from ogr.graph.client import TigerGraphClient
 from ogr.pipelines.p3_agentic.agents.agent_result import AgentResult
-from ogr.pipelines.p3_agentic.agents.entity_linking import ResolvedAnchors, narrow_to_games
+from ogr.pipelines.p3_agentic.agents.entity_linking import (
+    ResolvedAnchors,
+    lookup_named_event,
+    narrow_to_games,
+)
 from ogr.pipelines.p3_agentic.intent import IntentSchema
 
 logger = logging.getLogger(__name__)
@@ -45,10 +49,8 @@ def _anchor_event_ids(client: TigerGraphClient, intent: IntentSchema, anchors: R
         return [anchors.event_id]
     if not anchors.title:
         return []
-    rows = client._run_query(
-        "q1_lookup", {"title": anchors.title, "event_id": "", "target_field": intent.target_field or ""}
-    ) or []
-    ids = [r.get("event_id") for r in narrow_to_games(rows, anchors.games) if r.get("event_id")]
+    rows = lookup_named_event(client, anchors, intent.target_field or "")
+    ids = [r.get("event_id") for r in rows if r.get("event_id")]
     # No event by that name (e.g. a page title): traverse from the name itself.
     return ids or [anchors.title]
 

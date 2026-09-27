@@ -241,6 +241,13 @@ def _slug(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", text.lower().replace("+", " plus ")).strip("-")
 
 
+def event_id_from_parts(sport: str, games_id: str, event: str) -> str:
+    """`Biathlon`, `2022-Winter`, `Women's relay` -> `biathlon-2022-Winter-women-s-relay`.
+    `event` may also be the whole page title; its event part is used."""
+    match = _TITLE_EVENT.search(event)
+    return f"{_slug(sport)}-{games_id}-{_slug(match.group(1) if match else event)}"
+
+
 def games_year(games_id: str | None) -> int | None:
     """`2012-Summer` -> 2012. The Games year, not the date parser's year."""
     if not games_id:
@@ -374,9 +381,7 @@ def parse_document(record: dict[str, Any]) -> ParsedDocument:
     title_games = normalise_games_id(doc.title)
     title_event = _TITLE_EVENT.search(doc.title or "")
     if doc.sport_name and title_games and title_event:
-        doc.event_id = (
-            f"{_slug(doc.sport_name)}-{title_games}-{_slug(title_event.group(1))}"
-        )
+        doc.event_id = event_id_from_parts(doc.sport_name, title_games, title_event.group(1))
     else:
         doc.event_id = doc.doc_id
 

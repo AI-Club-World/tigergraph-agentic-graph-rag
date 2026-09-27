@@ -128,7 +128,10 @@ def build_p3_graph(
     from ogr.pipelines.p3_agentic.agents.agent_result import AgentResult
     from ogr.pipelines.p3_agentic.agents.aggregation import run_aggregation
     from ogr.pipelines.p3_agentic.agents.document_retrieval import run_document_retrieval
-    from ogr.pipelines.p3_agentic.agents.entity_linking import narrow_to_games
+    from ogr.pipelines.p3_agentic.agents.entity_linking import (
+        ResolvedAnchors,
+        lookup_named_event,
+    )
     from ogr.pipelines.p3_agentic.agents.graph_traversal import run_graph_traversal
     from ogr.pipelines.p3_agentic.agents.multi_hop import run_multi_hop, run_venue_events
     from ogr.pipelines.p3_agentic.agents.similarity_search import run_similarity_search
@@ -288,13 +291,9 @@ def build_p3_graph(
         recorder: TraceRecorder = _state_store.get("recorder")
 
         t0 = time.perf_counter()
-        params = {
-            "title": getattr(anchors, "title", "") or "",
-            "event_id": getattr(anchors, "event_id", "") or "",
-            "target_field": getattr(intent, "target_field", "") or "",
-        }
-        raw = tg_client._run_query("q1_lookup", params) or []
-        raw = narrow_to_games(raw, getattr(anchors, "games", None))
+        raw = lookup_named_event(
+            tg_client, anchors or ResolvedAnchors(), getattr(intent, "target_field", "") or ""
+        )
         latency_ms = (time.perf_counter() - t0) * 1000.0
 
         result = AgentResult(
@@ -370,14 +369,7 @@ def build_p3_graph(
         _state_store["actions"].add((tool,))
         if tool == "lookup":
             t0 = time.perf_counter()
-            rows = narrow_to_games(
-                tg_client._run_query("q1_lookup", {
-                    "title": anchors.title or "",
-                    "event_id": anchors.event_id or "",
-                    "target_field": intent.target_field or "",
-                }) or [],
-                anchors.games,
-            )
+            rows = lookup_named_event(tg_client, anchors, intent.target_field or "")
             result = AgentResult(
                 evidence=rows, chunks_returned=len(rows), citations_count=len(rows),
                 latency_ms=(time.perf_counter() - t0) * 1000.0, notes="Q1 lookup on the named event",

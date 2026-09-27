@@ -38,10 +38,16 @@ FOR GRAPH OlympicGraphRAG SYNTAX V2 {
   SumAccum<STRING> @bronze_s;
 
   Candidates = {OlympicEvent.*};
+  // A title may be the page title ("Biathlon at the 2022 Winter Olympics –
+  // Women's relay"): the event that page DESCRIBES is a candidate too, so a
+  // page-title lookup returns the event's attributes, not just the Document.
+  ByPage = SELECT e FROM Document:d -(DESCRIBES>)- OlympicEvent:e
+           WHERE title != "" AND d.title == title;
   IF event_id != "" THEN
     Candidates = SELECT e FROM Candidates:e WHERE e.event_id == event_id;
   ELSE IF title != "" THEN
     Candidates = SELECT e FROM Candidates:e WHERE e.event_name == title;
+    Candidates = Candidates UNION ByPage;
   ELSE
     Candidates = SELECT e FROM Candidates:e WHERE FALSE;
   END;
@@ -67,8 +73,8 @@ FOR GRAPH OlympicGraphRAG SYNTAX V2 {
   IF @@rows.size() > 0 THEN
     PRINT @@rows AS results;
   ELSE IF title != "" THEN
-    // Fall back to a direct Document-title match (a lookup naming a page,
-    // not a specific event). NOTE: shape divergence — this branch prints
+    // Fall back to a direct Document-title match (a page that describes no
+    // event). NOTE: shape divergence — this branch prints
     // Document vertices ({v_id, attributes: {doc_id, title, url, ...}}) under
     // the same `results` alias the branches above use for EventRow tuples.
     // client._run_query and the agents read results generically by key, which

@@ -46,7 +46,7 @@ from ogr.common.llm import (
 from ogr.graph.client import TigerGraphClient, drain_graph_errors, graph_error_detail
 from ogr.pipelines.p3_agentic.agents.agent_result import AgentResult
 from ogr.pipelines.p3_agentic.agents.aggregation import run_aggregation
-from ogr.pipelines.p3_agentic.agents.entity_linking import EntityLinker, ResolvedAnchors, narrow_to_games
+from ogr.pipelines.p3_agentic.agents.entity_linking import EntityLinker, ResolvedAnchors, lookup_named_event
 from ogr.pipelines.p3_agentic.agents.graph_traversal import run_graph_traversal
 from ogr.pipelines.p3_agentic.intent import IntentParser, IntentSchema
 from ogr.pipelines.p3_agentic.router import first_loop_tool, route
@@ -73,12 +73,7 @@ def select_single_query(intent: IntentSchema) -> str:
 
 def _run_lookup(client: TigerGraphClient, intent: IntentSchema, anchors: ResolvedAnchors) -> AgentResult:
     started = time.perf_counter()
-    params = {
-        "title": anchors.title or "",
-        "event_id": anchors.event_id or "",
-        "target_field": intent.target_field or "",
-    }
-    raw = narrow_to_games(client._run_query("q1_lookup", params) or [], anchors.games)
+    raw = lookup_named_event(client, anchors, intent.target_field or "")
     return AgentResult(
         evidence=raw,
         chunks_returned=len(raw),

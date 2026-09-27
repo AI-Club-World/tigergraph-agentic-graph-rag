@@ -23,8 +23,10 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass, field
+from typing import Any
 
 from ogr.common.dates import normalize_date
+from ogr.ingest.infobox import event_id_from_parts
 from ogr.pipelines.p3_agentic.intent import IntentSchema
 
 logger = logging.getLogger(__name__)
@@ -67,6 +69,16 @@ class ResolvedAnchors:
     date_day_start: int | None = None
     unresolved_fields: list[str] = field(default_factory=list)
     disambiguation_candidates: dict[str, list[str]] = field(default_factory=dict)
+
+    @property
+    def derived_event_id(self) -> str | None:
+        """The event_id ingest gives the page for this sport, Games and event
+        (ingest/infobox.py derives it from the page title alone). Exact where
+        an event_name match is not: infobox names vary ("Women’s relay" with
+        a curly apostrophe) and one name exists in many editions."""
+        if self.event_id or not (self.sport and self.games and self.title):
+            return None
+        return event_id_from_parts(self.sport, self.games, self.title)
 
     @property
     def needs_disambiguation(self) -> bool:
@@ -204,6 +216,19 @@ class EntityLinker:
         # AD-15: several venues match and none exactly — surface them, never
         # substitute a best guess.
         return None, candidates
+
+
+def lookup_named_event(client: Any, anchors: ResolvedAnchors, target_field: str = "") -> list[dict]:
+    """Q1 on the event the anchors name: by the derived event_id when there is
+    one and it exists, else by title / event_id, narrowed to the Games anchor."""
+    derived = anchors.derived_event_id
+    if derived:
+        params = {"title": "", "event_id": derived, "target_field": target_field}
+        rows = client._run_query("q1_lookup", params)
+        if rows:
+            return rows
+    params = {"title": anchors.title or "", "event_id": anchors.event_id or "", "target_field": target_field}
+    return narrow_to_games(client._run_query("q1_lookup", params) or [], anchors.games)
 
 
 def narrow_to_games(rows: list[dict], games: str | None) -> list[dict]:
