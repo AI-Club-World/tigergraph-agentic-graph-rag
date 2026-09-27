@@ -187,3 +187,31 @@ def test_current_build_can_be_picked_up_after_a_reload(env, monkeypatch):
     current = env.client.get("/build/current", headers=HEADERS).json()["build"]
     assert current["dataset"] == "olympics" and current["running"] is False
     assert [e["stage"] for e in current["events"]] == [e["stage"] for e in events]
+
+
+def test_corpora_carry_an_inferred_name(env):
+    [row] = env.client.get("/corpora", headers=HEADERS).json()["corpora"]
+    assert row["name"] == "olympics"
+    assert row["title_source"] == "inferred" and "Olympics" in row["title"]
+
+
+def test_uploads_sharing_a_file_name_sit_side_by_side_with_their_names(env):
+    first = env.client.post(
+        "/corpora/olympics?unique=true&title=Winter%20Games&source_file=olympics.jsonl",
+        headers=HEADERS, content=DOC.encode(),
+    )
+    assert first.status_code == 201
+    assert first.json()["name"] == "olympics-2" and first.json()["title"] == "Winter Games"
+    second = env.client.post("/corpora/olympics?unique=true", headers=HEADERS, content=DOC.encode())
+    assert second.json()["name"] == "olympics-3" and second.json()["title_source"] == "inferred"
+    rows = {r["name"]: r for r in env.client.get("/corpora", headers=HEADERS).json()["corpora"]}
+    assert rows["olympics-2"]["title_source"] == "given" and rows["olympics-2"]["source_file"] == "olympics.jsonl"
+
+
+def test_rename_sets_and_clears_the_title(env):
+    renamed = env.client.patch("/corpora/olympics", headers=HEADERS, json={"title": "  Rio   sailing "})
+    assert renamed.status_code == 200
+    assert renamed.json()["title"] == "Rio sailing" and renamed.json()["title_source"] == "given"
+    cleared = env.client.patch("/corpora/olympics", headers=HEADERS, json={"title": ""}).json()
+    assert cleared["title_source"] == "inferred"
+    assert env.client.patch("/corpora/missing", headers=HEADERS, json={"title": "x"}).status_code == 404

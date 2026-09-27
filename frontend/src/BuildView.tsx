@@ -6,8 +6,10 @@ import { ms, num, titleCase } from './format'
 import { RequiresServices } from './ServiceStatus'
 import { getCurrentBuild, openBuildStream, startBuild, type BuildOptions } from './services/buildService'
 import {
+  datasetLabel,
   datasetNameFor,
   listCorpora,
+  renameCorpus,
   uploadCorpus,
   type BuiltInfo,
   type CorporaResponse,
@@ -237,6 +239,9 @@ export function BuildView() {
   const [dataset, setDataset] = useState('corpus')
   const [confirm, setConfirm] = useState<{ code: string; message: string } | null>(null)
   const [uploadNote, setUploadNote] = useState<{ ok: boolean; text: string } | null>(null)
+  // The name form: naming a file about to be uploaded, or renaming a dataset.
+  const [naming, setNaming] = useState<{ mode: 'upload'; file: File } | { mode: 'rename'; name: string } | null>(null)
+  const [nameDraft, setNameDraft] = useState('')
 
   useEffect(() => () => cancelRef.current?.(), [])
 
@@ -295,16 +300,46 @@ export function BuildView() {
     }
   }, [])
 
-  async function upload(file: File) {
-    const name = datasetNameFor(file.name)
+  const corpusList = corpora?.corpora ?? []
+  const selected = corpusList.find((c) => c.name === dataset)
+  const labelOf = (name: string) => {
+    const corpus = corpusList.find((c) => c.name === name)
+    return corpus ? datasetLabel(corpus, corpusList) : name
+  }
+
+  async function upload(file: File, title: string) {
+    // The id comes from the title when one is given, else the file name;
+    // the server suffixes it when taken, so same-named files never collide.
+    const name = datasetNameFor(title.trim() || file.name)
     setUploadNote(null)
     try {
-      const added = await uploadCorpus(name, file)
-      setUploadNote({ ok: true, text: `Added dataset '${added.name}' (${added.documents} documents).` })
+      const added = await uploadCorpus(name, file, title)
+      const shown = added.title ?? added.name
+      const how = added.title_source === 'inferred' ? ' — name inferred from its documents, rename it any time' : ''
+      setUploadNote({ ok: true, text: `Added dataset '${shown}' (${num(added.documents)} documents)${how}.` })
       refreshCorpora(added.name)
     } catch (e) {
       setUploadNote({ ok: false, text: e instanceof Error ? e.message : 'Upload failed' })
     }
+  }
+
+  async function rename(name: string, title: string) {
+    setUploadNote(null)
+    try {
+      const renamed = await renameCorpus(name, title)
+      setUploadNote({ ok: true, text: `Dataset renamed to '${renamed.title ?? name}'.` })
+      refreshCorpora(name)
+    } catch (e) {
+      setUploadNote({ ok: false, text: e instanceof Error ? e.message : 'Rename failed' })
+    }
+  }
+
+  function submitName() {
+    if (!naming) return
+    if (naming.mode === 'upload') void upload(naming.file, nameDraft)
+    else void rename(naming.name, nameDraft)
+    setNaming(null)
+    setNameDraft('')
   }
 
   async function run(options: BuildOptions = {}) {
@@ -431,10 +466,24 @@ export function BuildView() {
             >
               {(corpora?.corpora ?? [{ name: dataset, documents: 0, size_bytes: 0, built: null }]).map((c) => (
                 <option key={c.name} value={c.name}>
-                  {c.name} — {num(c.documents)} docs{c.built ? ' · built' : ''}
+                  {datasetLabel(c, corpusList)} — {num(c.documents)} docs{c.built ? ' · built' : ''}
                 </option>
               ))}
             </select>
+            {selected && (
+              <button
+                type="button"
+                className="secondary dataset-rename"
+                disabled={running}
+                title={`Rename this dataset (id ${selected.name}${selected.source_file ? `, uploaded as ${selected.source_file}` : ''})`}
+                onClick={() => {
+                  setNaming({ mode: 'rename', name: selected.name })
+                  setNameDraft(selected.title_source === 'given' ? selected.title ?? '' : '')
+                }}
+              >
+                Rename
+              </button>
+            )}
             <label className="dataset-upload" title="Add a JSONL dataset">
               Upload…
               <input
@@ -444,7 +493,10 @@ export function BuildView() {
                 disabled={running}
                 onChange={(e) => {
                   const file = e.target.files?.[0]
-                  if (file) void upload(file)
+                  if (file) {
+                    setNaming({ mode: 'upload', file })
+                    setNameDraft('')
+                  }
                   e.target.value = ''
                 }}
               />
@@ -458,12 +510,42 @@ export function BuildView() {
           </RequiresServices>
           {loadedDatasets.length > 0 && (
             <span className="muted small">
-              In graph: {loadedDatasets.map(([name, info]) => `${name} (${num(info.documents)} docs)`).join(', ')}
+              In graph: {loadedDatasets.map(([name, info]) => `${labelOf(name)} (${num(info.documents)} docs)`).join(', ')}
             </span>
           )}
         </div>
       </header>
 
+      {naming && (
+        <form
+          className="dataset-name-form"
+          aria-label={naming.mode === 'upload' ? 'Name the new dataset' : 'Rename dataset'}
+          onSubmit={(e) => { e.preventDefault(); submitName() }}
+        >
+          <label htmlFor="dataset-name-input">
+            {naming.mode === 'upload'
+              ? <>Name the dataset in <code>{naming.file.name}</code></>
+              : <>Rename <strong>{labelOf(naming.name)}</strong></>}
+          </label>
+          <input
+            id="dataset-name-input"
+            type="text"
+            maxLength={80}
+            autoFocus
+            value={nameDraft}
+            onChange={(e) => setNameDraft(e.target.value)}
+            placeholder="Leave empty to infer a name from its documents"
+          />
+          <div className="confirm-actions">
+            <button type="button" className="secondary" onClick={() => { setNaming(null); setNameDraft('') }}>
+              Cancel
+            </button>
+            <button type="submit" className="btn-primary">
+              {naming.mode === 'upload' ? 'Add dataset' : 'Save name'}
+            </button>
+          </div>
+        </form>
+      )}
       {uploadNote && (
         <Notice tone={uploadNote.ok ? 'ok' : 'error'} onClose={() => setUploadNote(null)}>{uploadNote.text}</Notice>
       )}
@@ -476,7 +558,7 @@ export function BuildView() {
             </button>
             {confirm.code === 'already_built' ? (
               <button type="button" className="btn-primary" onClick={() => run({ rebuild: true })}>
-                Rebuild {dataset}
+                Rebuild {labelOf(dataset)}
               </button>
             ) : (
               <button type="button" className="btn-primary danger" onClick={() => run({ reset: true })}>

@@ -406,6 +406,7 @@ input[type='text'], input[type='search'], input:not([type]), select {
   font-size: 0.82rem;
 }
 .settings-current-note { margin-top: 0.15rem; }
+.settings-autoclose { white-space: nowrap; opacity: 0.85; }
 
 /* Embedding radio cards */
 .settings-embed-note { margin-bottom: 0.1rem; }
@@ -1336,3 +1337,12 @@ table.matrix .section-row th { background: var(--bg-sunken); text-align: left; f
 .dataset-picker select { min-width: 14rem; }
 .bcard-status { display: inline-flex; align-items: center; gap: 0.5rem; }
 .bcard-pct { font-weight: 600; font-variant-numeric: tabular-nums; }
+.dataset-rename { padding: 0.45rem 0.75rem; font-size: 0.9rem; }
+.dataset-name-form {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  display: grid;
+  gap: 0.5rem;
+}
+.dataset-name-form input { width: 100%; }

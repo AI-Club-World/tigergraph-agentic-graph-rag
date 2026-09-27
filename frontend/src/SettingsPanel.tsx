@@ -10,12 +10,16 @@ import {
   fetchModels,
   fetchProviders,
   fetchSettings,
+  providerIdOf,
   saveSettings,
   type AppSettings,
   type ProviderInfo,
 } from './services/settingsService'
 import { config } from './config'
 import { triggerRecheckOnFailure } from './useServiceStatus'
+
+/** Seconds the panel stays open after a successful Apply. */
+export const AUTO_CLOSE_S = 10
 
 // ── Gear icon SVG ─────────────────────────────────────────────────────────────
 
@@ -52,16 +56,19 @@ export function SettingsPanel() {
   const [customModel, setCustomModel] = useState('')
   const [saving, setSaving] = useState(false)
   const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null)
+  // Seconds until the panel closes itself after a save; null: stays open.
+  const [closeIn, setCloseIn] = useState<number | null>(null)
   const modalRef = useRef<HTMLDivElement>(null)
 
   // Load current settings whenever the panel opens
   useEffect(() => {
+    setCloseIn(null)
     if (!open) return
     setFeedback(null)
     fetchSettings()
       .then((s) => {
         setSettings(s)
-        setDraft({ llm_provider: s.llm_provider, llm_model: s.llm_model, embedding_model: s.embedding_model })
+        setDraft({ llm_provider: providerIdOf(s), llm_model: s.llm_model, embedding_model: s.embedding_model })
         setCustomModel('')
       })
       .catch(() => setFeedback({ ok: false, text: 'Could not load current settings.' }))
@@ -92,6 +99,17 @@ export function SettingsPanel() {
     return () => { stale = true }
   }, [open, draftProvider, isPreset])
 
+  // After Apply: count down, then close. Any edit cancels it (see onChange below).
+  useEffect(() => {
+    if (closeIn === null) return
+    if (closeIn <= 0) {
+      setOpen(false)
+      return
+    }
+    const timer = setTimeout(() => setCloseIn((n) => (n === null ? null : n - 1)), 1000)
+    return () => clearTimeout(timer)
+  }, [closeIn])
+
   // Close on Escape
   useEffect(() => {
     if (!open) return
@@ -110,7 +128,9 @@ export function SettingsPanel() {
     try {
       // Only what changed: an embedding_model field resets the server's
       // TigerGraph client, and an unchanged model need not rebuild the LLM.
-      const providerChanged = settings !== null && draft.llm_provider !== settings.llm_provider
+      // Compared with the provider shown on load: keeping it (e.g. NVIDIA reached
+      // through the startup OpenAI-compatible config) changes only the model.
+      const providerChanged = settings !== null && draft.llm_provider !== providerIdOf(settings)
       const modelChanged = providerChanged || effectiveModel !== settings?.llm_model
       const embeddingChanged = draft.embedding_model !== settings?.embedding_model
       const updated = await saveSettings({
@@ -121,9 +141,11 @@ export function SettingsPanel() {
       // The health indicator reflects the old model until re-checked.
       triggerRecheckOnFailure()
       setSettings(updated)
-      setDraft({ llm_provider: updated.llm_provider, llm_model: updated.llm_model, embedding_model: updated.embedding_model })
+      setDraft({ llm_provider: providerIdOf(updated), llm_model: updated.llm_model, embedding_model: updated.embedding_model })
       setCustomModel('')
-      setFeedback({ ok: true, text: `Saved — all pipelines now use ${updated.llm_provider} / ${updated.llm_model}` })
+      const label = providers.find((p) => p.id === providerIdOf(updated))?.label ?? updated.llm_provider
+      setFeedback({ ok: true, text: `Saved — all pipelines now use ${label} / ${updated.llm_model}` })
+      setCloseIn(AUTO_CLOSE_S)
     } catch (e) {
       setFeedback({ ok: false, text: e instanceof Error ? e.message : 'Save failed' })
     } finally {
@@ -165,6 +187,8 @@ export function SettingsPanel() {
             aria-modal="true"
             aria-labelledby="settings-title"
             ref={modalRef}
+            // Editing after a save means the user is not done: stay open.
+            onChange={() => setCloseIn(null)}
           >
             {/* Header */}
             <div className="settings-head">
@@ -186,8 +210,20 @@ export function SettingsPanel() {
             )}
 
             {feedback && (
-              <Notice tone={feedback.ok ? 'ok' : 'error'} role="status" onClose={() => setFeedback(null)}>
+              <Notice
+                tone={feedback.ok ? 'ok' : 'error'}
+                role="status"
+                onClose={() => { setFeedback(null); setCloseIn(null) }}
+              >
                 {feedback.text}
+                {closeIn !== null && (
+                  <span className="settings-autoclose">
+                    {' '}Closing in {closeIn}s ·{' '}
+                    <button type="button" className="link" onClick={() => setCloseIn(null)}>
+                      Keep open
+                    </button>
+                  </span>
+                )}
               </Notice>
             )}
 
@@ -201,18 +237,25 @@ export function SettingsPanel() {
                     value={draft.llm_provider}
                     onChange={(e) => {
                       const next = e.target.value
-                      setDraft((d) => d && { ...d, llm_provider: next, llm_model: next === settings.llm_provider ? settings.llm_model : '' })
+                      setDraft((d) => d && { ...d, llm_provider: next, llm_model: next === providerIdOf(settings) ? settings.llm_model : '' })
                       setCustomModel('')
                     }}
                   >
-                    {!providers.some((p) => p.id === settings.llm_provider) && (
-                      <option value={settings.llm_provider}>{settings.llm_provider} (server default)</option>
-                    )}
-                    {providers.map((p) => (
-                      <option key={p.id} value={p.id} disabled={!p.configured}>
-                        {p.label}{p.configured ? '' : ' — API key not set'}
+                    {!providers.some((p) => p.id === providerIdOf(settings)) && (
+                      <option value={providerIdOf(settings)}>
+                        {settings.llm_provider}{settings.llm_base_host ? ` · ${settings.llm_base_host}` : ''} (server default)
                       </option>
-                    ))}
+                    )}
+                    {providers.map((p) => {
+                      // The provider serving the model stays selectable even when
+                      // its preset key is unset: the startup config has its own.
+                      const current = p.id === providerIdOf(settings)
+                      return (
+                        <option key={p.id} value={p.id} disabled={!p.configured && !current}>
+                          {p.label}{p.configured ? '' : current ? ' — server default key' : ' — API key not set'}
+                        </option>
+                      )
+                    })}
                   </select>
                 </div>
 

@@ -3,6 +3,10 @@ import { get, patch } from './http'
 
 export interface AppSettings {
   llm_provider: string
+  /** The selectable provider serving the model (null: none of the presets). */
+  llm_provider_preset?: string | null
+  /** host[:port] of the LLM endpoint, when one is set. */
+  llm_base_host?: string | null
   llm_model: string
   embedding_model: string
   embedding_dim: number
@@ -49,3 +53,9 @@ export async function fetchModels(provider: string): Promise<{ models: string[];
 export const EMBEDDING_OPTIONS = [
   { value: '@cf/baai/bge-m3', label: 'BGE-M3 (BAAI) — Cloudflare → local', dim: 1024 },
 ] as const
+
+/** The provider the settings panel shows as selected: the preset serving the
+ *  model when the server resolved one, else the configured client type. */
+export function providerIdOf(s: AppSettings): string {
+  return s.llm_provider_preset || s.llm_provider
+}

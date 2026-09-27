@@ -48,6 +48,7 @@ from ogr.eval.batch_runner import default_pipelines, effective_pool_size, run_ba
 from ogr.eval.dispatcher import error_record
 from ogr.eval.history import RUN_ID_RE, import_run, list_runs, read_run, summarize_run, view_record
 from ogr.graph.client import TigerGraphClient
+from ogr.ingest import dataset_meta
 from ogr.ingest.chunk_embed import chunk_and_embed_corpus
 from ogr.ingest.infobox import parse_corpus
 from ogr.ingest.load import load_graph
@@ -169,16 +170,49 @@ def health() -> dict[str, str]:
 # ─────────────────────────────────────────── /settings ──────────────────────
 
 
-@app.get("/settings")
-def get_settings_endpoint() -> dict[str, Any]:
-    """Return the current effective model/embedding config. Unauthenticated."""
-    cfg = _get_config_with_overrides()
+def _provider_preset(cfg: RunConfig) -> str | None:
+    """The selectable preset the effective LLM runs on, so the settings panel
+    shows who serves the model. The startup config names a client type
+    (`openai_compatible`, `google`) rather than a preset: the base URL's host
+    — or the native Gemini client — says which provider that is."""
+    from urllib.parse import urlparse
+
+    from ogr.common.llm import GOOGLE_PROVIDERS, PROVIDER_PRESETS
+
+    provider = (cfg.llm_provider or "").strip().lower()
+    if provider in PROVIDER_PRESETS:
+        return provider
+    if provider in GOOGLE_PROVIDERS:
+        return "gemini"
+    host = (urlparse(cfg.llm_base_url or "").hostname or "").lower()
+    if not host:
+        return None
+    for pid, preset in PROVIDER_PRESETS.items():
+        preset_host = urlparse(preset["base_url"] or preset["models_url"]).hostname or ""
+        if host == preset_host.lower():
+            return pid
+    return None
+
+
+def _settings_body(cfg: RunConfig) -> dict[str, Any]:
+    from urllib.parse import urlparse
+
     return {
         "llm_provider": cfg.llm_provider,
+        # The preset id serving the model, or None for a provider outside the
+        # presets (then `llm_base_host` says where it runs).
+        "llm_provider_preset": _provider_preset(cfg),
+        "llm_base_host": urlparse(cfg.llm_base_url or "").netloc or None,
         "llm_model": cfg.llm_model,
         "embedding_model": cfg.embedding_model,
         "embedding_dim": cfg.embedding_dim,
     }
+
+
+@app.get("/settings")
+def get_settings_endpoint() -> dict[str, Any]:
+    """Return the current effective model/embedding config. Unauthenticated."""
+    return _settings_body(_get_config_with_overrides())
 
 
 @router.get("/settings/providers")
@@ -245,12 +279,7 @@ def patch_settings(body: SettingsPatch) -> dict[str, Any]:
             _runtime_overrides["embedding_dim"] = dim
         # Reset TG client so vocabulary cache isn't stale after a rebuild.
         _tg_client = None
-    return {
-        "llm_provider": _get_config_with_overrides().llm_provider,
-        "llm_model": _get_config_with_overrides().llm_model,
-        "embedding_model": _get_config_with_overrides().embedding_model,
-        "embedding_dim": _get_config_with_overrides().embedding_dim,
-    }
+    return _settings_body(_get_config_with_overrides())
 
 
 async def _timed_check(name: str, timeout_s: float, check, *args) -> dict[str, Any]:
@@ -437,22 +466,59 @@ async def get_corpora() -> dict[str, Any]:
     registry = _registry().summary()
     corpora = []
     for path in sorted(CORPUS_DIR.glob("*.jsonl")) if CORPUS_DIR.exists() else []:
-        with path.open(encoding="utf-8") as handle:
-            documents = sum(1 for line in handle if line.strip())
+        # `title` is the name shown for the dataset; `name` stays its id.
+        described = await asyncio.to_thread(dataset_meta.describe, path)
         corpora.append({
             "name": path.stem,
             "size_bytes": path.stat().st_size,
-            "documents": documents,
             "built": registry["datasets"].get(path.stem),
+            **described,
         })
     return {"corpora": corpora, "graph": registry}
 
 
-@router.post("/corpora/{name}", status_code=201)
-async def upload_corpus(name: str, request: Request, overwrite: bool = False) -> dict[str, Any]:
-    """Add a dataset: the request body is the JSONL itself, one document per
-    line with at least `doc_id` and `text` (`title`, `url` optional)."""
+class CorpusPatch(BaseModel):
+    # An empty title clears the given one: the inferred name shows again.
+    title: str | None = None
+    description: str | None = None
+
+
+@router.patch("/corpora/{name}")
+async def patch_corpus(name: str, body: CorpusPatch) -> dict[str, Any]:
+    """Rename a dataset (its display title); its id and file stay as they are."""
     path = _corpus_file(name)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail=f"Unknown dataset {name!r}")
+    meta = dataset_meta.read_meta(path)
+    if body.title is not None:
+        meta["title"] = dataset_meta.clean_title(body.title)
+    if body.description is not None:
+        meta["description"] = dataset_meta.clean_title(body.description)
+    dataset_meta.write_meta(path, replace=True, **meta)
+    return {"name": name, **await asyncio.to_thread(dataset_meta.describe, path)}
+
+
+@router.post("/corpora/{name}", status_code=201)
+async def upload_corpus(
+    name: str,
+    request: Request,
+    overwrite: bool = False,
+    unique: bool = False,
+    title: str | None = None,
+    source_file: str | None = None,
+) -> dict[str, Any]:
+    """Add a dataset: the request body is the JSONL itself, one document per
+    line with at least `doc_id` and `text` (`title`, `url` optional). `title`
+    names the dataset; without it a name is inferred from the documents.
+    With `unique`, a taken id gets a suffix (`corpus-2`) instead of a 409 —
+    uploads that share a file name then sit side by side."""
+    path = _corpus_file(name)
+    if path.exists() and unique and not overwrite:
+        stem = name[:60]
+        suffix = 2
+        while (path := _corpus_file(f"{stem}-{suffix}")).exists():
+            suffix += 1
+        name = path.stem
     if path.exists() and not overwrite:
         raise HTTPException(status_code=409, detail=f"Dataset {name!r} already exists")
     body = await request.body()
@@ -474,7 +540,16 @@ async def upload_corpus(name: str, request: Request, overwrite: bool = False) ->
         raise HTTPException(status_code=400, detail="No documents in the file")
     CORPUS_DIR.mkdir(parents=True, exist_ok=True)
     path.write_bytes(body)
-    return {"name": name, "documents": documents, "size_bytes": len(body)}
+    if overwrite:
+        dataset_meta.meta_path(path).unlink(missing_ok=True)
+    dataset_meta.write_meta(
+        path,
+        title=dataset_meta.clean_title(title),
+        source_file=dataset_meta.clean_title(source_file),
+        uploaded_at=datetime.now(UTC).isoformat(timespec="seconds"),
+    )
+    described = await asyncio.to_thread(dataset_meta.describe, path)
+    return {"name": name, "size_bytes": len(body), **described, "documents": documents}
 
 
 class BuildRequest(BaseModel):

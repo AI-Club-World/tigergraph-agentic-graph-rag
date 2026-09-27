@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { BuildView } from './BuildView'
 import type { BuildEvent, PipelineId } from './types'
 import * as buildService from './services/buildService'
+import { datasetLabel } from './services/datasetService'
 
 vi.mock('./services/buildService')
 
@@ -139,7 +140,7 @@ describe('BuildView dataset confirmation', () => {
     expect(screen.getByRole('alertdialog')).toHaveTextContent('already built')
 
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Rebuild corpus' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Rebuild Wikipedia · Olympics · 1900–2022' }))
     })
     expect(mocked.startBuild).toHaveBeenLastCalledWith('corpus', { rebuild: true })
     expect(screen.queryByRole('alertdialog')).toBeNull()
@@ -152,5 +153,31 @@ describe('BuildView dataset confirmation', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
     expect(screen.queryByRole('alertdialog')).toBeNull()
     expect(mocked.startBuild).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('BuildView dataset names', () => {
+  it('shows the dataset by its name, not its file', async () => {
+    render(<BuildView />)
+    const option = await screen.findByRole('option', { name: /^Wikipedia · Olympics · 1900–2022 — 2,951 docs/ })
+    expect((option as HTMLOptionElement).value).toBe('corpus')
+    expect(screen.getByRole('button', { name: 'Rename' })).toBeInTheDocument()
+  })
+
+  it('asks for a name before uploading', async () => {
+    const { container } = render(<BuildView />)
+    const input = container.querySelector('input[type=file]') as HTMLInputElement
+    fireEvent.change(input, { target: { files: [new File(['{}'], 'corpus.jsonl')] } })
+    const form = screen.getByRole('form', { name: 'Name the new dataset' })
+    expect(form).toHaveTextContent('corpus.jsonl')
+    expect(within(form).getByPlaceholderText('Leave empty to infer a name from its documents')).toBeInTheDocument()
+  })
+
+  it('tells apart datasets that share a name', () => {
+    const all = [{ name: 'corpus', title: 'Olympics' }, { name: 'corpus-2', title: 'Olympics' }, { name: 'films', title: 'Films' }]
+    expect(datasetLabel(all[0], all)).toBe('Olympics (corpus)')
+    expect(datasetLabel(all[1], all)).toBe('Olympics (corpus-2)')
+    expect(datasetLabel(all[2], all)).toBe('Films')
+    expect(datasetLabel({ name: 'legacy' }, all)).toBe('legacy')
   })
 })

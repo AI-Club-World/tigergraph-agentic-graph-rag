@@ -138,3 +138,22 @@ def test_unreachable_catalog_shows_all_with_a_note(monkeypatch):
     config = RunConfig(nvidia_free_catalog_url="https://catalog.example/search", nvidia_free_catalog_query="")
     models, note = llm_module.nvidia_free_endpoints(["a/b"], config)
     assert models == ["a/b"] and "Free Endpoint filter unavailable" in note
+
+
+@pytest.mark.parametrize(
+    ("provider", "base_url", "preset"),
+    [
+        ("openai_compatible", "https://integrate.api.nvidia.com/v1", "nvidia_nim"),
+        ("openai", "https://api.groq.com/openai/v1", "groq"),
+        ("openai_compatible", "https://generativelanguage.googleapis.com/v1beta/openai/", "gemini"),
+        ("google", None, "gemini"),
+        ("groq", "https://api.groq.com/openai/v1", "groq"),
+        ("openai_compatible", "http://localhost:11434/v1", None),
+    ],
+)
+def test_settings_name_the_preset_serving_the_startup_model(client, provider, base_url, preset):
+    api_main._runtime_overrides.update(llm_provider=provider, llm_base_url=base_url)
+    body = client.get("/settings").json()
+    assert body["llm_provider"] == provider and body["llm_provider_preset"] == preset
+    if base_url and preset is None:
+        assert body["llm_base_host"] == "localhost:11434"

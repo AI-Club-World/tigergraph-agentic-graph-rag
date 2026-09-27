@@ -23,3 +23,13 @@ before you design anything.
 Corpus text is derived from English Wikipedia and is licensed
 [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). Each document
 carries its source URL.
+
+## Dataset names
+
+A dataset's id is its file stem (`corpus/<id>.jsonl`); the name the UI shows
+is resolved, first match wins: a title typed on upload or rename (stored in
+`corpus/<id>.meta.json`), a `dataset` / `collection` / `corpus` field most
+records carry, a name inferred from the documents (URL source, the term most
+titles share, the years they span — e.g. *Wikipedia · Olympics · 1900–2022*),
+then the file stem. Uploads that share a file name get distinct ids
+(`corpus-2`, …).
