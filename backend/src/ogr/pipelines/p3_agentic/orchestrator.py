@@ -110,7 +110,14 @@ def build_p3_graph(
     """
     from langgraph.graph import END, StateGraph
 
-    from ogr.common.contracts import Citation, PipelineRecord, TokenUsage, format_evidence_context
+    from ogr.common.contracts import (
+        SNIPPET_CHARS,
+        Citation,
+        PipelineRecord,
+        TokenUsage,
+        format_evidence_context,
+        format_evidence_item,
+    )
     from ogr.common.llm import (
         LLMRateLimitError,
         invoke_llm_with_answer_contract,
@@ -570,6 +577,7 @@ def build_p3_graph(
                     source_id=doc_id,
                     chunk_id=chunk_id,
                     ref_type="chunk" if chunk_id else "entity",
+                    snippet=format_evidence_item(e)[:SNIPPET_CHARS] or None,
                 ))
 
         # Derive strategy_changed — never set imperatively. The route-vs-path

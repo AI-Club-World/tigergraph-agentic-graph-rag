@@ -180,3 +180,34 @@ def test_embedding_remote_false_keeps_cloudflare_for_nothing_but_rerank(monkeypa
     local = _Local(1024)
     monkeypatch.setattr(embeddings_module, "get_embedding_model", lambda *_a, **_k: local)
     assert embed_query("q", model_name="bge-large-en-v1.5")[0] == 1.0
+
+
+def test_a_configured_embedding_host_is_tried_first(monkeypatch):
+    monkeypatch.setenv("EMBEDDING_HOST_URL", "https://embed.example")
+    sent = {}
+
+    class _Resp:
+        def __init__(self, body):
+            self.body = body
+
+        def read(self):
+            return self.body
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+    def fake_urlopen(request, timeout=0):
+        import json as _json
+
+        sent.update(url=request.full_url, body=_json.loads(request.data))
+        return _Resp(_json.dumps({"embeddings": [[1.0] + [0.0] * 1023]}).encode())
+
+    monkeypatch.setattr(embeddings_module.urllib.request, "urlopen", fake_urlopen)
+    assert embed_query("who won", model_name="bge-large-en-v1.5")[0] == 1.0
+    assert sent["url"] == "https://embed.example/embed"
+    assert sent["body"]["model"] == "bge-large-en-v1.5"
+    assert sent["body"]["texts"][0].startswith("Represent this sentence")  # the model's own prompt
+    assert embedding_backend("bge-large-en-v1.5") == "embedding_host"

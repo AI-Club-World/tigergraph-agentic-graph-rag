@@ -8,6 +8,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+SNIPPET_CHARS = 600
+
 
 class Citation(BaseModel):
     """Citation schema per TECHNICAL-SPEC §6.2.
@@ -17,6 +19,9 @@ class Citation(BaseModel):
     source_id: str
     chunk_id: str | None = None
     ref_type: Literal["chunk", "entity", "relationship"] = "chunk"
+    # The evidence text the model was shown for this citation (truncated),
+    # so a reader — and the grounding score — can check the answer against it.
+    snippet: str | None = None
 
 
 class TokenUsage(BaseModel):
@@ -96,6 +101,9 @@ class PipelineScores(BaseModel):
     precision: float = 0.0
     recall: float = 0.0
     completeness: float = 0.0
+    # Share of the answer's names/numbers found in the evidence it cites
+    # (the citation snippets) — supported by what it cites, not by memory.
+    grounded: float = 0.0
 
 
 class BatchRecord(BaseModel):

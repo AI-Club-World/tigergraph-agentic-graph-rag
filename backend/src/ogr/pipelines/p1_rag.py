@@ -16,7 +16,7 @@ import time
 from typing import Any
 
 from ogr.common.config import RunConfig, get_default_config
-from ogr.common.contracts import Citation, PipelineRecord, TokenUsage
+from ogr.common.contracts import SNIPPET_CHARS, Citation, PipelineRecord, TokenUsage
 from ogr.common.embeddings import embed_query
 from ogr.common.llm import LLMRateLimitError, get_chat_model, invoke_llm_with_answer_contract
 from ogr.graph.client import TigerGraphClient
@@ -110,6 +110,7 @@ def run_p1_rag(
                 source_id=doc_id,
                 chunk_id=chunk_id,
                 ref_type="chunk",
+                snippet=(chunk.get("text") or "")[:SNIPPET_CHARS] or None,
             )
         )
     citations_count = len(citations)

@@ -29,7 +29,14 @@ import time
 from typing import Any
 
 from ogr.common.config import RunConfig, get_default_config
-from ogr.common.contracts import Citation, PipelineRecord, TokenUsage, format_evidence_context
+from ogr.common.contracts import (
+    SNIPPET_CHARS,
+    Citation,
+    PipelineRecord,
+    TokenUsage,
+    format_evidence_context,
+    format_evidence_item,
+)
 from ogr.common.llm import (
     LLMRateLimitError,
     get_chat_model,
@@ -99,6 +106,7 @@ def _citations_from(evidence: list[dict[str, Any]]) -> list[Citation]:
                 source_id=source_id,
                 chunk_id=chunk_id,
                 ref_type="chunk" if chunk_id else "entity",
+                snippet=format_evidence_item(item)[:SNIPPET_CHARS] or None,
             )
         )
     return citations

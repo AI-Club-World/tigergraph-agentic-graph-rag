@@ -94,14 +94,28 @@ def _embed_cloudflare(
     return _post_json(url, {"text": texts, **(options or {})}, token)["result"]["data"]
 
 
+def _embed_host(texts: list[str], url: str, model_key: str) -> list[list[float]]:
+    """A self-hosted service running the catalog model itself (same weights,
+    so the same space); texts arrive with the model's prompts applied."""
+    request = urllib.request.Request(
+        f"{url.rstrip('/')}/embed",
+        data=json.dumps({"model": model_key, "texts": texts}).encode("utf-8"),
+        headers={"Content-Type": "application/json", "User-Agent": "ogr/0.1"},
+    )
+    with urllib.request.urlopen(request, timeout=120) as response:
+        return json.loads(response.read())["embeddings"]
+
+
 def _remote_tiers(model: EmbeddingModel) -> list[tuple[str, object]]:
     """(name, embed_fn) for each remote host that serves `model` and is configured."""
     from ogr.common.config import get_default_config
 
     cfg = get_default_config()
     tiers: list[tuple[str, object]] = []
+    if cfg.embedding_remote and cfg.embedding_host_url:
+        tiers.append(("embedding_host", lambda batch: _embed_host(batch, cfg.embedding_host_url, model.key)))
     cloudflare_ready = cfg.cloudflare_account_id and cfg.cloudflare_api_token
-    if cfg.embedding_remote and model.cloudflare_id and cloudflare_ready:
+    if cfg.embedding_remote and cfg.embedding_cloudflare and model.cloudflare_id and cloudflare_ready:
         tiers.append((
             "cloudflare",
             lambda batch: _embed_cloudflare(

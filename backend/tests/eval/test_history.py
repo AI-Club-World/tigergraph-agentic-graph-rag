@@ -56,9 +56,11 @@ class TestViewRecord:
     def test_no_ground_truth_means_null_scores(self):
         assert view_record(_record("h-1", [], rag="x", agentic="y"))["scores"] is None
 
-    def test_existing_scores_are_kept_not_recomputed(self):
-        record = {**_record("pub-1", ["26"], rag="12", agentic="26"), "scores": {"rag": {"em": 0.5}}}
-        assert view_record(record)["scores"] == {"rag": {"em": 0.5}}
+    def test_stored_scores_are_recomputed_not_trusted(self):
+        """An imported record cannot bring its own scores (e.g. EM 1.0 on a wrong answer)."""
+        record = {**_record("pub-1", ["26"], rag="12", agentic="26"), "scores": {"rag": {"em": 1.0}}}
+        scores = view_record(record)["scores"]
+        assert scores["rag"]["em"] == 0.0 and scores["agentic_graphrag"]["em"] == 1.0
 
 
 class TestSummarizeRun:

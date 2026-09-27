@@ -31,6 +31,7 @@ __all__ = [
     "exact_match",
     "token_f1",
     "retrieval_metrics",
+    "grounding",
     "score_answer",
     "score_record",
     "aggregate",
@@ -114,11 +115,25 @@ def retrieval_metrics(
     return precision, recall, f1
 
 
+def grounding(prediction: str, evidence_texts: Iterable[str]) -> float:
+    """Share of the answer's names (or its count) that occur in the evidence
+    the answer cites. Deterministic, needs no gold answer — it measures
+    support, not correctness: 1.0 = everything claimed is in the citations.
+    An empty answer, or one with no cited evidence, scores 0."""
+    names = normalized_name_set(prediction)
+    evidence = f" {normalize_answer(' '.join(t for t in evidence_texts if t))} "
+    if not names or not evidence.strip():
+        return 0.0
+    found = sum(1 for name in names if f" {name} " in evidence)
+    return found / len(names)
+
+
 def score_answer(
     prediction: str,
     gold_variants: Sequence[str],
     retrieved_doc_ids: Iterable[str] = (),
     gold_doc_ids: Iterable[str] = (),
+    evidence_texts: Iterable[str] = (),
 ) -> PipelineScores:
     """Score one answer plus its retrieved document set."""
     precision, recall, _ = retrieval_metrics(retrieved_doc_ids, gold_doc_ids)
@@ -130,6 +145,7 @@ def score_answer(
         # Completeness IS recall — reported under both names because the
         # guidebook asks for the column (DP-2 Option A).
         completeness=recall,
+        grounded=grounding(prediction, evidence_texts),
     )
 
 
@@ -139,12 +155,13 @@ def score_record(
     gold_doc_ids: Iterable[str] = (),
 ) -> PipelineScores:
     """Score a PipelineRecord: EM/F1 on `answer`, retrieval on citation source_ids."""
-    retrieved = [citation.source_id for citation in getattr(record, "citations", [])]
+    citations = getattr(record, "citations", [])
     return score_answer(
         prediction=getattr(record, "answer", "") or "",
         gold_variants=gold_variants,
-        retrieved_doc_ids=retrieved,
+        retrieved_doc_ids=[citation.source_id for citation in citations],
         gold_doc_ids=gold_doc_ids,
+        evidence_texts=[citation.snippet or "" for citation in citations],
     )
 
 
@@ -159,6 +176,7 @@ def aggregate(scores: Sequence[PipelineScores]) -> PipelineScores:
         precision=sum(s.precision for s in scores) / count,
         recall=sum(s.recall for s in scores) / count,
         completeness=sum(s.completeness for s in scores) / count,
+        grounded=sum(s.grounded for s in scores) / count,
     )
 
 

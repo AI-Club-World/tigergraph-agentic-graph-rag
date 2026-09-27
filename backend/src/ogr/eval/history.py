@@ -18,7 +18,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from ogr.eval.scorer import score_answer
+from ogr.eval.scorer import grounding, score_answer
 from ogr.eval.store import BatchStore, _assert_no_secret, iter_lines
 
 __all__ = ["RUN_ID_RE", "import_run", "is_run_id", "list_runs", "read_run", "summarize_run", "view_record"]
@@ -78,8 +78,19 @@ def _score(record: dict[str, Any]) -> dict[str, Any] | None:
             gold_variants=gold,
             retrieved_doc_ids=[c.get("source_id", "") for c in pipeline.get("citations") or []],
             gold_doc_ids=record.get("gold_doc_ids") or [],
+            evidence_texts=[c.get("snippet") or "" for c in pipeline.get("citations") or []],
         ).model_dump()
         for name, pipeline in record["record"]["pipelines"].items()
+    }
+
+
+def _grounding(record: dict[str, Any]) -> dict[str, float]:
+    """Grounding per pipeline — needs no gold, so it covers the hidden set."""
+    return {
+        name: grounding(
+            pipeline.get("answer") or "", [c.get("snippet") or "" for c in pipeline.get("citations") or []]
+        )
+        for name, pipeline in (record.get("record") or {}).get("pipelines", {}).items()
     }
 
 
@@ -89,8 +100,10 @@ def view_record(record: dict[str, Any]) -> dict[str, Any]:
     view = dict(record)
     view.setdefault("qid", record.get("question_id", ""))
     view.setdefault("question", record.get("question_text", ""))
-    if "scores" not in view:
-        view["scores"] = _score(record)
+    # Always computed here, never taken from the file: an imported run
+    # cannot bring its own scores.
+    view["scores"] = _score(record)
+    view["grounding"] = _grounding(record)
     return view
 
 
@@ -128,6 +141,10 @@ def summarize_run(
             "mean_input_tokens": _mean([r["tokens"].get("input", 0) for r in answered]),
             "mean_output_tokens": _mean([r["tokens"].get("output", 0) for r in answered]),
             "completeness": _mean([s.get("completeness", s["recall"]) for s in scores]),
+            "grounded": _mean([
+                v["grounding"][name] for v in views
+                if name in v["grounding"] and v["record"]["pipelines"][name].get("status") != "error"
+            ]),
             "errors": sum(1 for r in runs if r.get("status") == "error"),
             # Accuracy bought per 1k tokens — the cost axis of the thesis.
             "f1_per_1k_tokens": f1 / (mean_tokens / 1000) if f1 is not None and mean_tokens else None,

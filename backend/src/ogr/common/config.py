@@ -153,6 +153,13 @@ class RunConfig(BaseModel):
     embedding_remote: bool = Field(
         default_factory=lambda: _env("EMBEDDING_REMOTE", "true").lower() != "false"
     )
+    # A self-hosted embedding service (POST {url}/embed {"model", "texts"} ->
+    # {"embeddings"}) serving the same catalog models; tried first when set.
+    embedding_host_url: str = Field(default_factory=lambda: _env("EMBEDDING_HOST_URL", ""))
+    # false: never embed through Cloudflare (it still serves the reranker).
+    embedding_cloudflare: bool = Field(
+        default_factory=lambda: _env("EMBEDDING_CLOUDFLARE", "true").lower() != "false"
+    )
     cloudflare_account_id: str = Field(default_factory=lambda: _env("CLOUDFLARE_ACCOUNT_ID", ""))
     cloudflare_api_token: str = Field(default_factory=lambda: _env("CLOUDFLARE_API_TOKEN", ""))
 
