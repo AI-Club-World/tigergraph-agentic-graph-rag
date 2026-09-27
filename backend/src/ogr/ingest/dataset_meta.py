@@ -169,12 +169,16 @@ def _topic(titles: list[str]) -> str | None:
         counts.update(grams)
     if not counts:
         return None
-    best, best_count = counts.most_common(1)[0]
+    # Ties (common in a small dataset) go to the longer phrase, then the
+    # alphabetically first — never to set iteration order, which varies with
+    # the process's string hash seed.
+    best = min(counts, key=lambda g: (-counts[g], -len(g.split()), g))
+    best_count = counts[best]
     if best_count < MIN_TOPIC_SHARE * len(titles):
         return None
     # A longer phrase built on the best term wins when it covers nearly as much.
     longer = [g for g, c in counts.items() if best in g and g != best and c >= 0.9 * best_count]
-    return max(longer, key=lambda g: (counts[g], len(g))) if longer else best
+    return min(longer, key=lambda g: (-counts[g], -len(g), g)) if longer else best
 
 
 def _years(titles: list[str]) -> str | None:

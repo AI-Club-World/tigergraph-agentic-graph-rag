@@ -47,3 +47,19 @@ def test_a_changed_file_is_scanned_again(tmp_path):
     assert dataset_meta.describe(corpus)["documents"] == 1
     _write(corpus, [{"doc_id": "1", "text": "t"}, {"doc_id": "2", "text": "more"}])
     assert dataset_meta.describe(corpus)["documents"] == 2
+
+
+def test_tied_terms_pick_the_same_name_in_every_process():
+    import subprocess
+    import sys
+
+    code = (
+        "from collections import Counter; from ogr.ingest.dataset_meta import infer_title;"
+        "print(infer_title(['Sailing at the 2016 Summer Olympics'], Counter(), 1))"
+    )
+    names = {
+        subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True,
+                       env={**__import__("os").environ, "PYTHONHASHSEED": str(seed)}).stdout.strip()
+        for seed in range(6)
+    }
+    assert names == {"Summer Olympics · 2016"}
