@@ -164,6 +164,25 @@ describe('Dashboard without ground truth', () => {
     expect(cells.slice(0, 3)).toEqual(['1', '1', '900'])
   })
 
+  it('shows grounding on a run without ground truth, ignoring errored answers', async () => {
+    const a = record('h1', 'lookup', { rag: 0, agentic: 0 }, { rag: 100, agentic: 900 }, false)
+    a.grounding = { rag: 0.5, agentic_graphrag: 1 }
+    const b = record('h2', 'lookup', { rag: 0, agentic: 0 }, { rag: 100, agentic: 0 }, false)
+    b.grounding = { rag: 0, agentic_graphrag: 0 }
+    b.record.pipelines.agentic_graphrag = {
+      ...b.record.pipelines.agentic_graphrag, status: 'error', error_detail: 'timeout',
+    }
+    mocked.getBatchRecords.mockResolvedValue([a, b])
+    renderDashboard()
+    const lastCell = async (name: string) => {
+      const header = await screen.findByRole('rowheader', { name })
+      return within(header.closest('tr') as HTMLElement).getAllByRole('cell').at(-1)?.textContent
+    }
+    expect(await lastCell('Agentic GraphRAG')).toBe('1.00')
+    expect(await lastCell('RAG')).toBe('0.25')
+    expect(await lastCell('GraphRAG')).toBe('—')
+  })
+
   it('survives a record missing a pipeline (an imported run)', async () => {
     const partial = record('p1', 'lookup', { rag: 1, agentic: 1 }, { rag: 100, agentic: 200 })
     delete (partial.record.pipelines as Partial<typeof partial.record.pipelines>).graphrag

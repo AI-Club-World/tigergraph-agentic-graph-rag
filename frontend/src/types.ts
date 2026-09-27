@@ -48,6 +48,8 @@ export interface Citation {
   /** Displayed only, never scored. */
   chunk_id: string | null
   ref_type: 'chunk' | 'entity' | 'relationship'
+  /** The cited evidence text (truncated); what the grounding score checks against. */
+  snippet?: string | null
 }
 
 export interface TraceStep {
@@ -109,6 +111,8 @@ export interface PipelineScores {
   precision: number
   recall: number
   completeness: number
+  /** Share of the answer's names found in its cited evidence (0 when nothing cited). */
+  grounded?: number
 }
 
 export interface BatchRecord {
@@ -121,6 +125,8 @@ export interface BatchRecord {
   gold_doc_ids: string[]
   record: QueryLevelRecord
   scores: Record<PipelineId, PipelineScores> | null
+  /** Grounding per pipeline, computed for every run (needs no ground truth). */
+  grounding?: Partial<Record<PipelineId, number>>
 }
 
 export interface BuildEvent {

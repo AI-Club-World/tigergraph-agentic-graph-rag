@@ -73,6 +73,14 @@ export function Dashboard() {
         meanOutput: mean(answered.map((pr) => pr.tokens.output)),
         meanLatency: mean(answered.map((pr) => pr.latency_ms)),
         meanCitations: mean(answered.map((pr) => pr.citations_count)),
+        grounded: (() => {
+          const values = (records ?? []).flatMap((r) => {
+            const pr = recordOf(r, pipeline)
+            const g = r.grounding?.[pipeline]
+            return pr && pr.status !== 'error' && typeof g === 'number' ? [g] : []
+          })
+          return values.length ? mean(values) : null
+        })(),
       }
     })
   }, [records])
@@ -320,6 +328,7 @@ export function Dashboard() {
                   <th>Mean output</th>
                   <th>Mean latency</th>
                   <th>Mean citations</th>
+                  <th title="Share of the answer's names found in the evidence it cites">Grounded</th>
                 </tr>
               </thead>
               <tbody>
@@ -336,11 +345,15 @@ export function Dashboard() {
                     <td>{num(Math.round(row.meanOutput))}</td>
                     <td>{`${(row.meanLatency / 1000).toFixed(1)} s`}</td>
                     <td>{dec(row.meanCitations)}</td>
+                    <td>{row.grounded === null ? '—' : dec(row.grounded)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
-            <p className="muted small">Over answered questions; errored answers are counted, not averaged in.</p>
+            <p className="muted small">
+              Over answered questions; errored answers are counted, not averaged in. Grounded checks the answer
+              against the text of its own citations — it needs no ground truth.
+            </p>
           </section>
 
           {agentUsage.length > 0 && (
