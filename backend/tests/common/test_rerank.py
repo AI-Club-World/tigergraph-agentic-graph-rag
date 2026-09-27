@@ -19,6 +19,22 @@ pytestmark = pytest.mark.usefixtures("fake_embedder")
 CHUNKS = [{"chunk_id": "c0", "text": "zero"}, {"chunk_id": "c1", "text": "one"}, {"chunk_id": "c2", "text": "two"}]
 
 
+class _LocalCE:
+    """Stand-in for the local bge-reranker-base with fixed relevance scores."""
+
+    SCORES = {"zero": 0.1, "one": 0.5, "two": 0.9}
+
+    def predict(self, pairs):
+        return [self.SCORES[text] for _q, text in pairs]
+
+
+@pytest.fixture(autouse=True)
+def no_local_model(monkeypatch):
+    """By default the local reranker is unavailable (as offline in CI)."""
+    monkeypatch.setattr(rerank_module, "_local_model", None)
+    monkeypatch.setattr(rerank_module, "_local_failed", True)
+
+
 def _creds(monkeypatch, on=True):
     monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "acct" if on else "")
     monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "tok" if on else "")
@@ -46,6 +62,22 @@ def test_api_failure_keeps_retrieval_order(monkeypatch):
 
     monkeypatch.setattr(rerank_module, "_post_json", fail)
     assert rerank("q", CHUNKS) == CHUNKS
+
+
+def test_cloudflare_failure_falls_back_to_the_same_model_locally(monkeypatch):
+    _creds(monkeypatch)
+    monkeypatch.setattr(rerank_module, "_post_json", MagicMock(side_effect=OSError("429")))
+    monkeypatch.setattr(rerank_module, "_local_model", _LocalCE())
+    monkeypatch.setattr(rerank_module, "_local_failed", False)
+    assert [c["chunk_id"] for c in rerank("q", CHUNKS)] == ["c2", "c1", "c0"]
+
+
+def test_no_credentials_uses_the_local_model(monkeypatch):
+    _creds(monkeypatch, on=False)
+    monkeypatch.setattr(rerank_module, "_post_json", MagicMock(side_effect=AssertionError("called")))
+    monkeypatch.setattr(rerank_module, "_local_model", _LocalCE())
+    monkeypatch.setattr(rerank_module, "_local_failed", False)
+    assert rerank("q", CHUNKS)[0]["chunk_id"] == "c2"
 
 
 def test_no_credentials_makes_no_call(monkeypatch):

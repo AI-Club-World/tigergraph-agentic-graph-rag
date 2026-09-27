@@ -100,7 +100,8 @@ def _remote_tiers(model: EmbeddingModel) -> list[tuple[str, object]]:
 
     cfg = get_default_config()
     tiers: list[tuple[str, object]] = []
-    if model.cloudflare_id and cfg.cloudflare_account_id and cfg.cloudflare_api_token:
+    cloudflare_ready = cfg.cloudflare_account_id and cfg.cloudflare_api_token
+    if cfg.embedding_remote and model.cloudflare_id and cloudflare_ready:
         tiers.append((
             "cloudflare",
             lambda batch: _embed_cloudflare(

@@ -148,6 +148,11 @@ class RunConfig(BaseModel):
     # they are empty.
     embedding_model: str = Field(default_factory=lambda: _embedding_key(_env("EMBEDDING_MODEL")))
     embedding_dim: int = Field(default_factory=lambda: _embedding_dim(_env("EMBEDDING_MODEL")))
+    # false: embed with the local model only (Cloudflare still serves the
+    # reranker) — e.g. an index built locally is queried with the same tier.
+    embedding_remote: bool = Field(
+        default_factory=lambda: _env("EMBEDDING_REMOTE", "true").lower() != "false"
+    )
     cloudflare_account_id: str = Field(default_factory=lambda: _env("CLOUDFLARE_ACCOUNT_ID", ""))
     cloudflare_api_token: str = Field(default_factory=lambda: _env("CLOUDFLARE_API_TOKEN", ""))
 

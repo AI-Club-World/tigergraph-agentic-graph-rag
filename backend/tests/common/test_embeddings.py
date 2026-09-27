@@ -170,3 +170,13 @@ class TestProviderChain:
         monkeypatch.setattr(embeddings_module, "_post_json", fake_post)
         assert len(embed_texts(["t"] * 120, model_name="bge-large-en-v1.5")) == 120
         assert sizes == [50, 50, 20]
+
+
+def test_embedding_remote_false_keeps_cloudflare_for_nothing_but_rerank(monkeypatch):
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "acct")
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "tok")
+    monkeypatch.setenv("EMBEDDING_REMOTE", "false")
+    monkeypatch.setattr(embeddings_module, "_post_json", lambda *a, **k: (_ for _ in ()).throw(AssertionError("remote")))
+    local = _Local(1024)
+    monkeypatch.setattr(embeddings_module, "get_embedding_model", lambda *_a, **_k: local)
+    assert embed_query("q", model_name="bge-large-en-v1.5")[0] == 1.0
