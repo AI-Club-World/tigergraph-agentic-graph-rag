@@ -25,6 +25,7 @@ import json
 import logging
 import os
 import threading
+import time
 import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -63,9 +64,12 @@ class EmbeddingStore:
     # ── persistence ────────────────────────────────────────────────────────
 
     def read(self) -> dict[str, Any]:
-        if not self.path.exists():
-            return {"active": None, "models": {}, "job": None}
-        data = json.loads(self.path.read_text(encoding="utf-8"))
+        # Under the lock: on Windows os.replace fails while another thread
+        # has the file open, so reads and writes must not overlap.
+        with _LOCK:
+            if not self.path.exists():
+                return {"active": None, "models": {}, "job": None}
+            data = json.loads(self.path.read_text(encoding="utf-8"))
         data.setdefault("models", {})
         data.setdefault("job", None)
         data.setdefault("active", None)
@@ -75,7 +79,14 @@ class EmbeddingStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.path.with_suffix(".tmp")
         tmp.write_text(json.dumps(data), encoding="utf-8")
-        os.replace(tmp, self.path)
+        for attempt in range(5):
+            try:
+                os.replace(tmp, self.path)
+                return
+            except PermissionError:  # a reader in another process (Windows)
+                if attempt == 4:
+                    raise
+                time.sleep(0.05 * (attempt + 1))
 
     def _mutate(self, change: Callable[[dict[str, Any]], None]) -> dict[str, Any]:
         with _LOCK:
@@ -97,9 +108,16 @@ class EmbeddingStore:
         """The graph was recreated empty: no model has embeddings any more."""
         self._mutate(lambda d: d.update(active=active, models={}, job=None))
 
-    def add_covered(self, key: str, chunk_ids: list[str], backend: str | None = None) -> None:
+    def add_covered(
+        self, key: str, chunk_ids: list[str], backend: str | None = None, indexing: bool | None = None
+    ) -> None:
+        """`indexing=True`: written, but the vector index is not confirmed
+        queryable yet (a build between its load and its index wait)."""
+
         def change(d: dict[str, Any]) -> None:
             entry = d["models"].setdefault(key, {"covered": [], "evicting": False})
+            if indexing is not None:
+                entry["indexing"] = indexing
             entry["covered"] = sorted(set(entry["covered"]) | set(chunk_ids))
             entry["updated_at"] = _now()
             if backend:
@@ -118,7 +136,22 @@ class EmbeddingStore:
         self._mutate(change)
 
     def reserve(self, key: str) -> None:
-        self._mutate(lambda d: d["models"].setdefault(key, {"covered": [], "evicting": False}))
+        """The model's slot for a job. A model that was being evicted may be
+        half deleted: its coverage cannot be trusted and starts again."""
+
+        def change(d: dict[str, Any]) -> None:
+            entry = d["models"].get(key)
+            if entry is None or entry.get("evicting"):
+                d["models"][key] = {"covered": [], "evicting": False}
+
+        self._mutate(change)
+
+    def finish_indexing(self, key: str) -> None:
+        def change(d: dict[str, Any]) -> None:
+            if key in d["models"]:
+                d["models"][key]["indexing"] = False
+
+        self._mutate(change)
 
     def mark_evicting(self, key: str) -> None:
         def change(d: dict[str, Any]) -> None:
@@ -154,9 +187,11 @@ class EmbeddingStore:
     # ── derived views ──────────────────────────────────────────────────────
 
     def stored(self, data: dict[str, Any] | None = None) -> list[str]:
-        """Models holding embeddings in the graph (or a slot reserved for a job)."""
+        """Models holding embeddings in the graph (or a slot reserved for a
+        job). A model being evicted is not counted: its deletion is pending
+        and runs first in the next job."""
         data = data or self.read()
-        return [k for k in EMBEDDING_MODELS if k in data["models"]]
+        return [k for k in EMBEDDING_MODELS if k in data["models"] and not data["models"][k].get("evicting")]
 
     def model_status(self, key: str, corpus: set[str], data: dict[str, Any] | None = None) -> dict[str, Any]:
         data = data or self.read()
@@ -171,6 +206,8 @@ class EmbeddingStore:
             state = "not_stored"
         elif entry.get("evicting"):
             state = "evicting"
+        elif entry.get("indexing"):
+            state = "indexing"
         elif total and done == total:
             state = "complete"
         else:
@@ -296,6 +333,14 @@ class EmbeddingStore:
                 "started_at": _now(),
                 "updated_at": _now(),
             }
+            # An eviction a failed earlier job never finished is carried over:
+            # it runs first here, so its model neither lingers half-deleted
+            # nor keeps counting against the cap (unless it is the target).
+            pending = [
+                k for k in (job.get("delete") or [])
+                if k != key and (data["models"].get(k) or {}).get("evicting")
+            ]
+            new_job["delete"] = list(dict.fromkeys(pending + new_job["delete"]))
             for k in new_job["delete"]:
                 data["models"].setdefault(k, {"covered": []})["evicting"] = True
             data["active"] = active_now
@@ -320,7 +365,7 @@ class EmbeddingStore:
             data = self.read()
             if (data.get("job") or {}).get("status") == "running":
                 raise _job_running()
-            if key not in data["models"]:
+            if key not in data["models"] or data["models"][key].get("evicting"):
                 raise SwitchRefused("not_stored", f"{key} is not stored; switch to it instead.")
             status = self.model_status(key, corpus, data)
             if status["complete"]:
@@ -395,6 +440,7 @@ def run_job(
         # 3. The HNSW index builds asynchronously; not complete until queryable.
         store.update_job(phase="indexing")
         wait_ready()
+        store.finish_indexing(model.key)
         final = store.update_job(status="complete", phase="done")
         if job["mode"] == "parallel":
             store.set_active(model.key)  # the model the user chose, now ready

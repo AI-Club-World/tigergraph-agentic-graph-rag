@@ -128,7 +128,8 @@ class TestProviderChain:
         assert vector[:2] == [0.6, 0.8]
         url, payload, token = calls[0]
         assert url.endswith("/accounts/acct/ai/run/@cf/baai/bge-large-en-v1.5")
-        assert payload == {"text": ["a"]} and token == "cf-token"
+        # CLS pooling, as BGE and the local model use: both tiers share one space.
+        assert payload == {"text": ["a"], "pooling": "cls"} and token == "cf-token"
         assert embedding_backend("bge-large-en-v1.5") == "cloudflare"
 
     def test_models_cloudflare_does_not_host_never_call_it(self, monkeypatch):

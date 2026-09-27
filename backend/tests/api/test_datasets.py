@@ -94,12 +94,30 @@ def test_rebuild_removes_only_ids_no_other_dataset_wrote(tmp_path):
     assert removable["Document"] == ["Q1"] and removable["Chunk"] == ["Q1_c0"]
 
 
-def test_delete_vertices_batches_by_type():
+def test_delete_vertices_falls_back_to_per_id_deletes():
+    from ogr.graph.client import TigerGraphClient
+
     conn = MagicMock()
-    conn.delVerticesById.return_value = 2
-    removed = api_main._delete_vertices(SimpleNamespace(conn=conn), {"Chunk": ["a", "b", "c"]}, batch=2)
-    assert removed == 4
+    conn.runInterpretedQuery.side_effect = RuntimeError("interpreted mode unavailable")
+    conn.delVerticesById.side_effect = lambda vtype, ids: len(ids)
+    client = TigerGraphClient(RunConfig(), conn=conn)
+    client.BULK_BATCH = 2
+    assert api_main._delete_vertices(client, {"Chunk": ["a", "b", "c"]}) == 3
     assert [c.args for c in conn.delVerticesById.call_args_list] == [("Chunk", ["a", "b"]), ("Chunk", ["c"])]
+
+
+def test_delete_vertices_uses_one_bulk_query_per_batch():
+    from ogr.graph.client import TigerGraphClient
+
+    conn = MagicMock()
+    conn.runInterpretedQuery.side_effect = lambda text, params: [{"removed": len(params["ids"])}]
+    client = TigerGraphClient(RunConfig(), conn=conn)
+    assert api_main._delete_vertices(client, {"Chunk": ["a", "b", "c"], "Document": []}) == 3
+    [call] = conn.runInterpretedQuery.call_args_list
+    assert 'to_vertex_set(ids, "Chunk")' in call.args[0] and "DELETE v FROM Start:v" in call.args[0]
+    conn.delVerticesById.assert_not_called()
+    with pytest.raises(ValueError):
+        client.delete_by_ids('Chunk"); DROP GRAPH x; ("', ["a"])
 
 
 def _run_build_stream(client, body):
@@ -122,7 +140,8 @@ def test_second_dataset_keeps_the_first_and_rebuild_replaces_its_own(env, monkey
     conn.delVerticesById.side_effect = lambda vtype, ids: calls.append(("delete", vtype, list(ids))) or len(ids)
     monkeypatch.setattr(api_main, "_get_client", lambda config: SimpleNamespace(
         conn=conn, _ensure_connection=lambda: None, _vocab_cache={},
-        delete_embeddings=lambda model, ids: calls.append(("delete_embeddings", model.vertex_type, list(ids)))))
+        delete_embeddings=lambda model, ids: calls.append(("delete_embeddings", model.vertex_type, list(ids))),
+        delete_by_ids=lambda vtype, ids: calls.append(("delete", vtype, list(ids))) or len(ids)))
     monkeypatch.setattr(schema, "install_schema", lambda client: calls.append(("install_schema",)))
     monkeypatch.setattr(schema, "install_queries", lambda client: calls.append(("install_queries",)))
     monkeypatch.setattr(vector_status, "wait_until_ready", lambda *a, **k: {})

@@ -31,6 +31,7 @@ import os
 import re
 import time
 import uuid
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
@@ -425,6 +426,24 @@ class EmbeddingSwitch(BaseModel):
     evict: str | None = None
 
 
+@contextmanager
+def _job_slot():
+    """Hold the job slot while a job is recorded as running and its task is
+    created: a recovery check in a worker thread in between would otherwise
+    see "running with no task" and mark the brand-new job failed."""
+    _embedding_job["task"] = _Reserved()
+    try:
+        yield
+    except SwitchRefused as e:
+        _embedding_job["task"] = None
+        raise _conflict(e.code, e.message, **e.extra) from e
+    except BaseException:
+        _embedding_job["task"] = None
+        raise
+    if isinstance(_embedding_job["task"], _Reserved):
+        _embedding_job["task"] = None  # an instant switch: no job was started
+
+
 def _start_embedding_job(config: RunConfig) -> None:
     from ogr.common.embeddings import embed_texts, embedding_backend
     from ogr.graph.vector_status import wait_until_ready
@@ -467,14 +486,12 @@ async def post_embedding_switch(
     key = _catalog_model(body.model).key
     if body.evict is not None:
         body.evict = _catalog_model(body.evict).key
-    try:
+    with _job_slot():
         result = _embedding_store().begin_switch(
             key, body.mode, body.evict, _corpus_chunk_ids(), config.embedding_model
         )
-    except SwitchRefused as e:
-        raise _conflict(e.code, e.message, **e.extra) from e
-    if not result["switched"]:
-        _start_embedding_job(config)
+        if not result["switched"]:
+            _start_embedding_job(config)
     return result
 
 
@@ -482,11 +499,9 @@ async def post_embedding_switch(
 async def post_embedding_resume(config: RunConfig = Depends(get_config)) -> dict[str, Any]:
     """Continue a failed job from its last checkpointed batch."""
     _refuse_while_busy()
-    try:
+    with _job_slot():
         job = _embedding_store().begin_resume()
-    except SwitchRefused as e:
-        raise _conflict(e.code, e.message, **e.extra) from e
-    _start_embedding_job(config)
+        _start_embedding_job(config)
     return {"job": job}
 
 
@@ -496,11 +511,9 @@ async def post_embedding_complete(model: str, config: RunConfig = Depends(get_co
     was not the active model)."""
     _refuse_while_busy()
     key = _catalog_model(model).key
-    try:
+    with _job_slot():
         job = _embedding_store().begin_complete(key, _corpus_chunk_ids())
-    except SwitchRefused as e:
-        raise _conflict(e.code, e.message, **e.extra) from e
-    _start_embedding_job(config)
+        _start_embedding_job(config)
     return {"job": job}
 
 
@@ -1124,6 +1137,10 @@ async def _run_build(build_id: str, queue: asyncio.Queue, config: RunConfig, req
             },
             file_bytes=corpus.stat().st_size,
         )
+        # Written now, queryable once the index is ready: if the build fails
+        # after this point, "Complete" in Settings only waits for the index
+        # instead of re-embedding the whole corpus.
+        store.add_covered(model.key, [c.chunk_id for c in chunks], backend, indexing=True)
 
         begin("install_graph_queries", everyone, items_total=5)
         await asyncio.to_thread(install_queries, client)
@@ -1136,8 +1153,8 @@ async def _run_build(build_id: str, queue: asyncio.Queue, config: RunConfig, req
         begin("vector_index", vector_pipelines)
         await asyncio.to_thread(wait_until_ready, config, 600.0, conn=client.conn)
         progress.finish(stage, affected, items_done=1, note="Ready_for_query")
-        # Covered only once queryable: a model is never 'complete' before its index is.
-        store.add_covered(model.key, [c.chunk_id for c in chunks], backend)
+        # Complete only once queryable: a model is never 'complete' before its index is.
+        store.finish_indexing(model.key)
         if not store.active():
             store.set_active(model.key)
         progress.ready(vector_pipelines)
@@ -1165,12 +1182,8 @@ async def _run_build(build_id: str, queue: asyncio.Queue, config: RunConfig, req
 
 
 def _delete_vertices(client: TigerGraphClient, ids_by_type: dict[str, list[str]], batch: int = 500) -> int:
-    """Delete vertices (and so their edges) by id, in batches."""
-    removed = 0
-    for vtype, ids in ids_by_type.items():
-        for start in range(0, len(ids), batch):
-            removed += int(client.conn.delVerticesById(vtype, ids[start:start + batch]) or 0)
-    return removed
+    """Delete vertices (and so their edges) by id, in bulk per type."""
+    return sum(client.delete_by_ids(vtype, ids) for vtype, ids in ids_by_type.items() if ids)
 
 
 @router.get("/build/current")

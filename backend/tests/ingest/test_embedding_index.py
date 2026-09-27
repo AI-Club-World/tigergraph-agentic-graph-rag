@@ -292,3 +292,58 @@ class TestJobs:
         embed = _Embedder()
         assert _run(store, graph, embed)["status"] == "complete"
         assert sum(map(len, embed.batches)) == 2 and store.model_status(QWEN, CORPUS)["complete"]
+
+
+class TestStateMachineHoles:
+    def test_a_failed_eviction_never_leaves_a_model_stuck_evicting(self, store, monkeypatch):
+        """Evict mxbai, the deletion fails; switching to mxbai again must
+        re-embed it (its data may be half deleted) and end complete."""
+        graph = seeded(CHUNKS, {VT[BGE]: CHUNKS, VT[MXBAI]: CHUNKS})
+        _stored(store, BGE, MXBAI)
+        store.set_active(BGE)
+        store.begin_switch(GTE, "parallel", MXBAI, CORPUS, BGE)
+        client = _client(graph)
+        monkeypatch.setattr(client, "delete_embeddings", lambda model, ids=None: (_ for _ in ()).throw(OSError("x")))
+        run_job(store, client, corpus=lambda: CORPUS, embed=_Embedder(), wait_ready=lambda: None)
+        assert store.read()["job"]["status"] == "failed"
+
+        store.begin_switch(MXBAI, "parallel", None, CORPUS, BGE)
+        embed = _Embedder()
+        assert _run(store, graph, embed)["status"] == "complete"
+        assert sum(map(len, embed.batches)) == 7, "half-evicted coverage is not trusted"
+        assert store.model_status(MXBAI, CORPUS)["complete"] and store.active() == MXBAI
+
+    def test_a_pending_eviction_is_carried_into_the_next_job(self, store, monkeypatch):
+        graph = seeded(CHUNKS, {VT[BGE]: CHUNKS, VT[QWEN]: CHUNKS})
+        _stored(store, BGE, QWEN)
+        store.set_active(BGE)
+        store.begin_switch(GTE, "parallel", QWEN, CORPUS, BGE)
+        store.update_job(status="failed", error="deletion failed")
+        assert store.stored() == [BGE], "a model being evicted does not count against the cap"
+        result = store.begin_switch(MXBAI, "parallel", None, CORPUS, BGE)
+        assert result["job"]["delete"] == [QWEN]
+        assert _run(store, graph, _Embedder())["status"] == "complete"
+        assert graph.getVertexCount(VT[QWEN]) == 0 and store.stored() == [MXBAI, BGE]
+
+    def test_written_but_unindexed_embeddings_complete_without_re_embedding(self, store):
+        """A build that failed after its load: 'Complete' only waits for the index."""
+        graph = seeded(CHUNKS, {VT[BGE]: CHUNKS})
+        store.set_active(BGE)
+        store.add_covered(BGE, CHUNKS, indexing=True)
+        assert store.model_status(BGE, CORPUS)["state"] == "indexing"
+        store.begin_complete(BGE, CORPUS)
+        embed = _Embedder()
+        assert _run(store, graph, embed)["status"] == "complete"
+        assert embed.batches == [] and store.model_status(BGE, CORPUS)["complete"]
+
+
+def test_install_schema_fails_when_the_types_are_not_there():
+    from unittest.mock import MagicMock
+
+    from ogr.graph.schema import install_schema
+
+    conn = MagicMock()
+    conn.gsql.return_value = "Encountered error: ..."
+    conn.getVertexTypes.return_value = ["Document"]
+    with pytest.raises(RuntimeError, match="missing vertex types"):
+        install_schema(TigerGraphClient(conn=conn))

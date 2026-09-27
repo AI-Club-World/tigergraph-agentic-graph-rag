@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import threading
 from typing import Any
 
@@ -234,11 +235,58 @@ class TigerGraphClient:
             raise ConnectionError("TigerGraph unreachable — set TG_HOST and credentials")
         return self.conn
 
+    # pyTigerGraph's getVerticesById/delVerticesById send one REST request
+    # per id (~0.4 s each on Savanna: hours for a 16k-chunk corpus). One
+    # interpreted query per batch does the same in a single call; if the
+    # server refuses it, the per-id calls remain the fallback.
+    BULK_BATCH = 200
+
+    def _interpreted(self, body: str, ids: list[str]) -> Any:
+        graph = self.config.tg_graphname
+        text = f"INTERPRET QUERY (SET<STRING> ids) FOR GRAPH {graph} {{\n{body}\n}}"
+        return self._require_conn().runInterpretedQuery(text, {"ids": ids})
+
     def get_chunk_texts(self, chunk_ids: list[str]) -> dict[str, str]:
-        """Canonical chunk text by id — what a re-embed job embeds."""
+        """Canonical chunk text by id — what a re-embed job embeds. Ids not in
+        the graph are simply absent from the result."""
         conn = self._require_conn()
-        vertices = conn.getVerticesById("Chunk", chunk_ids) or []
-        return {v.get("v_id", ""): v.get("attributes", {}).get("text", "") for v in vertices}
+        texts: dict[str, str] = {}
+        for start in range(0, len(chunk_ids), self.BULK_BATCH):
+            batch = chunk_ids[start:start + self.BULK_BATCH]
+            try:
+                raw = self._interpreted('Start = to_vertex_set(ids, "Chunk");\nPRINT Start;', batch)
+                vertices = raw[0]["Start"] if raw else []
+            except Exception as e:  # noqa: BLE001 - fall back to per-id reads
+                logger.debug("Bulk chunk read unavailable (%s); reading per id", e)
+                vertices = []
+                for cid in batch:
+                    try:
+                        vertices += conn.getVerticesById("Chunk", [cid]) or []
+                    except Exception:  # noqa: BLE001 - a missing id is reported by the caller
+                        continue
+            for v in vertices:
+                texts[v.get("v_id", "")] = v.get("attributes", {}).get("text", "")
+        return texts
+
+    def delete_by_ids(self, vertex_type: str, ids: list[str]) -> int:
+        """Delete vertices of one type by id (and so the edges touching them)."""
+        conn = self._require_conn()
+        if not _IDENTIFIER.match(vertex_type):
+            raise ValueError(f"{vertex_type!r} is not a vertex type name")
+        removed = 0
+        for start in range(0, len(ids), self.BULK_BATCH):
+            batch = ids[start:start + self.BULK_BATCH]
+            try:
+                raw = self._interpreted(
+                    f'Start = to_vertex_set(ids, "{vertex_type}");\n'
+                    "DELETE v FROM Start:v;\nPRINT Start.size() AS removed;",
+                    batch,
+                )
+                removed += int((raw or [{}])[0].get("removed", 0))
+            except Exception as e:  # noqa: BLE001 - fall back to per-id deletes
+                logger.debug("Bulk delete unavailable (%s); deleting per id", e)
+                removed += int(conn.delVerticesById(vertex_type, batch) or 0)
+        return removed
 
     def upsert_embeddings(self, model: EmbeddingModel, rows: list[tuple[str, list[float]]]) -> int:
         """Write one model's embeddings for a batch of chunks, with their
@@ -256,7 +304,7 @@ class TigerGraphClient:
         return len(rows)
 
     def delete_embeddings(
-        self, model: EmbeddingModel, chunk_ids: list[str] | None = None, batch: int = 500
+        self, model: EmbeddingModel, chunk_ids: list[str] | None = None
     ) -> int:
         """Delete one model's embedding vertices — all of them, or those of
         `chunk_ids`. Deleting a vertex removes only the edges touching it, so
@@ -267,10 +315,7 @@ class TigerGraphClient:
         conn = self._require_conn()
         if chunk_ids is None:
             return int(conn.delVertices(vertex_type) or 0)
-        removed = 0
-        for start in range(0, len(chunk_ids), batch):
-            removed += int(conn.delVerticesById(vertex_type, chunk_ids[start:start + batch]) or 0)
-        return removed
+        return self.delete_by_ids(vertex_type, chunk_ids)
 
     def count_embeddings(self, model: EmbeddingModel) -> int:
         return int(self._require_conn().getVertexCount(_embedding_type(model)) or 0)
@@ -372,6 +417,9 @@ class TigerGraphClient:
             self._vocab_cache[vtype] = vocab
         return vocab
 
+
+
+_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 def _embedding_type(model: EmbeddingModel) -> str:

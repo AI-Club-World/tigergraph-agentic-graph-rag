@@ -87,9 +87,11 @@ def _post_json(url: str, payload: dict, token: str, timeout_s: float = 60.0) -> 
         return json.loads(response.read())
 
 
-def _embed_cloudflare(texts: list[str], account_id: str, token: str, model_id: str) -> list[list[float]]:
+def _embed_cloudflare(
+    texts: list[str], account_id: str, token: str, model_id: str, options: dict[str, str] | None = None
+) -> list[list[float]]:
     url = f"https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/{model_id}"
-    return _post_json(url, {"text": texts}, token)["result"]["data"]
+    return _post_json(url, {"text": texts, **(options or {})}, token)["result"]["data"]
 
 
 def _remote_tiers(model: EmbeddingModel) -> list[tuple[str, object]]:
@@ -102,7 +104,8 @@ def _remote_tiers(model: EmbeddingModel) -> list[tuple[str, object]]:
         tiers.append((
             "cloudflare",
             lambda batch: _embed_cloudflare(
-                batch, cfg.cloudflare_account_id, cfg.cloudflare_api_token, model.cloudflare_id
+                batch, cfg.cloudflare_account_id, cfg.cloudflare_api_token, model.cloudflare_id,
+                dict(model.cloudflare_options),
             ),
         ))
     return tiers

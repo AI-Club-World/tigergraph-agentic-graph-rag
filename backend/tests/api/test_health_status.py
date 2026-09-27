@@ -53,7 +53,7 @@ def test_tigergraph_check_uses_rest_echo_not_version():
 def test_embedding_ok_when_cloudflare_answers(monkeypatch):
     from ogr.common import embeddings
 
-    monkeypatch.setattr(embeddings, "_embed_cloudflare", lambda texts, a, t, model_id: [[0.1] * 1024])
+    monkeypatch.setattr(embeddings, "_embed_cloudflare", lambda texts, a, t, model_id, options=None: [[0.1] * 1024])
     status, detail = verify.check_embedding(
         RunConfig(cloudflare_account_id="a", cloudflare_api_token="t", embedding_model="bge-large-en-v1.5")
     )

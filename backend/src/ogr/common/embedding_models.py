@@ -38,6 +38,9 @@ class EmbeddingModel:
     doc_prefix: str = ""
     # Workers AI model id, when Cloudflare hosts this exact model.
     cloudflare_id: str | None = None
+    # Extra Workers AI request fields that make its output match the local
+    # model's (same pooling), so both tiers write one embedding space.
+    cloudflare_options: tuple[tuple[str, str], ...] = ()
     trust_remote_code: bool = False
 
     def public(self) -> dict[str, object]:
@@ -92,6 +95,8 @@ EMBEDDING_MODELS: dict[str, EmbeddingModel] = {
             hf_id="BAAI/bge-large-en-v1.5",
             query_prefix=_RETRIEVAL_QUERY,
             cloudflare_id="@cf/baai/bge-large-en-v1.5",
+            # Workers AI defaults to mean pooling; BGE (and sentence-transformers) use CLS.
+            cloudflare_options=(("pooling", "cls"),),
         ),
     )
 }

@@ -99,7 +99,8 @@ def check_embedding(config: RunConfig) -> tuple[str, str]:
         t0 = time.perf_counter()
         try:
             [vector] = embeddings._embed_cloudflare(
-                ["ok"], config.cloudflare_account_id, config.cloudflare_api_token, model.cloudflare_id
+                ["ok"], config.cloudflare_account_id, config.cloudflare_api_token, model.cloudflare_id,
+                dict(model.cloudflare_options),
             )
             ms = (time.perf_counter() - t0) * 1000
             return OK, f"Cloudflare {model.cloudflare_id}, {len(vector)}-dim, {ms:.0f} ms"

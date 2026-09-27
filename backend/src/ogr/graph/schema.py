@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from ogr.common.embedding_models import EMBEDDING_MODELS
 from ogr.graph.client import TigerGraphClient
 
 _GRAPH_DIR = Path(__file__).resolve().parent
@@ -30,6 +31,11 @@ QUERY_FILES = (
 
 __all__ = ["SCHEMA_PATH", "QUERIES_DIR", "QUERY_FILES", "install_schema", "install_queries"]
 
+EXPECTED_VERTEX_TYPES = frozenset(
+    {"Document", "OlympicEvent", "Games", "Sport", "Venue", "Chunk"}
+    | {m.vertex_type for m in EMBEDDING_MODELS.values()}
+)
+
 
 def install_schema(client: TigerGraphClient) -> str:
     """Run schema.gsql against the client's connection. Idempotent — the
@@ -39,7 +45,19 @@ def install_schema(client: TigerGraphClient) -> str:
     if client.conn is None:
         raise RuntimeError("No TigerGraph connection available; cannot install schema")
     gsql_text = SCHEMA_PATH.read_text(encoding="utf-8")
-    return client.conn.gsql(gsql_text)
+    output = client.conn.gsql(gsql_text)
+    # conn.gsql() reports most failures as text, not exceptions: confirm the
+    # vertex types exist, so a failed install fails the build instead of the
+    # registry recording an empty graph that every later load trips over.
+    if hasattr(client.conn, "getVertexTypes"):
+        types = client.conn.getVertexTypes()
+        if isinstance(types, list):
+            missing = sorted(EXPECTED_VERTEX_TYPES - set(types))
+            if missing:
+                raise RuntimeError(
+                    f"Schema not installed — missing vertex types {', '.join(missing)}: {str(output)[-300:]}"
+                )
+    return output
 
 
 def install_queries(client: TigerGraphClient) -> list[str]:
