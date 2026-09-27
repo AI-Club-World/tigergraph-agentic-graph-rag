@@ -66,11 +66,18 @@ class TestOverview:
         assert body["active"] == BGE and body["cap"] == 2 and body["stored"] == [QWEN, BGE]
         assert body["switch_disabled_reason"] is None
 
-    def test_a_job_left_running_by_a_dead_process_reads_as_resumable(self, client):
+    def test_a_job_left_running_by_a_dead_process_is_resumable(self, client, monkeypatch):
         store = _ready()
-        store.begin_switch(GTE, "parallel", None, {"Q1_c0"}, BGE)
+        store.begin_switch(GTE, "parallel", None, {"Q1_c0"}, BGE)  # no task: its process is gone
         job = client.get("/embeddings", headers=HEADERS).json()["job"]
         assert job["status"] == "failed" and "restart" in job["error"]
+        # Not only displayed as failed: resume, switch and queries all work again.
+        monkeypatch.setattr(api_main, "_start_embedding_job", lambda config: None)
+        assert client.post("/embeddings/resume", headers=HEADERS).status_code == 202
+        store.update_job(status="running")
+        switched = client.post("/embeddings/switch", headers=HEADERS, json={"model": BGE})
+        assert switched.status_code == 202 and switched.json()["switched"] is True
+        assert client.post("/query", headers=HEADERS, json={"query": "q"}).status_code == 202
 
 
 class TestServerSideRefusals:
@@ -149,7 +156,8 @@ class TestQueryTimeBlock:
 
     def test_naming_an_incomplete_model_is_blocked_too(self, client):
         store = _ready()
-        store.begin_switch(GTE, "parallel", None, {"Q1_c0"}, BGE)  # building
+        store.begin_switch(GTE, "parallel", None, {"Q1_c0"}, BGE)
+        api_main._embedding_job["task"] = _Running()  # building, in this process
         response = client.post("/query", headers=HEADERS, json={"query": "q", "embedding_model": GTE})
         assert response.status_code == 409 and response.json()["detail"]["selected"]["state"] == "building"
 

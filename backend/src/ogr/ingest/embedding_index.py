@@ -130,6 +130,20 @@ class EmbeddingStore:
     def drop(self, key: str) -> None:
         self._mutate(lambda d: d["models"].pop(key, None))
 
+    def recover_interrupted(self) -> bool:
+        """Record a job left 'running' by a process that is gone as failed —
+        resumable — instead of blocking switches, resumes and queries forever.
+        Callers only invoke this when no job task is alive in this process."""
+        with _LOCK:
+            data = self.read()
+            job = data.get("job")
+            if not job or job.get("status") != "running":
+                return False
+            job.update(status="failed", error=job.get("error") or "Interrupted by a server restart",
+                       updated_at=_now())
+            self._write(data)
+            return True
+
     def update_job(self, **fields: Any) -> dict[str, Any]:
         def change(d: dict[str, Any]) -> None:
             if d.get("job"):

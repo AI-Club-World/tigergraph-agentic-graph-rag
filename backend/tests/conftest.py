@@ -68,3 +68,13 @@ def ready_embeddings():
     import ogr.api.main as api_main
 
     return make_embeddings_ready(api_main.OUT_DIR)
+
+
+@pytest.fixture(autouse=True)
+def _fresh_health_cache():
+    """Health results are cached per process; each test starts without one."""
+    import ogr.api.main as api_main
+
+    api_main._health_cache.clear()
+    yield
+    api_main._health_cache.clear()

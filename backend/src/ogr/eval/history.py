@@ -11,6 +11,7 @@ Scores come from `scorer.py` — the one scoring implementation (NFR-5, NFR-6).
 from __future__ import annotations
 
 import json
+import logging
 import re
 import statistics
 from datetime import UTC, datetime
@@ -20,9 +21,22 @@ from typing import Any
 from ogr.eval.scorer import score_answer
 from ogr.eval.store import BatchStore, _assert_no_secret
 
-__all__ = ["RUN_ID_RE", "import_run", "list_runs", "read_run", "summarize_run", "view_record"]
+__all__ = ["RUN_ID_RE", "import_run", "is_run_id", "list_runs", "read_run", "summarize_run", "view_record"]
+
+logger = logging.getLogger(__name__)
 
 RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+# `out/` also holds the server's own state; a run may never take those names
+# (a run called `history` would share its file with the trial log).
+RESERVED_RUN_IDS = frozenset({"history", "chunks", "datasets", "embeddings"})
+
+
+def is_run_id(run_id: object) -> bool:
+    if not isinstance(run_id, str) or not RUN_ID_RE.match(run_id):
+        return False
+    return run_id.lower() not in RESERVED_RUN_IDS
+
+
 PIPELINE_ORDER = ("rag", "graphrag", "agentic_graphrag")
 
 
@@ -138,10 +152,15 @@ def list_runs(out_dir: Path, statuses: dict[str, str] | None = None) -> list[dic
     statuses = statuses or {}
     summaries = []
     for path in out_dir.glob("*.jsonl") if out_dir.exists() else []:
-        if not RUN_ID_RE.match(path.stem) or not _is_run_file(path):
+        if not is_run_id(path.stem) or not _is_run_file(path):
             continue
-        run_config, records = read_run(path)
-        summary = summarize_run(path.stem, run_config, records, statuses.get(path.stem, "complete"))
+        try:
+            run_config, records = read_run(path)
+            summary = summarize_run(path.stem, run_config, records, statuses.get(path.stem, "complete"))
+        except (KeyError, TypeError, ValueError) as e:
+            # One malformed file must not take the whole history down.
+            logger.warning("Skipping unreadable run %s: %s", path.name, e)
+            continue
         if summary["started_at"] is None:
             summary["started_at"] = datetime.fromtimestamp(path.stat().st_mtime, UTC).isoformat()
         summaries.append(summary)
@@ -168,12 +187,21 @@ def import_run(out_dir: Path, payload: Any) -> str:
         raise ValueError("No records to import")
     if not all(isinstance(r, dict) and isinstance(r.get("record"), dict) for r in records):
         raise ValueError("Every record needs a 'record' object (a QueryLevelRecord)")
+    try:
+        # Exactly what GET /runs and the drill-down will do with these records:
+        # a record they cannot read is refused here, before anything is written.
+        summarize_run("import-check", run_config, [{**r, "record": dict(r["record"])} for r in records])
+    except (KeyError, TypeError, ValueError, AttributeError) as e:
+        raise ValueError(f"Records are not in the run record shape: {type(e).__name__} {e}") from e
     if not isinstance(run_config, dict):
         raise ValueError("'run_config' must be an object")
 
     run_id = run_id or records[0].get("run_id") or datetime.now(UTC).strftime("import-%Y%m%dT%H%M%SZ")
-    if not isinstance(run_id, str) or not RUN_ID_RE.match(run_id):
-        raise ValueError(f"Invalid run id {run_id!r}: letters, digits, '.', '_' and '-' only")
+    if not is_run_id(run_id):
+        raise ValueError(
+            f"Invalid run id {run_id!r}: letters, digits, '.', '_' and '-' only, and not "
+            f"{', '.join(sorted(RESERVED_RUN_IDS))}"
+        )
 
     path = out_dir / f"{run_id}.jsonl"
     if path.exists():

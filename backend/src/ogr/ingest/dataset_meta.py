@@ -65,8 +65,8 @@ def write_meta(corpus: Path, *, replace: bool = False, **fields: Any) -> dict[st
     return meta
 
 
-def clean_title(title: str | None) -> str | None:
-    text = " ".join((title or "").split())[:MAX_TITLE]
+def clean_title(title: str | None, limit: int = MAX_TITLE) -> str | None:
+    text = " ".join((title or "").split())[:limit]
     return text or None
 
 
@@ -94,7 +94,7 @@ def describe(corpus: Path) -> dict[str, Any]:
         "title": title,
         "title_source": source,
         "documents": scanned["documents"],
-        "description": clean_title(meta.get("description")),
+        "description": clean_title(meta.get("description"), limit=500),
         "source_file": meta.get("source_file"),
     }
 

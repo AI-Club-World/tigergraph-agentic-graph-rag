@@ -27,6 +27,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import re
 import time
 import uuid
@@ -53,7 +54,7 @@ from ogr.common.trials import TrialLog
 from ogr.eval.aggregator import aggregate_query
 from ogr.eval.batch_runner import default_pipelines, effective_pool_size, run_batch, run_config_header
 from ogr.eval.dispatcher import error_record
-from ogr.eval.history import RUN_ID_RE, import_run, list_runs, read_run, summarize_run, view_record
+from ogr.eval.history import import_run, is_run_id, list_runs, read_run, summarize_run, view_record
 from ogr.graph.client import TigerGraphClient
 from ogr.ingest import dataset_meta
 from ogr.ingest.chunk_embed import chunk_and_embed_corpus
@@ -207,15 +208,23 @@ def _provider_preset(cfg: RunConfig) -> str | None:
     return None
 
 
-def _settings_body(cfg: RunConfig) -> dict[str, Any]:
+def _public_host(url: str | None) -> str | None:
     from urllib.parse import urlparse
 
+    parsed = urlparse(url or "")
+    if not parsed.hostname:
+        return None
+    return f"{parsed.hostname}:{parsed.port}" if parsed.port else parsed.hostname
+
+
+def _settings_body(cfg: RunConfig) -> dict[str, Any]:
     return {
         "llm_provider": cfg.llm_provider,
         # The preset id serving the model, or None for a provider outside the
         # presets (then `llm_base_host` says where it runs).
         "llm_provider_preset": _provider_preset(cfg),
-        "llm_base_host": urlparse(cfg.llm_base_url or "").netloc or None,
+        # hostname[:port] only — never the userinfo a URL can carry.
+        "llm_base_host": _public_host(cfg.llm_base_url),
         "llm_model": cfg.llm_model,
         "embedding_model": cfg.embedding_model,
         "embedding_dim": cfg.embedding_dim,
@@ -260,41 +269,49 @@ async def get_provider_models(provider: Literal["gemini", "nvidia_nim", "groq"])
 
 
 @router.patch("/settings")
-def patch_settings(body: SettingsPatch) -> dict[str, Any]:
+async def patch_settings(body: SettingsPatch) -> dict[str, Any]:
     """Update runtime model/embedding without a server restart. The selected
-    LLM applies to all three pipelines: each run snapshots config once."""
-    if body.llm_provider is not None:
-        from ogr.common.llm import PROVIDER_PRESETS
+    LLM applies to all three pipelines: each run snapshots config once.
+    Everything is validated before anything changes, so a refused request
+    leaves the settings as they were."""
+    from ogr.common.llm import PROVIDER_PRESETS
 
+    updates: dict[str, Any] = {}
+    if body.llm_provider is not None:
         if not body.llm_model:
             raise HTTPException(422, "llm_model is required when changing llm_provider")
         preset = PROVIDER_PRESETS[body.llm_provider]
         key = getattr(get_default_config(), preset["key_field"])
         if not key:
             raise HTTPException(400, f"{preset['key_field'].upper()} is not set on the server")
-        _runtime_overrides.update(
+        updates.update(
             llm_provider=body.llm_provider, llm_base_url=preset["base_url"] or None, llm_api_key=key
         )
     if body.llm_model is not None:
-        _runtime_overrides["llm_model"] = body.llm_model
-        # Clear cached model instance so next request builds a new client.
-        try:
-            from ogr.common.llm import _MODEL_CACHE, _MODEL_CACHE_LOCK
-            with _MODEL_CACHE_LOCK:
-                _MODEL_CACHE.clear()
-        except Exception:  # noqa: BLE001
-            pass
+        updates["llm_model"] = body.llm_model
+    activate: str | None = None
     if body.embedding_model is not None:
         model = _catalog_model(body.embedding_model)
         if model.key != _get_config_with_overrides().embedding_model:
             _refuse_while_busy()
-            if model.key not in _embedding_store().complete_models(_corpus_chunk_ids()):
+            complete = await asyncio.to_thread(_embedding_store().complete_models, _corpus_chunk_ids())
+            if model.key not in complete:
                 raise _conflict(
                     "embedding_switch_required",
                     f"{model.label} has no complete embeddings; switch through POST /embeddings/switch "
                     "and choose to re-embed or keep parallel indices.",
                 )
-            _embedding_store().set_active(model.key)
+            activate = model.key
+
+    _runtime_overrides.update(updates)
+    if "llm_model" in updates:
+        # Clear cached model instance so next request builds a new client.
+        from ogr.common.llm import _MODEL_CACHE, _MODEL_CACHE_LOCK
+
+        with _MODEL_CACHE_LOCK:
+            _MODEL_CACHE.clear()
+    if activate:
+        _embedding_store().set_active(activate)
     return _settings_body(_get_config_with_overrides())
 
 
@@ -320,8 +337,24 @@ def _catalog_model(name: str) -> EmbeddingModel:
         raise HTTPException(status_code=422, detail=str(e)) from e
 
 
+class _Reserved:
+    """Stands in for a task between a start request's checks and the moment
+    its task exists, so a second request arriving across an await sees the
+    slot taken (no two builds or runs racing past the same check)."""
+
+    def done(self) -> bool:
+        return False
+
+    def cancelled(self) -> bool:
+        return False
+
+
 def _build_running() -> bool:
-    return any("task" in b and not b["task"].done() for b in _builds.values())
+    return any("task" in b and not b["task"].done() for b in list(_builds.values()))
+
+
+def _batch_running() -> bool:
+    return any(not t.done() for t in list(_batch_tasks.values()))
 
 
 def _embedding_job_running() -> bool:
@@ -330,7 +363,14 @@ def _embedding_job_running() -> bool:
 
 
 def _refuse_while_busy() -> None:
-    """Switching is refused while an ingestion build or a re-embed job runs."""
+    """Switching is refused while an ingestion build, a re-embed job or a
+    benchmark run is in progress (a run's config points at the embeddings)."""
+    _recover_interrupted_job()
+    if _batch_running():
+        raise _conflict(
+            "batch_running",
+            "A benchmark run is in progress; the embedding model cannot change until it ends.",
+        )
     if _build_running():
         raise _conflict(
             "build_running", "An ingestion build is running; the embedding model cannot change until it ends."
@@ -339,18 +379,22 @@ def _refuse_while_busy() -> None:
         raise _conflict("embedding_job_running", "A re-embed job is running; wait for it to finish.")
 
 
+def _recover_interrupted_job() -> None:
+    """A job recorded as running with no task in this process was cut off by
+    a restart: record it as failed, so it can be resumed (or replaced)."""
+    if not _embedding_job_running():
+        _embedding_store().recover_interrupted()
+
+
 def _embedding_overview(config: RunConfig) -> dict[str, Any]:
+    _recover_interrupted_job()
     overview = _embedding_store().overview(_corpus_chunk_ids(), config.embedding_model)
-    job = overview["job"]
-    if job and job.get("status") == "running" and not _embedding_job_running():
-        # The process that ran it is gone (restart): it can only be resumed.
-        job = {**job, "status": "failed", "error": job.get("error") or "Interrupted by a server restart"}
-        overview["job"] = job
     build = _build_running()
     overview["build_running"] = build
     overview["switch_disabled_reason"] = (
         "An ingestion build is running." if build
         else "A re-embed job is running." if _embedding_job_running()
+        else "A benchmark run is in progress." if _batch_running()
         else None
     )
     overview["layout_current"] = _registry().current_layout() or not _registry().exists
@@ -466,6 +510,7 @@ def _query_config(config: RunConfig, requested: str | None) -> RunConfig:
     two 1024-dim models are never treated as interchangeable. There is no
     fallback to another model: the caller must name one it was offered."""
     model = _catalog_model(requested) if requested else resolve_model(config.embedding_model)
+    _recover_interrupted_job()
     store = _embedding_store()
     corpus = _corpus_chunk_ids()
     status = store.model_status(model.key, corpus)
@@ -488,17 +533,51 @@ def _query_config(config: RunConfig, requested: str | None) -> RunConfig:
     return config.model_copy(update={"embedding_model": model.key, "embedding_dim": model.dim})
 
 
-async def _timed_check(name: str, timeout_s: float, check, *args) -> dict[str, Any]:
+# The health routes are unauthenticated (the browser polls them), so each
+# check runs at most once per HEALTH_CACHE_S and never twice at once: a burst
+# of requests cannot spend the LLM quota or fill the worker thread pool.
+HEALTH_CACHE_S = 30.0
+_health_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+_health_inflight: dict[str, asyncio.Future] = {}
+_URL_USERINFO = re.compile(r"(\w+://)[^/\s@]+@")
+
+
+def _redact(detail: str, config: RunConfig) -> str:
+    """No endpoint URL or credential in an unauthenticated response."""
+    for value in (config.tg_host, config.llm_base_url):
+        if value:
+            detail = detail.replace(value.rstrip("/"), "<host>")
+    return _URL_USERINFO.sub(r"\1***@", detail)
+
+
+async def _timed_check(name: str, timeout_s: float, check, config: RunConfig, *args) -> dict[str, Any]:
+    cached = _health_cache.get(name)
+    if cached and time.monotonic() - cached[0] < HEALTH_CACHE_S:
+        return cached[1]
+    if name in _health_inflight:
+        return await asyncio.shield(_health_inflight[name])
+    future: asyncio.Future = asyncio.get_running_loop().create_future()
+    _health_inflight[name] = future
     t0 = time.monotonic()
     try:
-        status, detail = await asyncio.wait_for(asyncio.to_thread(check, *args), timeout_s)
-    except TimeoutError:
-        status, detail = "FAIL", f"{name} did not answer within {timeout_s:.0f} s"
-    return {
-        "status": "ok" if status == "OK" else status.lower(),
-        "detail": detail,
-        "latency_ms": round((time.monotonic() - t0) * 1000),
-    }
+        try:
+            status, detail = await asyncio.wait_for(asyncio.to_thread(check, config, *args), timeout_s)
+        except TimeoutError:
+            status, detail = "FAIL", f"{name} did not answer within {timeout_s:.0f} s"
+        except Exception as e:  # noqa: BLE001 - a check that raises is a failed check
+            status, detail = "FAIL", f"{type(e).__name__}: {str(e)[:200]}"
+        result = {
+            "status": "ok" if status == "OK" else status.lower(),
+            "detail": _redact(str(detail), config),
+            "latency_ms": round((time.monotonic() - t0) * 1000),
+        }
+        _health_cache[name] = (time.monotonic(), result)
+        future.set_result(result)
+        return result
+    finally:
+        _health_inflight.pop(name, None)
+        if not future.done():
+            future.cancel()  # waiters of a cancelled check are not left hanging
 
 
 # One route per dependency, each polled on its own by the UI, so a slow LLM
@@ -701,7 +780,7 @@ async def patch_corpus(name: str, body: CorpusPatch) -> dict[str, Any]:
     if body.title is not None:
         meta["title"] = dataset_meta.clean_title(body.title)
     if body.description is not None:
-        meta["description"] = dataset_meta.clean_title(body.description)
+        meta["description"] = dataset_meta.clean_title(body.description, limit=500)
     dataset_meta.write_meta(path, replace=True, **meta)
     return {"name": name, **await asyncio.to_thread(dataset_meta.describe, path)}
 
@@ -729,25 +808,37 @@ async def upload_corpus(
         name = path.stem
     if path.exists() and not overwrite:
         raise HTTPException(status_code=409, detail=f"Dataset {name!r} already exists")
-    body = await request.body()
-    if len(body) > MAX_UPLOAD_BYTES:
+    if overwrite and any(
+        b.get("dataset") == name and not b["task"].done() for b in list(_builds.values()) if "task" in b
+    ):
+        raise _conflict("build_running", f"Dataset {name!r} is being built; replace it once the build ends.")
+    declared = request.headers.get("content-length")
+    if declared and declared.isdigit() and int(declared) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail=f"File larger than {MAX_UPLOAD_BYTES // 2**20} MB")
-    documents = 0
-    for number, line in enumerate(body.decode("utf-8", errors="replace").splitlines(), 1):
-        if not line.strip():
-            continue
-        try:
-            record = json.loads(line)
-        except json.JSONDecodeError as e:
-            raise HTTPException(status_code=400, detail=f"Line {number} is not JSON: {e.msg}") from e
-        if not isinstance(record, dict) or not isinstance(record.get("doc_id"), str) \
-                or not isinstance(record.get("text"), str):
-            raise HTTPException(status_code=400, detail=f"Line {number} needs string 'doc_id' and 'text'")
-        documents += 1
-    if not documents:
-        raise HTTPException(status_code=400, detail="No documents in the file")
+
+    # Streamed to a temporary file with a running size check: a large body is
+    # never held in memory, and validation runs off the event loop.
     CORPUS_DIR.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(body)
+    tmp = CORPUS_DIR / f".upload-{uuid.uuid4().hex}.part"
+    size = 0
+    try:
+        with tmp.open("wb") as handle:
+            async for piece in request.stream():
+                size += len(piece)
+                if size > MAX_UPLOAD_BYTES:
+                    raise HTTPException(
+                        status_code=413, detail=f"File larger than {MAX_UPLOAD_BYTES // 2**20} MB"
+                    )
+                handle.write(piece)
+        documents = await asyncio.to_thread(_validate_corpus_file, tmp)
+        # Exclusive unless replacing: two uploads racing for one name cannot
+        # silently overwrite each other.
+        try:
+            await asyncio.to_thread(os.replace if overwrite else os.link, tmp, path)
+        except FileExistsError as e:
+            raise HTTPException(status_code=409, detail=f"Dataset {name!r} already exists") from e
+    finally:
+        tmp.unlink(missing_ok=True)
     if overwrite:
         dataset_meta.meta_path(path).unlink(missing_ok=True)
     dataset_meta.write_meta(
@@ -757,7 +848,32 @@ async def upload_corpus(
         uploaded_at=datetime.now(UTC).isoformat(timespec="seconds"),
     )
     described = await asyncio.to_thread(dataset_meta.describe, path)
-    return {"name": name, "size_bytes": len(body), **described, "documents": documents}
+    return {"name": name, "size_bytes": size, **described, "documents": documents}
+
+
+def _validate_corpus_file(path: Path) -> int:
+    """Documents in an uploaded JSONL file, or a 400 naming the first bad line."""
+    documents = 0
+    try:
+        with path.open(encoding="utf-8") as handle:  # strict: bytes that are not UTF-8 are refused
+            for number, line in enumerate(handle, 1):
+                if not line.strip():
+                    continue
+                try:
+                    record = json.loads(line)
+                except json.JSONDecodeError as e:
+                    raise HTTPException(status_code=400, detail=f"Line {number} is not JSON: {e.msg}") from e
+                if not isinstance(record, dict) or not isinstance(record.get("doc_id"), str) \
+                        or not isinstance(record.get("text"), str):
+                    raise HTTPException(
+                        status_code=400, detail=f"Line {number} needs string 'doc_id' and 'text'"
+                    )
+                documents += 1
+    except UnicodeDecodeError as e:
+        raise HTTPException(status_code=400, detail=f"The file is not UTF-8 text ({e.reason})") from e
+    if not documents:
+        raise HTTPException(status_code=400, detail="No documents in the file")
+    return documents
 
 
 class BuildRequest(BaseModel):
@@ -817,6 +933,20 @@ async def _start_build(body: BuildRequest, config: RunConfig) -> dict[str, str]:
     if _embedding_job_running():
         # The job embeds the corpus the build would change under it.
         raise _conflict("embedding_job_running", "A re-embed job is running; build once it finishes.")
+    if _batch_running():
+        # A reset or rebuild would change the graph under the run's questions.
+        raise _conflict("batch_running", "A benchmark run is in progress; build once it finishes.")
+    _evict_finished(_builds)
+    build_id = str(uuid.uuid4())
+    _builds[build_id] = {"task": _Reserved(), "dataset": body.dataset, "events": [], "started": time.time()}
+    try:
+        return await _checked_build(build_id, body, config)
+    except BaseException:
+        _builds.pop(build_id, None)
+        raise
+
+
+async def _checked_build(build_id: str, body: BuildRequest, config: RunConfig) -> dict[str, str]:
 
     registry = _registry()
     store = _embedding_store()
@@ -853,11 +983,9 @@ async def _start_build(body: BuildRequest, config: RunConfig) -> dict[str, str]:
                 built_at=existing["built_at"],
             )
 
-    _evict_finished(_builds)
-    build_id = str(uuid.uuid4())
     token = _stream_tokens.issue(build_id)
     queue: asyncio.Queue = asyncio.Queue()
-    _builds[build_id] = {"queue": queue, "dataset": body.dataset, "events": [], "started": time.time()}
+    _builds[build_id].update(queue=queue)
     task = asyncio.create_task(_run_build(build_id, queue, config, body))
     _builds[build_id]["task"] = task
     return {"build_id": build_id, "stream_token": token}
@@ -1091,6 +1219,9 @@ class BatchRequest(BaseModel):
     run_id: str | None = None
     # None = RUN_LATENCY_MODE. 'timing' runs pool 1 for comparable latency.
     latency_mode: Literal["throughput", "timing"] | None = None
+    # Continue an existing, unfinished run: questions already recorded are
+    # skipped (the batch runner resumes by question id).
+    resume: bool = False
 
 
 def _datasets() -> list[str]:
@@ -1131,11 +1262,29 @@ async def _start_batch(body: BatchRequest, config: RunConfig) -> dict[str, str]:
         raise HTTPException(status_code=404, detail=f"Unknown dataset {body.dataset!r}")
     started = datetime.now(UTC)
     run_id = body.run_id or started.strftime("%Y%m%dT%H%M%SZ")
-    if not RUN_ID_RE.match(run_id):
+    if not is_run_id(run_id):
         raise HTTPException(status_code=400, detail=f"Invalid run id {run_id!r}")
     out_path = OUT_DIR / f"{run_id}.jsonl"
-    if out_path.exists() or run_id in _batch_tasks:
-        raise HTTPException(status_code=409, detail=f"Run {run_id!r} already exists")
+    taken = run_id in _batch_tasks and not _batch_tasks[run_id].done()
+    if (out_path.exists() and not body.resume) or taken:
+        raise HTTPException(
+            status_code=409, detail=f"Run {run_id!r} already exists; pass resume to continue it"
+        )
+    if body.resume and not out_path.exists():
+        raise HTTPException(status_code=404, detail=f"No run {run_id!r} to resume")
+    if _build_running() or _embedding_job_running():
+        raise _conflict("busy", "A build or re-embed job is running; start the run once it finishes.")
+    _batch_tasks[run_id] = _Reserved()  # type: ignore[assignment]
+    try:
+        return await _launch_batch(body, config, run_id, out_path, started)
+    except BaseException:
+        _batch_tasks.pop(run_id, None)
+        raise
+
+
+async def _launch_batch(
+    body: BatchRequest, config: RunConfig, run_id: str, out_path: Path, started: datetime
+) -> dict[str, str]:
     if body.latency_mode:
         config = config.model_copy(update={"latency_mode": body.latency_mode})
     # Same hard block as a query: a run searches only complete embeddings.
@@ -1219,7 +1368,7 @@ async def get_batch_records(run_id: str) -> list[dict[str, Any]]:
     scored view records the dashboard and eval table consume.
     """
     path = OUT_DIR / f"{run_id}.jsonl"
-    if not RUN_ID_RE.match(run_id) or not path.exists():
+    if not is_run_id(run_id) or not path.exists():
         raise HTTPException(status_code=404, detail=f"No run {run_id!r}")
     _run_config, records = read_run(path)
     return [view_record(r) for r in records]
