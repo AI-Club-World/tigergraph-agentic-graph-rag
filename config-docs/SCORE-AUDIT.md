@@ -1,7 +1,8 @@
 # Score audit against the hackathon rubric
 
-Status: **Phase 1 baseline.** Kept out of git until the owner decides
-(an earlier instruction was not to commit scores).
+Status: **Phase 4 in progress.** Safe fixes are implemented; the measured
+baseline run is waiting on the graph rebuild (§5). Committed at the owner's
+request (§4).
 
 ## 1. Rubric as the guidebook defines it
 
@@ -119,11 +120,44 @@ settled decision (asked before implementing); **U** = needs the user
 
 ## 4. Interview log
 
-(Filled in as each R item is raised and decided.)
+| # | Question | Decision |
+|---|---|---|
+| 1 | Which rubric? | The guidebook's six criteria and weights (§1), not the brief's list |
+| 2 | Deadline? | Round 1, Sep 30 IST. Round 2 conflict reasoning (C5 R item) is out of scope |
+| 3 | Commit this audit? | Yes. This overrides the earlier "do not commit the score" instruction for this file |
+| 4 | Live run for C1? | Yes. The owner provided TigerGraph and LLM credentials; they live only in the git-ignored `.env` and should be rotated |
+| 5 | TigerGraph workspace stopped (no auto-start) | The owner started it |
+| 6 | Reset the graph (old one-vector-per-chunk layout)? | Yes, reset and rebuild |
+| 7 | Which LLM for all three pipelines? | NVIDIA `deepseek-v4.1-flash` (one model for P1, P2 and P3) |
+| 8 | Embeddings (Cloudflare quota spent, HTTP 429) | The owner's self-hosted `bge-large-en-v1.5` service (`EMBEDDING_HOST_URL`), checked equal to local bge-large (cosine 1.000) |
+| — | Accuracy fixes (routing, chunking, k, prompts) | Not decided yet. Raised only once the measured run shows which question types fail (§3 C1) |
+| — | Server-side admin key for destructive routes (C4 R item) | Not raised: it changes the auth design. The documented security model (README) stands |
 
 ## 5. Implementation plan
 
-(Ordered once the Phase 3 decisions are in.)
+Largest gap first. Done items name their commit on `application-integration`.
+
+| # | Criterion | Item | Class | State |
+|---|---|---|---|---|
+| 1 | C1/C4 | Reranker falls back to the same model locally when Cloudflare fails or is not configured | S | Done, 7930097 |
+| 2 | C1/C4 | Embedding tiers: self-hosted host → Cloudflare → local; `EMBEDDING_CLOUDFLARE` / `EMBEDDING_REMOTE` switches | S | Done, 7930097, 02b37a9 |
+| 3 | C2 | Deterministic `grounded` score from citation snippets, all three pipelines; stored scores never trusted | S | Done, 02b37a9 |
+| 4 | C3/C5 | `ogr.cli report`: per-type Agentic − RAG gap, token ratio, verdict, router savings estimate | S | Done, ca51629 |
+| 5 | C6/deliverable | `ogr.cli export`: hidden-set raw outputs (answer, tokens, trace) | S | Done, ca51629 |
+| 6 | C2 | Grounded column on the dashboard (works without gold) | S | Done, e345f25 |
+| 7 | C4 | Graph query failures reported in trace notes and `error_detail` | S | Done, 38b4e54 |
+| 8 | C4 | `make smoke`, `make results`; docs for all of the above | S | Done, f47c073 |
+| 9 | C1 | Rebuild the graph (per-model layout), run public 100 + hidden 50 with one LLM | U | Running: rebuild in progress |
+| 10 | C1 | Root-cause failing question types from the run; accuracy fixes | R | After 9, each raised with the owner first |
+| 11 | C6 | `WRITEUP.md` with measured results; demo video script | S | After 9 (needs real numbers) |
+| 12 | C6 | Record the demo video | U | Owner |
+
+**Blocker on 9 (2026-09-27):** the self-hosted embedding service's Cloudflare
+quick tunnel went down during the build (every request returns a Cloudflare
+Tunnel error page, HTTP 500). The build fell back to local bge-large on CPU,
+which gives the same vectors at about 1.2 chunks/s, roughly 4 hours for
+16,669 chunks. A restarted host (a new tunnel URL in `EMBEDDING_HOST_URL`)
+would bring that back to minutes.
 
 ## 6. Post-implementation scores
 
