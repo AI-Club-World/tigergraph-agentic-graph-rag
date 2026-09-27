@@ -1,4 +1,4 @@
-"""Runtime LLM provider selection (LLM-ALLOCATION plan G-4)."""
+"""Runtime LLM provider selection (ARCHITECTURE-SPEC, Decision log: G-4)."""
 
 from __future__ import annotations
 

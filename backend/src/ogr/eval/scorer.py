@@ -1,6 +1,6 @@
 """Deterministic scorer — EM, token F1, and retrieval precision/recall/F1.
 
-Source spec: TECHNICAL-SPEC §9 · Plan: implementation-plan-UI.md Group 1 (EVAL-02)
+Source spec: TECHNICAL-SPEC §9
 Requirement: FR-14, NFR-6 · Gate: G3
 
 **No LLM sits in this path.** NFR-6 requires the same inputs to produce the

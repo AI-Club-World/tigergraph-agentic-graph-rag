@@ -1,7 +1,6 @@
 """Entity linking agent for P3 Agentic GraphRAG pipeline.
 
 Source spec: ARCHITECTURE-SPEC §4 · TECHNICAL-SPEC §2.2
-Plan: implementation-plan-AGENT.md Group 2
 
 Longest-match dictionary resolution against closed vocabularies:
   - 21 Games values (e.g. '2016-Summer', '2012-Summer')

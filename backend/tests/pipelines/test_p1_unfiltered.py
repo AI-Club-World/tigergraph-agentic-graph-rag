@@ -1,6 +1,6 @@
 """Ceiling-protection guard tests for P1 unfiltered baseline (protects AD-9).
 
-Source: implementation-plan-RAG.md Group 2:
+Guards:
 - test_p1_passes_no_candidate_set
 - test_index_contains_non_olympic_chunks
 - test_p1_imports_no_langchain_retrievers (stop condition guard)

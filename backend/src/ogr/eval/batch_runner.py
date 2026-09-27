@@ -1,7 +1,7 @@
 """Batch runner (EVAL-04) — runs a JSONL question set through all supplied
 pipelines and appends one BatchRecord per question to a BatchStore.
 
-Source spec: TECHNICAL-SPEC §4.3, §6.4 · implementation-plan-UI.md Group 5 (EVAL-04)
+Source spec: TECHNICAL-SPEC §4.3, §6.4
 Requirement: FR-13, FR-15, NFR-4 · Gate: G5, G6
 
 This is the piece that turns EVAL-02/EVAL-03's unit-tested-in-isolation
@@ -21,7 +21,8 @@ is the operator's knob on the day.
 `acceptance/holdout/eval_hidden.jsonl` is not referenced anywhere in this
 module by name — the caller passes whatever `questions_path` it wants. Only
 a caller explicitly invoking this against the holdout path (a separate,
-one-time `--holdout` invocation per BUILD-PLAN §2) may do so; the CI holdout
+one-time `--holdout` invocation; ARCHITECTURE-SPEC, Engineering guards)
+may do so; the CI holdout
 grep enforces that no other source file names the path directly.
 """
 

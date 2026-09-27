@@ -132,7 +132,7 @@ class RunConfig(BaseModel):
     # Sampling seed passed to the provider where supported; recorded in every
     # run header (NFR-4). Empty = no seed.
     seed: int | None = Field(default_factory=lambda: int(v) if (v := _env("RUN_SEED", "")) else None)
-    # Rate limiting (BUILD-PLAN risk table: free tiers 429 aggressively).
+    # Rate limiting (free tiers 429 aggressively).
     # requests_per_minute 0 disables the limiter; retries back off
     # exponentially from backoff_base_s on 429/5xx/connection errors.
     llm_requests_per_minute: float = Field(

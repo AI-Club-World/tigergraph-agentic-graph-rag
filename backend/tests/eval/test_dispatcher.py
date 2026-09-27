@@ -1,8 +1,6 @@
 """Tests for EVAL-03 dispatch.
 
-implementation-plan-UI.md Group 2 names test_one_pipeline_error_does_not_block_others.
-
-The concurrency test is the one that matters most: PLAN-004's manual step says
+The concurrency test is the one that matters most: the manual check is
 "if the three columns appear together, the dispatcher is serialising and NFR-1
 is unmet regardless of what the code looks like". This asserts that in code.
 """

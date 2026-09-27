@@ -1,7 +1,6 @@
 """Graph traversal agent — thin wrapper over Q4 (traverse).
 
 Source spec: ARCHITECTURE-SPEC §4 · TECHNICAL-SPEC §3
-Plan: implementation-plan-AGENT.md Group 3
 
 Implements the 'Graph traversal' specialised agent:
   Q4: traverse(anchor, edge_type, hops)

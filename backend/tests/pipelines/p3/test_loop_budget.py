@@ -1,4 +1,4 @@
-"""Regression tests for the loop budget (audit findings A18 / A19).
+"""Regression tests for the loop budget.
 
 Before the fix the graph ran on StateGraph(dict), where a node returning
 {"path_taken": [x]} REPLACES the list instead of appending. step_count =
@@ -8,8 +8,8 @@ never grew either. Both DP-3 budgets were inert: a TRAVERSE question whose
 evidence never satisfies ran 10,007 iterations and died on LangGraph's
 recursion limit.
 
-implementation-plan-AGENT.md stop condition: "The loop fails to terminate
-within budget on any question."
+Stop condition guarded here: the loop must terminate within budget on every
+question.
 """
 
 from __future__ import annotations

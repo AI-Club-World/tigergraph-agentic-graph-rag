@@ -1,10 +1,9 @@
-"""Tests for the streaming trace emitter (audit finding A25).
+"""Tests for the streaming trace emitter.
 
-implementation-plan-AGENT.md Group 4: trace.py is "built on LangGraph
-`astream_events`, so the same generator serves both the live SSE trace panel
-and the collected `trace` array in the batch record. **One emitter, two
-consumers** — assembling the trace twice is how the demo and the submitted
-metrics drift apart (AD-1, AD-2)."
+trace.py is built on LangGraph `astream_events`, so the same generator serves
+both the live SSE trace panel and the collected `trace` array in the batch
+record. **One emitter, two consumers** — assembling the trace twice is how the
+demo and the submitted metrics drift apart (AD-1, AD-2).
 
 The load-bearing assertion here is the last one: what the stream emits and what
 the record carries must be the same steps, not two independently-built lists.
@@ -131,7 +130,7 @@ def test_stream_matches_the_sync_run():
 
 
 def test_streamed_record_reconciles():
-    """BUILD-PLAN §7 guard holds on the streamed record too."""
+    """The token-reconciliation guard holds on the streamed record too."""
     _, record = _collect()
     step_sum = sum(s.tokens.total for s in (record.trace or []))
     assert step_sum == record.tokens.total

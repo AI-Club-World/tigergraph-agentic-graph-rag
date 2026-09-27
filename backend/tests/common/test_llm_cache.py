@@ -1,4 +1,4 @@
-"""get_chat_model reuses one client per model configuration (AUDIT-03)."""
+"""get_chat_model reuses one client per model configuration."""
 
 from __future__ import annotations
 

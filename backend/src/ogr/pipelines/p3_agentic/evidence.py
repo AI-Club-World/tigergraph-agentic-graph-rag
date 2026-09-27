@@ -1,7 +1,7 @@
 """Evidence evaluator for P3 Agentic GraphRAG pipeline.
 
 Source spec: ARCHITECTURE-SPEC §3, §4 · APPLICATION-SPEC FR-6
-Plan: implementation-plan-AGENT.md Group 4, DP-4 Option A
+Decision: agent DP-4 Option A (ARCHITECTURE-SPEC, Decision log)
 
 Two-stage evaluation per DP-4 Option A:
   Stage 1 (deterministic): Scope-coverage gate — did retrieval cover the

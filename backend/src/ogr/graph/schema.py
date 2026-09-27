@@ -1,7 +1,5 @@
 """Installs the GRAPH-01 schema and the GRAPH-07 query library.
 
-Source spec: implementation-plan-GRAPH.md Groups 1 and 3 · Gate: G0/G1
-
 Both installers just hand the committed `.gsql` text to pyTigerGraph's
 `conn.gsql()`, which is the same mechanism `graph/client.py` already relies
 on being available (it calls `conn.runInstalledQuery` for queries this module

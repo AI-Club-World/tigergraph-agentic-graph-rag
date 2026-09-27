@@ -1,7 +1,6 @@
 """Necessity router for P3 Agentic GraphRAG pipeline.
 
 Source spec: ARCHITECTURE-SPEC §5 · APPLICATION-SPEC FR-11 · AD-5
-Plan: implementation-plan-AGENT.md Group 1
 
 Routes parsed intent to one of three paths based on the DP-1 fully-specified rule:
   - lookup_direct    : LOOKUP with fully-specified anchor → Q1 direct, NO loop

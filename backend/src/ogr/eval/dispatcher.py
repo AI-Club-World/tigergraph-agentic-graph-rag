@@ -1,6 +1,6 @@
 """Query Dispatcher — fires all three pipelines concurrently.
 
-Source spec: ARCHITECTURE-SPEC §2, §10 · Plan: implementation-plan-UI.md Group 2 (EVAL-03)
+Source spec: ARCHITECTURE-SPEC §2, §10
 Requirement: FR-2, NFR-1, NFR-2 · Gate: G2
 
 NFR-1: the three pipelines run concurrently, not sequentially. A cost/time

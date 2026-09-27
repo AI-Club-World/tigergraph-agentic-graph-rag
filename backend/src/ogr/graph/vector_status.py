@@ -1,6 +1,6 @@
 """GRAPH-06: vector-readiness gate.
 
-Source spec: TECHNICAL-SPEC §11 · implementation-plan-GRAPH.md Group 2
+Source spec: TECHNICAL-SPEC §11
 Gate: G1
 
 The vector index build is asynchronous and lags loading. Polling

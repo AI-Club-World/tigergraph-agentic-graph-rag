@@ -1,7 +1,6 @@
 """Strategy-Change Detector for P3 Agentic GraphRAG pipeline.
 
 Source spec: APPLICATION-SPEC FR-6 · ARCHITECTURE-SPEC §3
-Plan: implementation-plan-AGENT.md Group 4
 
 Compares the executed path_taken list against the router's recorded
 initial routing decision (route_initial). Sets strategy_change=True

@@ -113,7 +113,7 @@ class Question(BaseModel):
     """An evaluation question, using the data files' field names verbatim.
 
     Both eval_public.jsonl and eval_hidden.jsonl use qid / question / qtype
-    (BUILD-PLAN §10 — the F-14 adapter was deleted). `answer` is a list of
+    (the earlier field-name adapter was deleted). `answer` is a list of
     gold variants scored max-over-variants, and is empty for the hidden set.
     """
     qid: str

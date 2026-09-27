@@ -1,6 +1,6 @@
 """Batch output store — append-only JSONL per run, plus a run_config header.
 
-Source spec: TECHNICAL-SPEC §14.3, §6.4 · Plan: implementation-plan-UI.md Group 5 (EVAL-04)
+Source spec: TECHNICAL-SPEC §14.3, §6.4
 Requirement: NFR-4 · Gate: G5
 
 DP-3 Option A: append-only JSONL, diffable and resumable, no migration cost.

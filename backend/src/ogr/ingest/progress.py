@@ -1,6 +1,6 @@
 """Build-event emitter (GRAPH-09) for the three-column build view.
 
-Source spec: implementation-plan-GRAPH.md Group 3 · implementation-plan-UI.md DP-6/DP-7
+Decision: UI DP-6/DP-7 (ARCHITECTURE-SPEC, Decision log)
 Requirement: new UI requirement, NFR-3 · Gate: G1
 
 There are not three independent builds — chunk+embed feeds all three

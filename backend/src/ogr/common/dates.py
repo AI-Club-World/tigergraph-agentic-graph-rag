@@ -1,7 +1,7 @@
 """Shared date normalizer for OGR — used by both ingestion and P3 entity linking.
 
 Source spec: TECHNICAL-SPEC §2.3, §3 (Q2/Q3 date constraints)
-Plan: implementation-plan-AGENT.md Group 2 (one normalizer, no second copy)
+One normalizer, no second copy.
 
 Measured corpus characteristics:
   - Two date fields: 'date' (57.9%) and 'dates' (41.1%)

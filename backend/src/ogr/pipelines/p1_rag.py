@@ -1,7 +1,6 @@
 """P1 — Unfiltered RAG Baseline Pipeline.
 
 Source spec: TECHNICAL-SPEC §8.1 · ARCHITECTURE-SPEC §2, AD-9 · APPLICATION-SPEC FR-2/4/10
-Plan: implementation-plan-RAG.md (PLAN-002)
 
 CRITICAL ARCHITECTURAL CONSTRAINT (AD-9):
 This baseline is strictly UNFILTERED. Its retrieval ceiling must remain visible, not masked.

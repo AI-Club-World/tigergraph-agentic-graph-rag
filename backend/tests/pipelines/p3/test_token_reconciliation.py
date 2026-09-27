@@ -1,8 +1,9 @@
-"""Regression tests for token reconciliation (audit finding A17).
+"""Regression tests for token reconciliation.
 
 DP-5 Option A calls the reconciliation assertion non-negotiable: "without it,
 a silently-zero usage field reads as 'the agentic path is free'."
-BUILD-PLAN §7 states the guard as Sum(TraceStep.tokens) == record total.
+The guard is Sum(TraceStep.tokens) == record total (ARCHITECTURE-SPEC,
+Engineering guards).
 
 Two defects were found and are pinned here:
   1. The final generation call added its tokens to the record total but emitted
@@ -57,7 +58,7 @@ def test_reconcile_assert_detects_a_real_mismatch(caplog):
 
 
 def test_end_to_end_record_reconciles():
-    """The assembled PipelineRecord must satisfy the BUILD-PLAN §7 guard."""
+    """The assembled PipelineRecord must satisfy the token-reconciliation guard."""
     model = MagicMock()
 
     def invoke(messages, **_kwargs):

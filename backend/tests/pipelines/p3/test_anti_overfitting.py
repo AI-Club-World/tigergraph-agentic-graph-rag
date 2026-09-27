@@ -1,9 +1,8 @@
 """Anti-overfitting enforcement.
 
-implementation-plan-AGENT.md Verification: "grep the whole answer path for
-eval-set strings and for any qtype read at runtime. ARCHITECTURE-SPEC §13 calls
-this the highest-probability failure mode, so it gets a command, not an
-intention." These tests are that command.
+Grep the whole answer path for eval-set strings and for any qtype read at
+runtime. ARCHITECTURE-SPEC §13 calls this the highest-probability failure
+mode, so it gets a command, not an intention. These tests are that command.
 """
 
 from __future__ import annotations
@@ -92,7 +91,7 @@ def test_answer_path_is_not_empty():
 def test_no_text_to_gsql_chain():
     """TECHNICAL-SPEC §7 rejects text-to-query generation by name.
 
-    Dispatch stays operation -> Q1-Q5 (BUILD-PLAN §7 guard).
+    Dispatch stays operation -> Q1-Q5 (ARCHITECTURE-SPEC, Engineering guards).
     """
     forbidden = ("GraphCypherQAChain", "GraphQAChain", "create_sql_query_chain")
     offenders = []

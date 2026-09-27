@@ -1,6 +1,6 @@
 """Answer normalization and multi-person name splitting.
 
-Source spec: TECHNICAL-SPEC §9 · Plan: implementation-plan-UI.md Group 1 (EVAL-01)
+Source spec: TECHNICAL-SPEC §9
 
 Two pure functions, no LLM, no I/O — NFR-6 requires scoring be deterministic
 and reproducible run-to-run for identical inputs.

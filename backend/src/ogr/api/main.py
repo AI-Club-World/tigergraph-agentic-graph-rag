@@ -1,6 +1,6 @@
 """API-01 — the FastAPI service joining backend and frontend.
 
-Source spec: TECHNICAL-SPEC §4, §5 · implementation-plan-UI.md Group 2 (API-01)
+Source spec: TECHNICAL-SPEC §4, §5
 Requirement: FR-1, FR-13, TECHNICAL-SPEC §4, §5 · Gate: G3
 
 Routes match exactly what `frontend/src/services/*.ts` already expects
@@ -16,8 +16,8 @@ is protected by default rather than by someone remembering. The two SSE
 routes cannot carry that header (browser `EventSource` is header-less), so
 they take a short-lived, single-use `?token=` instead (DP-8).
 
-State is a module-level in-memory dict — this is a single-process demo tool
-(BUILD-PLAN §3), not a multi-worker service; a restart loses in-flight query
+State is a module-level in-memory dict — this is a single-process demo tool,
+not a multi-worker service; a restart loses in-flight query
 state, which is an accepted trade-off for something meant to be run once per
 demo/benchmark session, not deployed behind a load balancer.
 """

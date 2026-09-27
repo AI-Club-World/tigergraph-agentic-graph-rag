@@ -1,6 +1,6 @@
 """Infobox parser and sport derivation (GRAPH-02).
 
-Source spec: TECHNICAL-SPEC §2.1, §2.3 · Plan: implementation-plan-GRAPH.md Group 2
+Source spec: TECHNICAL-SPEC §2.1, §2.3
 
 Corpus documents open with a bracketed infobox header followed by indented
 `key: value` lines, then prose:

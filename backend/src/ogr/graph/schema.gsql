@@ -1,13 +1,12 @@
 // GRAPH-01: schema for OlympicGraphRAG.
-// Source spec: TECHNICAL-SPEC.md §2.1/§2.2, amended by implementation-plan-GRAPH.md
-// DP-1 (date_month/date_day_start/date_day_end/date_year as typed INTs),
+// Source spec: TECHNICAL-SPEC.md §2.1/§2.2, amended by graph decisions
+// (ARCHITECTURE-SPEC, Decision log) DP-1 (date_month/date_day_start/date_day_end/date_year as typed INTs),
 // DP-2 (competitors_text / nations_text retained alongside the typed INT),
 // DP-5 (bronze as a SET<STRING> for third-place ties).
 //
 // Idempotent: drops the graph and every type it owns before recreating them,
 // so re-running this file against a workspace that already has
-// OlympicGraphRAG installed does not error. Run/Step vertices are cut
-// (BUILD-PLAN §1, "Round 1").
+// OlympicGraphRAG installed does not error. Run/Step vertices are cut.
 //
 // Embedding layout (config-docs/EMBEDDING-SWITCHING.md): a Chunk is stored
 // once and carries no vector. Each selectable embedding model owns one

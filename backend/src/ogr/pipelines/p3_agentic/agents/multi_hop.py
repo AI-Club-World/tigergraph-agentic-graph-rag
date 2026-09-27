@@ -1,7 +1,6 @@
 """Multi-hop reasoning agent — planner chaining Q4 → Q1.
 
 Source spec: ARCHITECTURE-SPEC §4 · TECHNICAL-SPEC §3
-Plan: implementation-plan-AGENT.md Group 3
 
 Implements the 'Multi-hop reasoning' specialised agent.
 Chains: Q4 (traverse temporal edges) → Q1 (direct lookup on resolved event).

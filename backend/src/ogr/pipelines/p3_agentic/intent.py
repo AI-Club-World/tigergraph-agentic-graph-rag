@@ -1,7 +1,6 @@
 """Intent parser for P3 Agentic GraphRAG pipeline.
 
 Source spec: TECHNICAL-SPEC §7 · APPLICATION-SPEC FR-12 · NFR-7
-Plan: implementation-plan-AGENT.md Group 1
 
 Emits {operation, anchor, constraints, target_field} per TECHNICAL-SPEC §7,
 Pydantic-validated with exactly ONE retry on schema failure.
@@ -267,7 +266,7 @@ class IntentParser:
         return IntentSchema(operation="TRAVERSE")
 
     def _extract_or_downgrade(self, question: str, correction: str | None) -> dict[str, Any]:
-        """G-6 (LLM-ALLOCATION plan): the capability probe says 'yes' for every
+        """G-6 (ARCHITECTURE-SPEC, Decision log): the capability probe says 'yes' for every
         OpenAI-compatible client, but some selectable NIM/Groq models reject a
         tool request (HTTP 400/422). Ask the same model via the JSON-schema path."""
         try:

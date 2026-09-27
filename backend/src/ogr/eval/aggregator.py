@@ -1,7 +1,6 @@
 """Result Aggregator — merges three pipeline records into one query record.
 
 Source spec: TECHNICAL-SPEC §6.1 · ARCHITECTURE-SPEC AD-1
-Plan: implementation-plan-UI.md Group 2 (EVAL-03)
 Requirement: FR-8, FR-9, NFR-5 · Gate: G2
 
 NFR-5 / AD-1: one aggregator implementation, used by the interactive API and

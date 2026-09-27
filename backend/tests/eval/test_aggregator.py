@@ -1,7 +1,5 @@
 """Tests for EVAL-03 aggregation and the verdict block.
 
-implementation-plan-UI.md Group 2 names test_verdict_na_without_ground_truth.
-
 The cost-honesty case is tested explicitly: the benchmark is meant to surface
 questions where the agentic path is *not* worth its multiplier, so a verdict
 that only ever flatters the agent would be a defect, not a good result.

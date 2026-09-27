@@ -11,7 +11,7 @@ requires-python = ">=3.11"
 dependencies = [
     "pydantic>=2.0.0",
     "python-dotenv>=1.0.0",
-    # Fixed stack per TECHNICAL-SPEC §1 / BUILD-PLAN §1. LangGraph drives the P3
+    # Fixed stack per TECHNICAL-SPEC §1. LangGraph drives the P3
     # StateGraph; LangChain is the single provider boundary in common/llm.py.
     "langchain-core>=0.3",
     "langchain-openai>=0.2",
@@ -19,12 +19,12 @@ dependencies = [
     "langchain-anthropic>=1.0",
     "langchain-google-genai>=3.0",
     "langgraph>=0.2",
-    # Vectors and graph both live in TigerGraph — no external index (BUILD-PLAN §1).
+    # Vectors and graph both live in TigerGraph — no external index.
     # >=2.0: per-thread HTTP sessions, which graph/client.py relies on to share
     # one connection across concurrently running pipelines.
     "pyTigerGraph>=2.0",
     "sentence-transformers>=3.0",
-    # API-01, per TECHNICAL-SPEC §1 / BUILD-PLAN §1.
+    # API-01, per TECHNICAL-SPEC §1.
     "fastapi>=0.110",
     "sse-starlette>=2.0",
     "uvicorn>=0.29",
@@ -51,7 +51,8 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 # Tests keep the substantive rules (F, B) but are exempt from the two purely
-# stylistic ones. BUILD-PLAN §2 runs a no-test-modified check in CI precisely
+# stylistic ones. CI runs a no-test-modified check (ARCHITECTURE-SPEC,
+# Engineering guards) precisely
 # so tests are not edited casually; reformatting them to satisfy a line-length
 # rule is exactly the casual edit that check exists to catch.
 "tests/**" = ["E501", "I001", "F401"]

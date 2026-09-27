@@ -1,7 +1,6 @@
 """Tests for EVAL-01: SQuAD normalization and the multi-person splitter.
 
-implementation-plan-UI.md Group 1 names two of these directly:
-test_maclennan_not_split and test_pub015_pub099_split.
+The two named guards are test_maclennan_not_split and test_pub015_pub099_split.
 
 The guard is not cosmetic. Unguarded, the lowercase->uppercase rule splits
 `Rosannagh MacLennan` into "Rosannagh Mac" + "Lennan" and turns a correct

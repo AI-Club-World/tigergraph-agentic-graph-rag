@@ -1,7 +1,7 @@
 """Stopping criteria evaluator for P3 Agentic GraphRAG pipeline.
 
 Source spec: APPLICATION-SPEC FR-7 · ARCHITECTURE-SPEC §3 · AD-3
-Plan: implementation-plan-AGENT.md Group 4, DP-3 Option A
+Decision: agent DP-3 Option A (ARCHITECTURE-SPEC, Decision log)
 
 Stops the agentic loop on EITHER:
   - Evidence sufficiency (evidence evaluator returns is_sufficient=True)

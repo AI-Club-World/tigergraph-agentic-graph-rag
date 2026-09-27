@@ -1,7 +1,7 @@
 """P2 — GraphRAG Pipeline.
 
 Source spec: TECHNICAL-SPEC §8.2 · ARCHITECTURE-SPEC §2 · APPLICATION-SPEC FR-2/4/10
-Plan: implementation-plan-GRAPH.md Group 4 (GRAPH-08) · PLAT-07
+Decision: PLAT-07 (ARCHITECTURE-SPEC, Decision log)
 
 P2 is the middle arm of the ablation:
     P1 removes the graph · P2 removes the loop · P3 has both.
@@ -87,7 +87,7 @@ def format_evidence_into_context(evidence: list[dict[str, Any]]) -> str:
 
 
 def _citations_from(evidence: list[dict[str, Any]]) -> list[Citation]:
-    """Entity/relationship citations carrying source_id and chunk_id (PLAN-004 DP-1)."""
+    """Entity/relationship citations carrying source_id and chunk_id (UI DP-1, record schema freeze)."""
     citations: list[Citation] = []
     for item in evidence:
         source_id = item.get("doc_id") or item.get("event_id") or ""

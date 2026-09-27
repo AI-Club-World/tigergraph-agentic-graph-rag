@@ -1,4 +1,4 @@
-"""StreamTokenStore: single-use, scoped, expiring — and bounded (AUDIT-03 follow-up)."""
+"""StreamTokenStore: single-use, scoped, expiring — and bounded."""
 
 from __future__ import annotations
 

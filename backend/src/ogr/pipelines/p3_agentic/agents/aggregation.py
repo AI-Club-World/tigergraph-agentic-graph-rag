@@ -1,13 +1,12 @@
 """Aggregation agent — wrapper over Q2 (count_where) and Q3 (argmax).
 
 Source spec: ARCHITECTURE-SPEC §4 · TECHNICAL-SPEC §3
-Plan: implementation-plan-AGENT.md Group 3
 
 Implements the 'Aggregation' specialised agent.
 Routes to Q2 (COUNT) or Q3 (ARGMAX) based on intent operation.
 
 Q2: count_where(anchor_sport, anchor_games, anchor_venue, constraints_json, field)
-    SumAccum<INT> — widened to accept venue and multiple constraints per PLAN-001 DP.
+    SumAccum<INT> — widened to accept venue and multiple constraints.
 
 Q3: argmax(anchor_sport, anchor_games, anchor_venue, field)
     HeapAccum top-3 — surfaces parse_confidence exclusion count in notes.

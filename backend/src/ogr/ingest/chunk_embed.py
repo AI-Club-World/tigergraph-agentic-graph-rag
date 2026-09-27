@@ -1,8 +1,7 @@
 """Chunk + embed the corpus (GRAPH-04).
 
 Source spec: TECHNICAL-SPEC §2.1 (Chunk vertex), §11 (chunk_tokens=300,
-chunk_overlap=50, fixed before the first run) · Plan: implementation-plan-GRAPH.md
-Group 2 · Requirement: AD-6, AD-9 · Gate: G1
+chunk_overlap=50, fixed before the first run) · Requirement: AD-6, AD-9 · Gate: G1
 
 Chunks **all 2,951 documents, not only the Olympic subset**. This is
 load-bearing for AD-9: if only parsed Olympic docs enter the vector index, P1

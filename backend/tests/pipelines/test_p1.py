@@ -1,6 +1,6 @@
 """Unit tests for P1 RAG pipeline conformance and behavior.
 
-Source: implementation-plan-RAG.md Verification Plan Group 1:
+Verification:
 - test_p1_conforms_to_pipeline_record
 - test_p1_citations_resolve_to_doc_ids
 - test_p1_tokens_captured_not_estimated

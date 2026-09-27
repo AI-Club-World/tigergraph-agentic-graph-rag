@@ -1,4 +1,4 @@
-"""`ogr.cli ask` isolates pipeline failures like the dispatcher does (AUDIT-03)."""
+"""`ogr.cli ask` isolates pipeline failures like the dispatcher does."""
 
 from __future__ import annotations
 

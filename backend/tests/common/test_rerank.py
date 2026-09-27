@@ -1,4 +1,4 @@
-"""Tests for the P3 cross-encoder reranker (LLM-ALLOCATION plan G-2)."""
+"""Tests for the P3 cross-encoder reranker (ARCHITECTURE-SPEC, Decision log: G-2)."""
 
 from __future__ import annotations
 

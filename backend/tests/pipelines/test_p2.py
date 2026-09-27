@@ -1,7 +1,6 @@
 """Tests for GRAPH-08: the P2 GraphRAG pipeline.
 
-implementation-plan-GRAPH.md Group 4 verification: "P2 output validates
-against PipelineRecord" (G2).
+Verification: P2 output validates against PipelineRecord (G2).
 
 The load-bearing property is the ablation. P2 must differ from P3 by exactly
 one variable — the loop — so these tests pin that it shares P3's intent parser,

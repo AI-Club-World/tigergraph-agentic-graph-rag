@@ -1,7 +1,7 @@
 """Similarity search agent — thin wrapper over Q5 (hybrid_search).
 
 Source spec: ARCHITECTURE-SPEC §4 · TECHNICAL-SPEC §3
-Plan: implementation-plan-AGENT.md Group 3, DP-2 Option A
+Decision: agent DP-2 Option A (ARCHITECTURE-SPEC, Decision log)
 
 Implements the 'Similarity search' specialised agent.
 Triggered by the evidence evaluator on scope-coverage failure (DP-2).

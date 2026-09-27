@@ -1,4 +1,4 @@
-"""Vocabularies are fetched once per client, not once per query (AUDIT-03)."""
+"""Vocabularies are fetched once per client, not once per query."""
 
 from __future__ import annotations
 

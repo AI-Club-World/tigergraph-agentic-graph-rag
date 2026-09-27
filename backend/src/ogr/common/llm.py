@@ -33,7 +33,7 @@ _MODEL_LABELS: dict[int, str] = {}
 class LLMRateLimitError(RuntimeError):
     """The selected LLM stayed rate-limited past the retry threshold.
 
-    DP-3 (LLM-ALLOCATION plan): the run stops and the user switches model and
+    LLM DP-3 (ARCHITECTURE-SPEC, Decision log): the run stops and the user switches model and
     starts a new run. There is never an automatic fallback to another provider.
     """
 
@@ -77,7 +77,7 @@ ANTHROPIC_PROVIDERS = frozenset({"anthropic", "claude"})
 GOOGLE_PROVIDERS = frozenset({"google", "gemini", "google_genai"})
 
 
-# Runtime-selectable providers (LLM-ALLOCATION plan G-4). `key_field` names the
+# Runtime-selectable providers (ARCHITECTURE-SPEC, Decision log: G-4). `key_field` names the
 # RunConfig field holding the key; keys come from the environment only.
 # "gemini" uses the native Gemini client, the others the OpenAI-compatible one.
 PROVIDER_PRESETS: dict[str, dict[str, str]] = {
@@ -432,8 +432,8 @@ def invoke_and_count(
 
     t0 = time.perf_counter()
     # Rate-limit and transient errors are retried with exponential backoff
-    # (BUILD-PLAN: a 429 storm mid-run is the likeliest cause of a partial
-    # run); only the successful call's usage is counted.
+    # (a 429 storm mid-run is the likeliest cause of a partial run); only the
+    # successful call's usage is counted.
     response = _invoke_with_backoff(model, messages, max_retries, backoff_base_s)
     latency_ms = (time.perf_counter() - t0) * 1000.0
 

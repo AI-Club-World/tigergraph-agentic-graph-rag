@@ -1,10 +1,10 @@
 """Trace recorder for P3 Agentic GraphRAG pipeline.
 
 Source spec: APPLICATION-SPEC FR-5 · NFR-3 · TECHNICAL-SPEC §6.3
-Plan: implementation-plan-AGENT.md Group 4, DP-5 Option A
+Decision: agent DP-5 Option A (ARCHITECTURE-SPEC, Decision log)
 
 Emits TraceStep records per TECHNICAL-SPEC §6.3 including:
-  - chunks_returned and citations_count (per PLAN-004 DP-1)
+  - chunks_returned and citations_count (per UI DP-1, record schema freeze)
   - Reconciled per-step tokens (prompt + completion) from AIMessage.usage_metadata
 
 ONE EMITTER, TWO CONSUMERS (AD-1, AD-2):
@@ -137,7 +137,8 @@ class TraceRecorder:
     ) -> TraceStep:
         """Record the final generation call as a TraceStep of its own.
 
-        It must be a step, not a loose addition to the totals: BUILD-PLAN §7
+        It must be a step, not a loose addition to the totals: the token
+        reconciliation guard (ARCHITECTURE-SPEC, Engineering guards)
         requires Sum(TraceStep.tokens) == record total, and generation is
         usually the largest single cost in the run.
         """
@@ -181,7 +182,7 @@ class TraceRecorder:
         return sum(step.tokens.total for step in self._steps)
 
     def reconcile_assert(self, record_total_tokens: int) -> bool:
-        """Check Sum(TraceStep.tokens) == record total (DP-5, BUILD-PLAN §7).
+        """Check Sum(TraceStep.tokens) == record total (agent DP-5; ARCHITECTURE-SPEC, Engineering guards).
 
         This must compare the *step sum* against the record total. Comparing
         the recorder's own cumulative counter against a total derived from that

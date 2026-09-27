@@ -1,6 +1,6 @@
 name: CI
 
-# BUILD-PLAN §2: main is protected and always green. Backend pytest + ruff,
+# ARCHITECTURE-SPEC, "Engineering guards": main is protected and always green. Backend pytest + ruff,
 # frontend build + tests, and the two guard checks that exist specifically
 # because assistants write this code.
 

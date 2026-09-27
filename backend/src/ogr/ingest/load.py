@@ -1,6 +1,6 @@
 """GRAPH-05: load vertices/edges into TigerGraph.
 
-Source spec: implementation-plan-GRAPH.md Group 2 · TECHNICAL-SPEC §2
+Source spec: TECHNICAL-SPEC §2
 Requirement: FR-11 · Gate: G1
 
 Upserts Document, OlympicEvent, Games, Sport, Venue and Chunk vertices, and

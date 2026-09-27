@@ -1,7 +1,7 @@
 """Tests for EVAL-02: EM, token F1 and retrieval metrics.
 
-implementation-plan-UI.md Group 1 names test_em_f1_matches_hand_computed, and
-its manual step makes hand-computed agreement the G3 trigger. The F1 cases
+test_em_f1_matches_hand_computed is the G3 trigger: the scorer must agree with
+hand-computed values. The F1 cases
 below carry their arithmetic in the assertion so the expected value is
 checkable by eye rather than copied from a previous run.
 

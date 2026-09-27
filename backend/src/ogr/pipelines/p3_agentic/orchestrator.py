@@ -2,7 +2,6 @@
 
 Source spec: TECHNICAL-SPEC §8.3 · ARCHITECTURE-SPEC §3, §4, §5, §8
 Application spec: FR-2, FR-4, FR-5, FR-6, FR-7, FR-11
-Plan: implementation-plan-AGENT.md Group 5
 
 ARCHITECTURE-SPEC §8 runtime view implemented as a LangGraph StateGraph:
   Nodes:
@@ -49,7 +48,7 @@ def append_reducer(existing: list | None, new: list | None) -> list:
 
     Without a reducer, a node returning {"path_taken": [x]} REPLACES the list.
     That silently disarms the step budget, because step_count = len(path_taken)
-    then never grows across loop iterations (PLAN-003 Group 5).
+    then never grows across loop iterations.
     """
     return (existing or []) + (new or [])
 
@@ -73,7 +72,7 @@ def evidence_reducer(existing: list | None, new: list | None) -> list:
 
 
 class OrchestratorState(TypedDict, total=False):
-    """Typed state for the P3 LangGraph StateGraph (PLAN-003 Group 5).
+    """Typed state for the P3 LangGraph StateGraph.
 
     path_taken, evidence and steps accumulate; every other field is replaced
     by the node that writes it.

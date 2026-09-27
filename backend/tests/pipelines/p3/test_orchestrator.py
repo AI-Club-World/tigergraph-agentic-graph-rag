@@ -86,7 +86,7 @@ class TestP3ConformsToContract:
         assert record.pipeline == "agentic_graphrag"
 
     def test_trace_step_has_required_fields(self):
-        """TraceStep must include chunks_returned and citations_count (PLAN-004 DP-1)."""
+        """TraceStep must include chunks_returned and citations_count (UI DP-1)."""
         step = TraceStep(
             step_n=1,
             agent_type="graph_traversal",
@@ -169,9 +169,8 @@ class TestP3ConformsToContract:
     def test_lookup_question_routes_zero_loop_edges(self):
         """LOOKUP with fully-specified anchor must traverse ZERO loop edges.
 
-        From implementation-plan-AGENT.md Group 5:
-        'LOOKUP must traverse zero loop edges. If the graph is built so that every
-        question passes through evaluate_evidence, necessity routing exists on paper only.'
+        If the graph is built so that every question passes through
+        evaluate_evidence, necessity routing exists on paper only.
         """
         from ogr.pipelines.p3_agentic.orchestrator import build_p3_graph
 

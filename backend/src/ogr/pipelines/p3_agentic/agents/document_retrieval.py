@@ -1,7 +1,7 @@
 """Document retrieval agent — HAS_CHUNK expansion for prose fallback.
 
 Source spec: ARCHITECTURE-SPEC §4 · TECHNICAL-SPEC §2.2
-Plan: implementation-plan-AGENT.md Group 3, DP-2 Option A
+Decision: agent DP-2 Option A (ARCHITECTURE-SPEC, Decision log)
 
 Implements the 'Document retrieval' specialised agent.
 Triggered by groundedness failure or empty anchor resolution (DP-2).

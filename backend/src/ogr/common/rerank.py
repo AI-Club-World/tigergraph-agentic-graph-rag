@@ -1,8 +1,8 @@
 """Cross-encoder re-ranking of prose chunks — no LLM call.
 
-LLM-ALLOCATION plan G-2 / DP-2: Cloudflare Workers AI `@cf/baai/bge-reranker-base`
+G-2 / LLM DP-2 (ARCHITECTURE-SPEC, Decision log): Cloudflare Workers AI `@cf/baai/bge-reranker-base`
 (512-token context; chunks are 300). Used by P3 only — P1 stays the unfiltered
-baseline (AD-9, DP-1). When the reranker is unavailable the input order is
+baseline (AD-9, LLM DP-1). When the reranker is unavailable the input order is
 returned unchanged, so a P3 run never ranks worse than without it.
 """
 

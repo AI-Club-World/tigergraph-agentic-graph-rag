@@ -14,7 +14,6 @@ from typing import Any
 class AgentResult:
     """Uniform result type returned by every P3 tool agent.
 
-    Per implementation-plan-AGENT.md Group 3:
     Each agent returns evidence, chunks_returned, citations_count,
     tokens and latency — all fields needed for a TraceStep.
     """
