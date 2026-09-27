@@ -19,7 +19,7 @@ from ogr.common.config import RunConfig, get_default_config
 from ogr.common.contracts import SNIPPET_CHARS, Citation, PipelineRecord, TokenUsage
 from ogr.common.embeddings import embed_query
 from ogr.common.llm import LLMRateLimitError, get_chat_model, invoke_llm_with_answer_contract
-from ogr.graph.client import TigerGraphClient
+from ogr.graph.client import TigerGraphClient, drain_graph_errors, graph_error_detail
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +57,7 @@ def run_p1_rag(
     total_start_time = time.perf_counter()
     cfg = config or get_default_config()
     tg_client = client or TigerGraphClient(cfg)
+    drain_graph_errors(tg_client)  # only this run's failures are reported
 
     # Step 1: Embed query with the model whose index is searched below. A
     # failure fails the pipeline: a stand-in vector would search noise.
@@ -72,6 +73,7 @@ def run_p1_rag(
         embedding_model=cfg.embedding_model,
     )
     chunks_returned = len(retrieved_chunks)
+    graph_errors = drain_graph_errors(tg_client)
 
     # Step 3: Format context
     context = format_chunks_into_context(retrieved_chunks)
@@ -131,5 +133,5 @@ def run_p1_rag(
         strategy_changed=None,
         stop_reason=None,
         status=status,
-        error_detail=error_detail,
+        error_detail=error_detail or graph_error_detail(graph_errors),
     )

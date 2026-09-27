@@ -43,7 +43,7 @@ from ogr.common.llm import (
     invoke_llm_with_answer_contract,
     resolve_tool_calling_support,
 )
-from ogr.graph.client import TigerGraphClient
+from ogr.graph.client import TigerGraphClient, drain_graph_errors, graph_error_detail
 from ogr.pipelines.p3_agentic.agents.agent_result import AgentResult
 from ogr.pipelines.p3_agentic.agents.aggregation import run_aggregation
 from ogr.pipelines.p3_agentic.agents.entity_linking import EntityLinker, ResolvedAnchors, narrow_to_games
@@ -128,6 +128,7 @@ def run_p2_graphrag(
     started = time.perf_counter()
     cfg = config or get_default_config()
     tg_client = client or TigerGraphClient(cfg)
+    drain_graph_errors(tg_client)  # only this run's failures are reported
     chat_model = model or get_chat_model(cfg)
 
     if entity_linker is None:
@@ -165,6 +166,7 @@ def run_p2_graphrag(
         result = run_graph_traversal(tg_client, anchors)
 
     evidence = result.evidence
+    graph_errors = drain_graph_errors(tg_client)
 
     # DP-4: an unresolved venue is surfaced, not guessed. P2 has no fallback to
     # recover with, so the disambiguation candidates go into the context and
@@ -217,5 +219,5 @@ def run_p2_graphrag(
         strategy_changed=None,
         stop_reason=None,
         status=status,
-        error_detail=error_detail,
+        error_detail=error_detail or graph_error_detail(graph_errors),
     )

@@ -46,8 +46,14 @@ class TraceRecorder:
         self,
         route_initial: str = "loop",
         on_step: Callable[[TraceStep], None] | None = None,
+        error_source: Callable[[], list[str]] | None = None,
     ) -> None:
         self.route_initial = route_initial
+        # Graph query failures (TigerGraphClient.drain_errors) are drained into
+        # the step that ran them, so an outage reads as an error in the trace
+        # rather than as "no evidence". Collected for the record too.
+        self._error_source = error_source
+        self.graph_errors: list[str] = []
         self._steps: list[TraceStep] = []
         self._path_taken: list[str] = []
         self._cumulative_input_tokens: int = 0
@@ -106,6 +112,14 @@ class TraceRecorder:
         self._cumulative_input_tokens += tokens_in
         self._cumulative_output_tokens += tokens_out
 
+        notes = result.notes or ""
+        errors = self._error_source() if self._error_source else []
+        if errors:
+            self.graph_errors.extend(errors)
+            notes = f"{notes}; graph query error: {'; '.join(errors)}" if notes else (
+                f"graph query error: {'; '.join(errors)}"
+            )
+
         step = TraceStep(
             step_n=step_n,
             agent_type=agent_type,
@@ -119,7 +133,7 @@ class TraceRecorder:
             citations_count=result.citations_count,
             latency_ms=result.latency_ms,
             strategy_change=this_step_changed,
-            notes=result.notes or "",
+            notes=notes,
         )
         self._emit(step)
         logger.debug(

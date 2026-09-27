@@ -13,6 +13,17 @@ from ogr.common.embedding_models import EMBEDDING_MODELS, EmbeddingModel, resolv
 logger = logging.getLogger(__name__)
 
 
+def drain_graph_errors(client: Any) -> list[str]:
+    """`client.drain_errors()`, tolerating stand-in clients that lack it."""
+    drain = getattr(client, "drain_errors", None)
+    errors = drain() if callable(drain) else []
+    return errors if isinstance(errors, list) else []
+
+
+def graph_error_detail(errors: list[str]) -> str | None:
+    return "graph query error: " + "; ".join(errors) if errors else None
+
+
 class TigerGraphClient:
     """Client for TigerGraph RESTPP and installed queries.
     Provides direct access to Q5 hybrid_search per TECHNICAL-SPEC §3 and AD-7.
@@ -40,6 +51,23 @@ class TigerGraphClient:
         # Games/Sport/Venue are static for the life of a loaded graph, so each
         # is fetched once per client rather than once per query.
         self._vocab_cache: dict[str, list[str]] = {}
+        # Query failures since the caller last drained them. Retrieval still
+        # returns [] on failure (the pipelines answer from what they have),
+        # but the failure is reported on the trace step / record instead of
+        # reading as "no evidence". Per thread: concurrent questions share
+        # one client, and each drains in the thread that ran its query.
+        self._errors = threading.local()
+
+    def _note_error(self, message: str) -> None:
+        if not hasattr(self._errors, "items"):
+            self._errors.items = []
+        self._errors.items.append(message)
+
+    def drain_errors(self) -> list[str]:
+        """Query errors recorded in this thread since the last drain."""
+        items = getattr(self._errors, "items", [])
+        self._errors.items = []
+        return items
 
     def _ensure_connection(self) -> None:
         """Initializes pyTigerGraph connection if not already created.
@@ -153,6 +181,7 @@ class TigerGraphClient:
         self._ensure_connection()
         if self.conn is None:
             logger.warning("TigerGraph connection not available; returning empty result set")
+            self._note_error("q5_hybrid_search: TigerGraph unavailable")
             return []
 
         if len(query_vector) != model.dim:
@@ -174,6 +203,7 @@ class TigerGraphClient:
             return self._normalize_q5_results(raw_res)
         except Exception as e:
             logger.error("Error executing Q5 hybrid_search: %s", e)
+            self._note_error(f"q5_hybrid_search: {e}")
             return []
 
     def _normalize_q5_results(self, raw_res: Any) -> list[dict[str, Any]]:
@@ -333,6 +363,7 @@ class TigerGraphClient:
         self._ensure_connection()
         if self.conn is None:
             logger.warning("TigerGraph unavailable; _run_query('%s') returning empty", query_name)
+            self._note_error(f"{query_name}: TigerGraph unavailable")
             return []
 
         try:
@@ -347,6 +378,7 @@ class TigerGraphClient:
             return raw if isinstance(raw, list) else []
         except Exception as e:
             logger.error("Error running query '%s': %s", query_name, e)
+            self._note_error(f"{query_name}: {e}")
             return []
 
     def _expand_has_chunk(self, doc_ids: list[str]) -> list[dict[str, Any]]:
@@ -361,6 +393,7 @@ class TigerGraphClient:
         self._ensure_connection()
         if self.conn is None:
             logger.warning("TigerGraph unavailable; _expand_has_chunk returning empty")
+            self._note_error("HAS_CHUNK expansion: TigerGraph unavailable")
             return []
 
         all_chunks: list[dict[str, Any]] = []
@@ -384,6 +417,7 @@ class TigerGraphClient:
                     })
             except Exception as e:
                 logger.warning("HAS_CHUNK expansion failed for %s: %s", doc_id, e)
+                self._note_error(f"HAS_CHUNK expansion for {doc_id}: {e}")
         return sorted(all_chunks, key=lambda c: (c["doc_id"], c["seq"]))
 
     def get_vocabulary(self, vtype: str) -> list[str]:

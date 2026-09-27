@@ -124,6 +124,7 @@ def build_p3_graph(
         resolve_tool_calling_support,
     )
     from ogr.common.rerank import rerank
+    from ogr.graph.client import drain_graph_errors, graph_error_detail
     from ogr.pipelines.p3_agentic.agents.agent_result import AgentResult
     from ogr.pipelines.p3_agentic.agents.aggregation import run_aggregation
     from ogr.pipelines.p3_agentic.agents.document_retrieval import run_document_retrieval
@@ -156,6 +157,10 @@ def build_p3_graph(
     # Node implementations
     # -----------------------------------------------------------------------
 
+    def _graph_errors() -> list[str]:
+        """Graph query failures since the last call (TigerGraphClient.drain_errors)."""
+        return drain_graph_errors(tg_client)
+
     def node_parse_intent(state: dict) -> dict:
         question = state.get("question", "")
         t0 = time.perf_counter()
@@ -164,9 +169,11 @@ def build_p3_graph(
         route_decision = route(intent)
 
         # Initialize trace recorder keyed to this run's route decision
+        _graph_errors()  # drop anything a previous run in this thread left behind
         _state_store["recorder"] = TraceRecorder(
             route_initial=route_decision,
             on_step=on_step,
+            error_source=_graph_errors,
         )
 
         # The intent parse is an LLM call and is the entry point to P3; its
@@ -616,7 +623,10 @@ def build_p3_graph(
             strategy_changed=strategy_changed,
             stop_reason=stop_reason,
             status=status,
-            error_detail=error_detail,
+            # A graph outage mid-investigation is reported, not hidden; the
+            # status stays what the answer earned.
+            error_detail=error_detail
+            or graph_error_detail(recorder.graph_errors if recorder else []),
         )
         return {}
 
