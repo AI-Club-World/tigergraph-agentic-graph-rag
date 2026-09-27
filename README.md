@@ -69,7 +69,9 @@ default. The main variables:
 | `LLM_PROVIDER`, `LLM_MODEL`, `LLM_API_KEY`, `LLM_BASE_URL` | The startup LLM. `LLM_PROVIDER` is `anthropic`, `google`, `openai` or `openai_compatible`. For `openai_compatible` (Groq, Ollama, …), set `LLM_BASE_URL` too. Code default: `openai_compatible`, `qwen2.5:7b-instruct` at `http://localhost:11434/v1` (Ollama) |
 | `GEMINI_API_KEY`, `GROQ_API_KEY`, `NVIDIA_API_KEY` | Keys for the three providers you can pick at runtime in the Settings panel. Leave a provider's key empty and that provider is disabled in the panel. The chosen model applies to all three pipelines |
 | `EMBEDDING_MODEL` | The startup embedding model, by key (table below). Default `bge-large-en-v1.5`. After the first switch in Settings, the active model is stored in `out/embeddings.json` and overrides this value |
-| `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN` | Workers AI. They serve `bge-large-en-v1.5` embeddings and the Agentic pipeline's reranker (`@cf/baai/bge-reranker-base`). Without them, embeddings run locally with `sentence-transformers` |
+| `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN` | Workers AI. They serve `bge-large-en-v1.5` embeddings and the Agentic pipeline's reranker (`@cf/baai/bge-reranker-base`). Without them, or when a call fails, both run the same models locally (`sentence-transformers`) |
+| `EMBEDDING_HOST_URL` | Optional self-hosted embedding service serving the catalog models: `POST {url}/embed` with `{"model": "<key>", "texts": [...]}` returns `{"embeddings": [...]}`. Tried first; on failure the next tier runs |
+| `EMBEDDING_CLOUDFLARE`, `EMBEDDING_REMOTE` | `false` skips the Cloudflare embedding tier (e.g. quota spent), or every remote tier. Both default to `true` |
 | `OGR_API_KEY` | Required. Every authenticated route returns `503` until it is set. Generate one with `python -c "import secrets; print(secrets.token_urlsafe(24))"` |
 | `OGR_CORS_ORIGINS` | Browser origins allowed to call the API. Defaults to `http://localhost:5173,http://127.0.0.1:5173`, the Vite dev server |
 | `RUN_K`, `RUN_CHUNK_TOKENS`, `RUN_CHUNK_OVERLAP` | Retrieval and chunking (10 / 300 / 50). They are fixed before the first run and never tuned against results |
@@ -87,6 +89,10 @@ The graph stores embeddings for at most two of them at once.
 | `gte-large-en-v1.5` | `Alibaba-NLP/gte-large-en-v1.5` | 1024 | local |
 | `mxbai-embed-large-v1` | `mixedbread-ai/mxbai-embed-large-v1` | 1024 | local |
 | `bge-large-en-v1.5` (default) | `BAAI/bge-large-en-v1.5` | 1024 | Cloudflare when configured, else local |
+
+Every model is tried in the order: `EMBEDDING_HOST_URL`, then Cloudflare (for the
+model it hosts), then local. All tiers produce the same vectors for a model, so
+a build and its queries may use different tiers.
 
 `.env` is git-ignored. Never commit real values, and never put a secret in a
 `VITE_`-prefixed variable: those values are compiled into the browser bundle.
@@ -139,9 +145,14 @@ With `.env` filled in, `make reproduce` runs these steps in order:
 4. `build`: rebuilds the graph.
 5. `benchmark` and `timing`: run `data/questions/eval_public.jsonl` in `throughput` and `timing` mode.
 6. `holdout`: runs `acceptance/holdout/eval_hidden.jsonl`.
+7. `results`: writes `out/<RUN_ID>-public-report.md` (the run report below) and
+   `out/<RUN_ID>-holdout-export.json` (the hidden-set submission).
+
+`make smoke` asks one question through all three pipelines against the live
+graph. It is the quickest check that the GSQL queries and the LLM work end to end.
 
 Every step shares one `RUN_ID`. Outputs go to `out/<RUN_ID>-public.jsonl`,
-`-public-timing.jsonl` and `-holdout.jsonl`.
+`-public-timing.jsonl` and `-holdout.jsonl`, plus the two results files.
 
 ## Security model
 
@@ -173,9 +184,11 @@ frontend.
 |---|---|
 | `verify [--pre-build]` | Checks the LLM, the embedding backend and TigerGraph, and whether Q1–Q5 are installed. Exit code 0 only when nothing fails |
 | `build [--corpus PATH] [--vector-timeout S]` | Full reset and load of one corpus, as described above |
-| `batch QUESTIONS.jsonl --out OUT.jsonl [--run-id ID] [--mode throughput\|timing]` | Runs a question set through all three pipelines and appends one scored record per question (details below) |
-| `ask "<question>" [--pipelines rag,graphrag,agentic_graphrag] [--json] [--show-trace]` | Answers one question from the terminal. Default pipeline: `rag`. Aliases: `graph`, `agentic` |
+| `batch QUESTIONS.jsonl --out OUT.jsonl [--run-id ID] [--mode throughput\|timing] [--embedding-model KEY]` | Runs a question set through all three pipelines and appends one scored record per question (details below) |
+| `ask "<question>" [--pipelines rag,graphrag,agentic_graphrag] [--embedding-model KEY] [--json] [--show-trace]` | Answers one question from the terminal. Default pipeline: `rag`. Aliases: `graph`, `agentic` |
 | `coverage [--corpus PATH] [--out out/ingest-coverage.md]` | Parses the corpus infoboxes and writes the ingest coverage report |
+| `report RUN.jsonl [--out REPORT.md]` | Markdown run report: EM/F1/completeness/grounding and token cost per pipeline; per question type the Agentic − RAG gap, token ratio and a worth-it verdict; necessity routing (direct vs loop, with a labelled token-savings estimate); agents, tools and stop reasons |
+| `export RUN.jsonl --out EXPORT.json` | Submission JSON: per question and pipeline the answer, explanation, tokens, latency, citations (with evidence snippets) and, for Agentic, the full trace |
 
 How `batch` behaves:
 

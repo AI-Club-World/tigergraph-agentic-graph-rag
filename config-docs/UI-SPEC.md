@@ -862,6 +862,7 @@ One row per pipeline, with a colour swatch, over **all** records:
 | Mean input / Mean output | mean `tokens.input` / `tokens.output` over answered, rounded |
 | Mean latency | mean `latency_ms` over answered, as `{s, 1 dp} s` |
 | Mean citations | mean `citations_count` over answered, 2 dp |
+| Grounded | mean `grounding[pipeline]` over answered questions, 2 dp; `—` when the run carries none. Needs no ground truth |
 
 Footnote: `Over answered questions; errored answers are counted, not averaged in.`
 An errored answer must never enter a mean as a zero-token answer. A record

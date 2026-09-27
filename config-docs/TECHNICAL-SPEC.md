@@ -253,7 +253,7 @@ Verdict (`eval/aggregator.py`, one implementation for API and batch): multiplier
   "pipeline": "rag|graphrag|agentic_graphrag",
   "answer": "string (short span — scored)",
   "explanation": "string (prose with citations — displayed, never scored)",
-  "citations": [ { "source_id": "doc_id (scored)", "chunk_id": "string|null", "ref_type": "chunk|entity|relationship" } ],
+  "citations": [ { "source_id": "doc_id (scored)", "chunk_id": "string|null", "ref_type": "chunk|entity|relationship", "snippet": "cited evidence text, ≤600 chars|null" } ],
   "chunks_returned": 0,
   "citations_count": 0,
   "tokens": { "input": 0, "output": 0, "total": 0 },
@@ -267,6 +267,11 @@ Verdict (`eval/aggregator.py`, one implementation for API and batch): multiplier
 }
 ```
 `trace`, `strategy_changed`, `stop_reason` are set for `agentic_graphrag` only.
+`error_detail` is also set on a `done` record when a graph query failed during
+the run (`"graph query error: <query>: <reason>"`): retrieval returned nothing
+for that query, the answer keeps its status, and the failure is not mistaken
+for "no evidence". In P3 the same text is appended to the `notes` of the trace
+step that ran the query (`TigerGraphClient.drain_errors`, per thread).
 
 ### 6.3 TraceStep (agentic_graphrag only)
 
@@ -365,6 +370,7 @@ Source: `eval/scorer.py`, `common/names.py`. No LLM and no network in this path 
 | Token F1 | token overlap after the same normalization and name splitting, max over gold variants |
 | Precision / Recall | returned document set (citation `source_id`s, deduplicated) vs `gold_doc_ids`; 0 when either is empty. No `@k` — undefined for P2/P3; `k = 10` applies to P1 retrieval only |
 | Completeness | **= Recall**, kept as its own field because the guidebook names the column |
+| Grounded | share of the answer's normalized names that occur, as whole words, in the normalized text of its own citations (`snippet`); 0 when nothing is cited. Needs no gold, so it is computed for hidden-set runs too (`view_record` → `grounding`) |
 | Tokens / latency | provider-reported usage (§11) |
 | Per-qtype breakdown | every metric by qtype (`aggregate_by_qtype`, missing qtype → `unknown`) |
 
@@ -378,7 +384,7 @@ Source: `eval/scorer.py`, `common/names.py`. No LLM and no network in this path 
 
 ### 9.2 Run summaries (`eval/history.py`)
 
-`GET /runs` summarises each `out/*.jsonl` whose first line is a `run_config` header: `{run_id, status, started_at, dataset, run_config, n_questions, scored, pipelines}`. Per pipeline: `em`, `f1`, `precision`, `recall`, `completeness` (means over scored questions), `mean_tokens`, `median_tokens`, `total_tokens`, `mean_latency_ms`, `mean_input_tokens`, `mean_output_tokens`, `errors`, `f1_per_1k_tokens`. **Error records are excluded from the token and latency means** (an error carries 0 tokens and would make the most-failing pipeline look cheapest); they are counted in `errors`. A record without ground truth has `scores: null`. Unreadable run files are skipped. Imports are validated through the same summariser and the secret check before anything is written; history is never overwritten.
+`GET /runs` summarises each `out/*.jsonl` whose first line is a `run_config` header: `{run_id, status, started_at, dataset, run_config, n_questions, scored, pipelines}`. Per pipeline: `em`, `f1`, `precision`, `recall`, `completeness` (means over scored questions), `grounded` (mean over answered questions), `mean_tokens`, `median_tokens`, `total_tokens`, `mean_latency_ms`, `mean_input_tokens`, `mean_output_tokens`, `errors`, `f1_per_1k_tokens`. **Error records are excluded from the token and latency means** (an error carries 0 tokens and would make the most-failing pipeline look cheapest); they are counted in `errors`. A record without ground truth has `scores: null`. Scores are always recomputed from the answer when a record is read; stored or imported scores are never trusted. Unreadable run files are skipped. Imports are validated through the same summariser and the secret check before anything is written; history is never overwritten.
 
 ### 9.3 Batch store (`eval/store.py`)
 
@@ -437,7 +443,9 @@ Screen detail: `UI-SPEC.md`.
 | `benchmark` | `batch data/questions/eval_public.jsonl --mode throughput --run-id $(RUN_ID)-public --out out/$(RUN_ID)-public.jsonl` |
 | `timing` | same set, `--mode timing`, `$(RUN_ID)-public-timing` |
 | `holdout` | `batch acceptance/holdout/eval_hidden.jsonl --mode throughput`, `$(RUN_ID)-holdout` |
+| `results` | `ogr.cli report out/$(RUN_ID)-public.jsonl --out …-public-report.md`; `ogr.cli export out/$(RUN_ID)-holdout.jsonl --out …-holdout-export.json` |
 | `reproduce` | all of the above in order |
+| `smoke` | one `ask` through all three pipelines with `--show-trace` (not part of `reproduce`) |
 
 ### 12.2 CLI (`python -m ogr.cli`, `backend/src/ogr/cli.py`)
 
@@ -445,9 +453,11 @@ Screen detail: `UI-SPEC.md`.
 |---|---|
 | `verify [--pre-build]` | Prints config (secrets masked) and LLM, Embedding, TigerGraph, GSQL-queries checks; exit 1 on any FAIL |
 | `build [--corpus PATH] [--vector-timeout 600]` | Chunk + strict embed with the embedding store's active model (else `EMBEDDING_MODEL`), **install schema (resets the graph and every dataset)**, reset registry and store, load, install Q1–Q5, wait for the index |
-| `batch QUESTIONS --out PATH [--run-id ID] [--mode throughput\|timing]` | Same runner as `POST /batch`; exit 1 on `BatchIncompleteError` or `LLMRateLimitError`; rerun resumes |
-| `ask QUERY [--pipelines rag,graphrag,agentic_graphrag] [--json] [--show-trace]` | Aliases `graph`, `agentic`; default `rag` |
+| `batch QUESTIONS --out PATH [--run-id ID] [--mode throughput\|timing] [--embedding-model KEY]` | Same runner as `POST /batch`; exit 1 on `BatchIncompleteError` or `LLMRateLimitError`; rerun resumes |
+| `ask QUERY [--pipelines rag,graphrag,agentic_graphrag] [--embedding-model KEY] [--json] [--show-trace]` | Aliases `graph`, `agentic`; default `rag` |
 | `coverage [--corpus PATH] [--out out/ingest-coverage.md]` | Infobox parse coverage report |
+| `report RUN [--out PATH]` | `eval/report.py` `build_report`: headline (EM, F1, completeness, grounded, tokens, latency, errors); per qtype the Agentic − RAG EM gap, median Agentic ÷ RAG token ratio and verdict (dashboard thresholds 0.5 / 0.05); win/loss question ids; necessity routing (`stop_reason == "direct_route"` vs loop) with a labelled estimate of tokens saved; agent/tool/stop-reason mix |
+| `export RUN --out PATH` | `export_run`: `{run_id, run_config, questions: [{qid, question, qtype, pipelines: {<name>: {answer, explanation, status, tokens, token_source, latency_ms, chunks_returned, citations, + trace, strategy_changed, stop_reason for agentic}}}]}` |
 
 ### 12.3 Other
 
@@ -534,7 +544,9 @@ Defaults are the effective ones (file value where the file sets one, else code).
 | | `LLM_SUPPORTS_TOOL_CALLING`, `LLM_REPORTS_TOKEN_USAGE` | `auto` |
 | | `LLM_REQUESTS_PER_MINUTE`, `LLM_BACKOFF_BASE_S`, `LLM_MAX_RETRIES` | 30 (code default 0 if the file is absent), 2, 5 |
 | Embeddings | `EMBEDDING_MODEL` | `bge-large-en-v1.5`; a catalog key, label, HF id or Cloudflare id; an unknown value logs a warning and uses the default. Startup default only — the embedding store's active model wins. Dimension follows the model (no `EMBEDDING_DIM` variable) |
-| | `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN` | env only; also serve the reranker; empty → local tier |
+| | `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN` | env only; also serve the reranker; empty or failing → the same model locally (embeddings: `sentence-transformers`; reranker: `BAAI/bge-reranker-base` `CrossEncoder`) |
+| | `EMBEDDING_HOST_URL` | unset; a self-hosted `POST {url}/embed {"model","texts"} → {"embeddings"}` service, tried first |
+| | `EMBEDDING_CLOUDFLARE`, `EMBEDDING_REMOTE` | `true`; `false` skips the Cloudflare tier / every remote tier. Tier order: host → Cloudflare → local → hash (non-strict only) |
 | Run | `RUN_K`, `RUN_CHUNK_TOKENS`, `RUN_CHUNK_OVERLAP`, `RUN_MAX_STEPS`, `RUN_MAX_TOKENS_PER_QUERY`, `RUN_POOL_SIZE`, `RUN_LATENCY_MODE`, `RUN_MAX_TOTAL_TOKENS`, `RUN_SEED` | 10, 300, 50, 6, 20000, 2, `throughput`, 5000000, none |
 | API | `OGR_API_KEY` | required; unset → every protected route 503 |
 | | `OGR_STREAM_TOKEN_TTL_S` | 300 |
