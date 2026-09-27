@@ -101,7 +101,8 @@ def run_config_header(config: RunConfig) -> dict[str, Any]:
     return {
         "llm_provider": config.llm_provider,
         "llm_model": config.llm_model,
-        "llm_base_url": config.llm_base_url,
+        # Host only: a URL can carry credentials, and run files are shared.
+        "llm_base_url": _public_host(config.llm_base_url),
         "temperature": config.llm_temperature,
         "embedding_model": config.embedding_model,
         "embedding_backend": embedding_backend(config.embedding_model),
@@ -116,6 +117,15 @@ def run_config_header(config: RunConfig) -> dict[str, Any]:
         "seed": config.seed,
         "requests_per_minute": config.llm_requests_per_minute,
     }
+
+
+def _public_host(url: str | None) -> str | None:
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url or "")
+    if not parsed.hostname:
+        return None
+    return f"{parsed.hostname}:{parsed.port}" if parsed.port else parsed.hostname
 
 
 def _record_tokens(record: dict[str, Any]) -> int:

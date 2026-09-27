@@ -292,3 +292,12 @@ class TestResumeRobustness:
         _config, records = read_run(out)
         agentic = summarize_run("r", {}, records)["pipelines"]["agentic_graphrag"]
         assert agentic["errors"] == 1 and agentic["mean_tokens"] == 400  # not (0 + 400) / 2
+
+
+def test_run_headers_never_carry_url_credentials(monkeypatch):
+    from ogr.common.config import RunConfig
+    from ogr.eval import batch_runner
+
+    monkeypatch.setattr(batch_runner, "embedding_backend", lambda _m: "sentence-transformers")
+    header = batch_runner.run_config_header(RunConfig(llm_base_url="https://user:s3cret@llm.internal:8443/v1"))
+    assert header["llm_base_url"] == "llm.internal:8443"

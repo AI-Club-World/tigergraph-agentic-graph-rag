@@ -130,7 +130,7 @@ export interface BuildEvent {
   items_done: number
   items_total: number
   elapsed_ms: number
-  /** Always 0 — ingestion is deterministic parsing plus a local encoder (DP-7). */
+  /** Always 0 — ingestion is deterministic parsing plus an embedding model, never an LLM (DP-7). */
   tokens: number
   note: string
 }

@@ -2,8 +2,27 @@
 
 from __future__ import annotations
 
+import pytest
+
 from ogr import cli
 from ogr.common.contracts import PipelineRecord
+from tests.conftest import make_embeddings_ready
+
+
+@pytest.fixture(autouse=True)
+def cli_out(monkeypatch, tmp_path):
+    """CLI state (embedding store, registry) in a temporary out/, with the
+    default model's embeddings complete so queries and runs may start."""
+    out = tmp_path / "cli-out"
+    monkeypatch.setattr(cli, "OUT_DIR", out)
+    return make_embeddings_ready(out)
+
+
+def test_a_model_without_complete_embeddings_is_refused(capsys):
+    assert cli.main(["ask", "How many?", "--embedding-model", "qwen3-embedding-0.6b"]) == 1
+    err = capsys.readouterr().err
+    assert "no complete embeddings" in err and "bge-large-en-v1.5" in err
+    assert cli.main(["batch", "q.jsonl", "--out", "o.jsonl", "--embedding-model", "gte-large-en-v1.5"]) == 1
 
 
 def test_one_failing_pipeline_does_not_discard_the_others(monkeypatch, capsys):

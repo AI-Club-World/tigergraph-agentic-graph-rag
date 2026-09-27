@@ -17,6 +17,10 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     ask_parser = subparsers.add_parser("ask", help="Ask a question through one or more pipelines")
+    ask_parser.add_argument(
+        "--embedding-model", default=None,
+        help="Search with this model (default: the one Settings made active); it must be complete",
+    )
     ask_parser.add_argument("query", type=str, help="The question text to evaluate")
     ask_parser.add_argument(
         "--pipelines",
@@ -48,6 +52,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     batch_parser = subparsers.add_parser(
         "batch", help="Run a JSONL question set through all three pipelines (EVAL-04)"
+    )
+    batch_parser.add_argument(
+        "--embedding-model", default=None,
+        help="Search with this model (default: the one Settings made active); it must be complete",
     )
     batch_parser.add_argument("questions", type=str, help="Path to a Question JSONL file")
     batch_parser.add_argument("--out", type=str, required=True, help="Output BatchRecord JSONL path")
@@ -94,6 +102,7 @@ def _build(corpus: str, vector_timeout_s: float) -> int:
     Ends with the vector readiness gate (TECHNICAL-SPEC §11): a benchmark must
     not start before the index reports Ready_for_query."""
     from ogr.common.embedding_models import resolve_model
+    from ogr.common.embeddings import embedding_backend
     from ogr.graph.schema import install_queries, install_schema
     from ogr.graph.vector_status import VectorNotReadyError, wait_until_ready
     from ogr.ingest.chunk_embed import chunk_and_embed_corpus, embed_chunks
@@ -108,7 +117,7 @@ def _build(corpus: str, vector_timeout_s: float) -> int:
     if client.conn is None:
         print("TigerGraph unreachable — set TG_HOST and credentials (run `verify`).", file=sys.stderr)
         return 1
-    out_dir = Path(__file__).resolve().parents[3] / "out"
+    out_dir = OUT_DIR
     store = EmbeddingStore(out_dir / "embeddings.json")
     # The model Settings last made active, else EMBEDDING_MODEL.
     model = resolve_model(store.active() or config.embedding_model)
@@ -132,7 +141,11 @@ def _build(corpus: str, vector_timeout_s: float) -> int:
             "event_ids": [d.event_id or d.doc_id for d in docs if d.is_olympic_event],
             "chunk_ids": [c.chunk_id for c in chunks],
         },
-        counts={"documents": load.documents, "events": load.olympic_events, "chunks": load.chunks},
+        counts={
+            "documents": load.documents, "events": load.olympic_events, "chunks": load.chunks,
+            "vectors": load.chunks, "embedding_model": model.key,
+            "embedding_backend": embedding_backend(model.key),
+        },
         file_bytes=Path(corpus).stat().st_size,
     )
     print("  installing Q1-Q5 ...")
@@ -142,9 +155,47 @@ def _build(corpus: str, vector_timeout_s: float) -> int:
     except (RuntimeError, VectorNotReadyError) as e:
         print(str(e), file=sys.stderr)
         return 1
-    store.add_covered(model.key, [c.chunk_id for c in chunks])
+    store.add_covered(model.key, [c.chunk_id for c in chunks], embedding_backend(model.key))
+    if not store.active():
+        store.set_active(model.key)
     print("Build complete; vector index Ready_for_query.")
     return 0
+
+
+OUT_DIR = Path(__file__).resolve().parents[3] / "out"
+
+
+def _query_config(requested: str | None = None):
+    """The config a CLI query or batch runs with, or None (after printing why).
+
+    Same rule as the API: the embedding model is the one Settings made
+    active (or `--embedding-model`), and it must have complete embeddings
+    for the corpus — a query is never searched against an incomplete or
+    another model's index."""
+    from ogr.common.embedding_models import EMBEDDING_MODELS, UnknownEmbeddingModel, resolve_model
+    from ogr.ingest.embedding_index import EmbeddingStore
+    from ogr.ingest.registry import DatasetRegistry
+
+    config = get_default_config()
+    store = EmbeddingStore(OUT_DIR / "embeddings.json")
+    try:
+        model = resolve_model(requested or store.active() or config.embedding_model)
+    except UnknownEmbeddingModel as e:
+        print(str(e), file=sys.stderr)
+        return None
+    corpus = DatasetRegistry(OUT_DIR / "datasets.json").all_chunk_ids()
+    status = store.model_status(model.key, corpus)
+    if not status["complete"]:
+        complete = [EMBEDDING_MODELS[k].key for k in store.complete_models(corpus)]
+        print(
+            f"{model.label} has no complete embeddings for this corpus (state: {status['state']}, "
+            f"{status['chunks_done']}/{status['chunks_total']} chunks). "
+            + (f"Complete models: {', '.join(complete)} — pass --embedding-model." if complete
+               else "Build the dataset first (`ogr.cli build`)."),
+            file=sys.stderr,
+        )
+        return None
+    return config.model_copy(update={"embedding_model": model.key, "embedding_dim": model.dim})
 
 
 def main(argv=None) -> int:
@@ -181,7 +232,9 @@ def main(argv=None) -> int:
             run_config_header,
         )
 
-        config = get_default_config()
+        config = _query_config(args.embedding_model)
+        if config is None:
+            return 1
         if args.mode:
             config = config.model_copy(update={"latency_mode": args.mode})
         client = TigerGraphClient(config)
@@ -216,7 +269,9 @@ def main(argv=None) -> int:
 
     if args.command == "ask":
         requested_pipelines = [p.strip().lower() for p in args.pipelines.split(",")]
-        config = get_default_config()
+        config = _query_config(args.embedding_model)
+        if config is None:
+            return 1
         client = TigerGraphClient(config)
 
         from ogr.eval.dispatcher import error_record
