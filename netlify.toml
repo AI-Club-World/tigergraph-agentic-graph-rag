@@ -1,8 +1,9 @@
 # Netlify deployment for the frontend module.
 #
-# Only the frontend is deployed. There is no FastAPI service in this repo yet
-# (API-01), so the app runs on fixture data: VITE_USE_MOCK_API defaults to
-# true and every screen is served from frontend/src/fixtures/.
+# Only the frontend is deployed (the FastAPI backend is not hosted here).
+# Git-linked builds set VITE_USE_MOCK_API=true below, so every screen is
+# served from frontend/src/fixtures/. Without it a build calls the backend at
+# VITE_API_BASE_URL — see config-docs/DEPLOY.md.
 
 [build]
   # The app is not at the repo root, so builds run inside frontend/.

@@ -40,7 +40,7 @@ export function useBatchRecords() {
         .then((runs) => {
           if (cancelled) return
           if (runs.length) setParams((prev) => withRun(prev, runs[0].run_id), { replace: true })
-          else setError('No benchmark runs yet — start one from the Benchmarks view.')
+          else setError('No benchmark runs yet — start one from the Run benchmark tab.')
         })
         .catch((e: unknown) => {
           if (!cancelled) setError(e instanceof Error ? e.message : 'Could not list runs')

@@ -124,7 +124,11 @@ export function EmbeddingSettings() {
       {disabledReason && (
         <p className="embed-disabled" role="status">
           Switching is disabled: {disabledReason}
-          {overview.build_running ? ' It re-enables when the build ends.' : ' It re-enables when the job ends.'}
+          {overview.build_running
+            ? ' It re-enables when the build ends.'
+            : overview.job?.status === 'running'
+              ? ' It re-enables when the job ends.'
+              : ' It re-enables when the run ends.'}
         </p>
       )}
       {!overview.layout_current && (

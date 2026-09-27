@@ -63,6 +63,7 @@ export function HistoryView() {
             <option value="query">Query</option>
             <option value="build">Build</option>
             <option value="benchmark">Benchmark</option>
+            <option value="embedding_job">Embedding job</option>
           </select>
         </label>
         <label>
