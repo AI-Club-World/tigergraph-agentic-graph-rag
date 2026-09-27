@@ -132,7 +132,10 @@ settled decision (asked before implementing); **U** = needs the user
 | 8 | Embeddings (Cloudflare quota spent, HTTP 429) | The owner's self-hosted `bge-large-en-v1.5` service (`EMBEDDING_HOST_URL`), checked equal to local bge-large (cosine 1.000). Its first tunnel died mid-build; the owner restarted it on a new URL |
 | 9 | deepseek-v4.1-flash measured at ~290 s per call (≈50 h for the benchmark) | Switch all three pipelines to NVIDIA `nvidia/nemotron-3-super-120b-a12b` (0.8 s short call, ~2 min per question across three pipelines). Same model for P1, P2, P3 |
 | 10 | Q2 returns only a count, so count answers cite nothing (grounding 0) — R item, changes retrieved context | Approved before the run: Q2 also returns the counted events (event_id, name, doc_id); count unchanged |
-| — | Accuracy fixes (routing, chunking, k, prompts) | Not decided yet. Raised only once the measured run shows which question types fail (§3 C1) |
+| 11 | r1: graph rows carry `event_name` but gold answers are page titles (7/10 superlatives named the right event without its title) | Add the Document `title` to Q1–Q4 rows |
+| 12 | Hidden set is run once; fixes were still landing | Hold the hidden run until the fixes are in; rerun the public set (`r2`) to measure them first |
+| 13 | r1: a COUNT of one named event's attribute ("how many nations competed in <event>") was answered by counting events | Routing rule `refine_route`: such a COUNT becomes a Q1 lookup, in P2 and P3 alike |
+| — | Other accuracy fixes (chunking, k, prompts) | None proposed: the r1 failures traced to retrieval and routing, not to those |
 | — | Server-side admin key for destructive routes (C4 R item) | Not raised: it changes the auth design. The documented security model (README) stands |
 
 ## 5. Implementation plan
@@ -151,13 +154,35 @@ Largest gap first. Done items name their commit on `application-integration`.
 | 8 | C4 | `make smoke`, `make results`; docs for all of the above | S | Done, f47c073 |
 | 9 | C1 | Rebuild the graph (per-model layout), run public 100 + hidden 50 with one LLM | U | Rebuild done (2,951 docs, 16,669 chunks, index ready); benchmark `r1` running |
 | 9a | C2/C1 | Q2 returns its counted events, so count answers are cited | R, approved | Done, e189298 (Q2 reinstalled live) |
-| 10 | C1 | Root-cause failing question types from the run; accuracy fixes | R | After 9, each raised with the owner first |
+| 10 | C1 | Root-cause failing question types from the run; accuracy fixes | R | Done from r1 (below); `r2` measures them |
+| 10a | C1 | Graph rows carry the page title (Q1–Q4) | R, approved (11) | Done, 805aa81 |
+| 10b | C1 | Q2's count says what it counted; members show the filtered values (repairs 9a: pub-093 answered "unknown") | S (fix to 9a) | Done, 34e3598 |
+| 10c | C1 | Q1 finds the named event exactly (derived event_id; page title → the event it describes) | S (lookup bug) | Done, b62d246 |
+| 10d | C1 | COUNT of one named event's attribute → Q1 lookup | R, approved (13) | Done, cf0b80e |
 | 11 | C6 | `WRITEUP.md` with measured results; demo video script | S | After 9 (needs real numbers) |
 | 12 | C6 | Record the demo video | U | Owner |
 
 **Resolved blockers on 9 (2026-09-27):** the first embedding tunnel died
 mid-build (the CPU fallback would have taken ~4 h); the owner restarted it
 and the rebuild finished in minutes. The LLM was switched (decision 9).
+
+### Baseline measured (r1, 100 public questions, 2026-09-27)
+
+Same LLM for all three pipelines (`nvidia/nemotron-3-super-120b-a12b`), bge-large-en-v1.5.
+
+| Pipeline | EM | F1 | Completeness | Grounded | Median tokens |
+|---|---|---|---|---|---|
+| RAG | 0.62 | 0.67 | 0.74 | 0.92 | 6,433 |
+| GraphRAG | 0.37 | 0.40 | 0.28 | 0.29 | 2,616 |
+| Agentic GraphRAG | 0.74 | 0.78 | 0.70 | 0.72 | 4,700 |
+
+Per type, Agentic − RAG EM: aggregation +0.52, multi_hop +0.25, temporal
+−0.05, lookup −0.26, superlative 0.00 (all three pipelines 0/10). Agentic
+won 20 questions RAG lost; RAG won 8 Agentic lost. Root causes of the 8
+losses and the superlatives: page titles missing from graph rows (10a),
+Q2 context (10b), wrong-edition / Document-only lookups (10c), COUNT
+misrouting (10d); pub-048 and pub-060 (a temporal and a multi-hop miss)
+remain open.
 
 ## 6. Post-implementation scores
 
