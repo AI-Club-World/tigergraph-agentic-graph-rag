@@ -153,3 +153,68 @@ class TestFullySpecifiedPredicate:
             constraints=[{"field": "nations", "op": ">", "value": 5}],
         )
         assert is_fully_specified(intent) is False
+
+
+class TestRefineRouteForOneNamedEvent:
+    """A COUNT of one named event's attribute is a lookup (r1: pub-025, pub-061, pub-074)."""
+
+    @staticmethod
+    def _count(field="nations", constraints=()):
+        from ogr.pipelines.p3_agentic.intent import Anchor, AnchorConstraint, IntentSchema
+        return IntentSchema(
+            operation="COUNT", anchor=Anchor(title="Women's 57 kg", sport="Judo", games="2016-Summer"),
+            target_field=field,
+            constraints=[AnchorConstraint(field=f, op=">", value=v) for f, v in constraints],
+        )
+
+    @staticmethod
+    def _anchors(**kw):
+        from ogr.pipelines.p3_agentic.agents.entity_linking import ResolvedAnchors
+        return ResolvedAnchors(**{"sport": "Judo", "games": "2016-Summer", "title": "Women's 57 kg", **kw})
+
+    def test_a_named_event_attribute_becomes_a_lookup(self):
+        from ogr.pipelines.p3_agentic.router import refine_route
+        for field in ("nations", "nation", "competitors"):
+            assert refine_route("scoped_aggregate", self._count(field), self._anchors()) == "lookup_direct"
+
+    def test_counts_over_a_sport_or_with_constraints_stay_aggregates(self):
+        from ogr.pipelines.p3_agentic.router import refine_route
+        no_event = self._anchors(title=None)
+        assert refine_route("scoped_aggregate", self._count(), no_event) == "scoped_aggregate"
+        constrained = self._count(constraints=[("competitors", 72)])
+        assert refine_route("scoped_aggregate", constrained, self._anchors()) == "scoped_aggregate"
+        assert refine_route("scoped_aggregate", self._count("gold"), self._anchors()) == "scoped_aggregate"
+        assert refine_route("loop", self._count(), self._anchors()) == "loop"
+
+
+def test_p2_and_p3_both_look_the_attribute_up():
+    """Same decision in both pipelines; for P3 it is the plan, not a strategy change."""
+    from ogr.common.config import RunConfig
+    from ogr.graph.client import TigerGraphClient
+    from ogr.pipelines.p2_graphrag import run_p2_graphrag
+    from ogr.pipelines.p3_agentic.orchestrator import run_p3_agentic
+    from tests.pipelines.test_p2 import _model
+    from ogr.pipelines.p3_agentic.agents.entity_linking import EntityLinker
+
+    intent = {"operation": "COUNT", "anchor": {"title": "Women's 57 kg", "sport": "Judo", "games": "2016 Summer"},
+              "target_field": "nations", "constraints": []}
+
+    class Client(TigerGraphClient):
+        def __init__(self):
+            super().__init__(config=RunConfig(), mock_chunks=[])
+            self.calls = []
+
+        def _run_query(self, name, params):
+            self.calls.append((name, params.get("event_id")))
+            return [{"event_id": "judo-2016-Summer-women-s-57-kg", "doc_id": "Q1", "nations": 23}]
+
+    linker = EntityLinker(games_vocab=["2016-Summer"], sports_vocab=["Judo"], venues_vocab=[])
+    question = "How many nations competed in Judo at the 2016 Summer Olympics – Women's 57 kg?"
+    p2 = Client()
+    run_p2_graphrag(question, client=p2, config=RunConfig(), model=_model(intent, "23"), entity_linker=linker)
+    assert p2.calls == [("q1_lookup", "judo-2016-Summer-women-s-57-kg")]
+    p3 = Client()
+    record = run_p3_agentic(question, llm_model=_model(intent, "23"), tg_client=p3, entity_linker=linker,
+                            config=RunConfig(llm_supports_tool_calling="false"))
+    assert p3.calls == [("q1_lookup", "judo-2016-Summer-women-s-57-kg")]
+    assert record.stop_reason == "direct_route" and record.strategy_changed is False

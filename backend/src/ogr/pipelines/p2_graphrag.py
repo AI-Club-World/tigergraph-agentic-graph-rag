@@ -49,14 +49,14 @@ from ogr.pipelines.p3_agentic.agents.aggregation import run_aggregation
 from ogr.pipelines.p3_agentic.agents.entity_linking import EntityLinker, ResolvedAnchors, lookup_named_event
 from ogr.pipelines.p3_agentic.agents.graph_traversal import run_graph_traversal
 from ogr.pipelines.p3_agentic.intent import IntentParser, IntentSchema
-from ogr.pipelines.p3_agentic.router import first_loop_tool, route
+from ogr.pipelines.p3_agentic.router import first_loop_tool, refine_route, route
 
 logger = logging.getLogger(__name__)
 
 __all__ = ["run_p2_graphrag", "select_single_query", "format_evidence_into_context"]
 
 
-def select_single_query(intent: IntentSchema) -> str:
+def select_single_query(intent: IntentSchema, anchors: ResolvedAnchors | None = None) -> str:
     """Map the parsed operation to the one query P2 will run.
 
     Uses the same necessity-routing decision P3 makes, then collapses it to a
@@ -64,6 +64,8 @@ def select_single_query(intent: IntentSchema) -> str:
     difference *is* the experiment.
     """
     decision = route(intent)
+    if anchors is not None:
+        decision = refine_route(decision, intent, anchors)
     if decision == "lookup_direct":
         return "lookup"
     if decision == "scoped_aggregate":
@@ -146,7 +148,7 @@ def run_p2_graphrag(
     anchors = entity_linker.resolve(intent)
 
     # Step 2 — exactly ONE query. No evidence check, no fallback, no loop.
-    selected = select_single_query(intent)
+    selected = select_single_query(intent, anchors)
     # A loop route runs the first query of the step P3 would start with
     # (router.first_loop_tool): Q1 for a named non-TRAVERSE event, Q4 HELD_AT
     # for a venue, Q4 PREV_EDITION otherwise. P3 chains further; P2 stops.

@@ -354,7 +354,7 @@ Ablation: **P1 removes the graph, P2 removes the loop, P3 has both.**
 |---|---|
 | Intent parse | §7 (trace `orchestrator` step) |
 | Entity linking | Longest match against Games/Sport/Venue vocabularies. An ambiguous venue with no sport/event discriminator ends with `disambiguation_required`, candidates named in `answer` (≤10 shown) — no retrieval, no generation |
-| Necessity routing | `router.route`: `lookup_direct`, `scoped_aggregate` (COUNT/ARGMAX, one Q2/Q3), or `loop` (ARCHITECTURE-SPEC §5) |
+| Necessity routing | `router.route`: `lookup_direct`, `scoped_aggregate` (COUNT/ARGMAX, one Q2/Q3), or `loop`; then `router.refine_route` after linking (a COUNT of one named event's attribute → `lookup_direct`) (ARCHITECTURE-SPEC §5) |
 | Loop tools | `lookup` (Q1), `multi_hop` (Q1→Q4→Q1), `venue` (Q4 HELD_AT→Q1), `traversal` (Q4) |
 | Evidence evaluation | Deterministic scope gate; groundedness by one LLM YES/NO call, gated for prose-only evidence by a deterministic token-overlap pre-check (structured evidence always gets the LLM check); an iteration with no new evidence reuses the previous verdict at 0 tokens |
 | Fallbacks | scope fail → Q5 similarity search; groundedness fail → HAS_CHUNK document retrieval, reranked by the cross-encoder |

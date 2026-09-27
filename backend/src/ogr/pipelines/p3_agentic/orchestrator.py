@@ -137,7 +137,7 @@ def build_p3_graph(
     from ogr.pipelines.p3_agentic.agents.similarity_search import run_similarity_search
     from ogr.pipelines.p3_agentic.evidence import EvidenceEvaluation, evaluate_evidence
     from ogr.pipelines.p3_agentic.intent import IntentParser
-    from ogr.pipelines.p3_agentic.router import loop_tool_candidates, route
+    from ogr.pipelines.p3_agentic.router import loop_tool_candidates, refine_route, route
     from ogr.pipelines.p3_agentic.stopping import should_stop
     from ogr.pipelines.p3_agentic.strategy import detect_strategy_change
     from ogr.pipelines.p3_agentic.trace import TraceRecorder
@@ -210,6 +210,12 @@ def build_p3_graph(
         t0 = time.perf_counter()
         anchors = entity_linker.resolve(intent)
         recorder: TraceRecorder = _state_store.get("recorder")
+        initial = state.get("route_initial") or "loop"
+        refined = refine_route(initial, intent, anchors)
+        if recorder and refined != initial:
+            # The planned route, not a deviation from it: strategy_changed
+            # is judged against this one.
+            recorder.route_initial = refined
         if recorder:
             found = {
                 k: v for k, v in (
@@ -224,10 +230,14 @@ def build_p3_graph(
                 "entity_linker",
                 AgentResult(
                     latency_ms=(time.perf_counter() - t0) * 1000.0,
-                    notes="resolved " + (", ".join(f"{k}={v}" for k, v in found.items()) or "no anchor"),
+                    notes="resolved " + (", ".join(f"{k}={v}" for k, v in found.items()) or "no anchor")
+                    + (
+                        f"; route {initial} → {refined} (one named event's attribute)"
+                        if refined != initial else ""
+                    ),
                 ),
             )
-        return {"resolved_anchors": anchors}
+        return {"resolved_anchors": anchors, "route_initial": refined}
 
     def node_disambiguate(state: dict) -> dict:
         """AD-15: an ambiguous venue with no sport/event discriminator ends the

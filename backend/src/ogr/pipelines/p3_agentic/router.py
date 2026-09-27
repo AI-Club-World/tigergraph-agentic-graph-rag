@@ -67,6 +67,31 @@ def route(intent: IntentSchema) -> RouteDecision:
     return "loop"
 
 
+# Attributes one event carries: "how many nations competed in <event>" reads
+# one of these; it counts nothing. (`nation` is the parser's singular.)
+EVENT_COUNT_ATTRIBUTES = frozenset({"nations", "nation", "competitors", "competitor"})
+
+
+def refine_route(decision: RouteDecision, intent: IntentSchema, anchors) -> RouteDecision:
+    """After entity linking: a COUNT that names one specific event (sport +
+    Games + event, so its event_id is derivable) and asks for an attribute
+    that event carries is a lookup of that attribute, not a count of events
+    (r1: "How many nations competed in Judo at the 2016 Summer Olympics –
+    Women's 57 kg?" counted 14 events; the answer is the event's 23 nations).
+    Deterministic, from the parsed intent and resolved anchors only. Shared
+    by P2 and P3 so the ablation stays one variable."""
+    if (
+        decision == "scoped_aggregate"
+        and intent.operation == "COUNT"
+        and not intent.constraints
+        and (intent.target_field or "").strip().lower() in EVENT_COUNT_ATTRIBUTES
+        and (getattr(anchors, "event_id", None) or getattr(anchors, "derived_event_id", None))
+    ):
+        logger.debug("Router: COUNT of one named event's attribute → lookup_direct")
+        return "lookup_direct"
+    return decision
+
+
 def first_loop_tool(intent: IntentSchema, anchors) -> LoopTool:
     """The tool a `loop` route starts with — shared by P3 (every iteration)
     and P2 (its single step), so the two differ only by the loop.
