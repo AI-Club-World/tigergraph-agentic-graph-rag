@@ -11,6 +11,11 @@ from ogr.common.rerank import rerank
 from ogr.graph.client import TigerGraphClient
 from ogr.pipelines.p3_agentic.agents.entity_linking import EntityLinker
 
+import pytest
+
+# Query embedding is strict (never hash noise): a stand-in model serves it here.
+pytestmark = pytest.mark.usefixtures("fake_embedder")
+
 CHUNKS = [{"chunk_id": "c0", "text": "zero"}, {"chunk_id": "c1", "text": "one"}, {"chunk_id": "c2", "text": "two"}]
 
 

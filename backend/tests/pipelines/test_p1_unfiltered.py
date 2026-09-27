@@ -18,6 +18,10 @@ from ogr.graph.client import TigerGraphClient
 from ogr.pipelines.p1_rag import run_p1_rag
 
 
+# Query embedding is strict (never hash noise): a stand-in model serves it here.
+pytestmark = pytest.mark.usefixtures("fake_embedder")
+
+
 def _create_mock_mixed_corpus():
     """Returns a mock chunk collection containing both Olympic and non-Olympic documents (26.7% non-Olympic)."""
     return [

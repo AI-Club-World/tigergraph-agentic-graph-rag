@@ -26,6 +26,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 
+from ogr.common.embedding_models import resolve_model
 from ogr.graph.client import TigerGraphClient
 from ogr.ingest.chunk_embed import Chunk
 from ogr.ingest.infobox import ParsedDocument
@@ -92,8 +93,13 @@ def load_graph(
     docs: list[ParsedDocument],
     chunks: list[Chunk] | None = None,
     batch_size: int = 500,
+    embedding_model: str | None = None,
 ) -> LoadReport:
     """Upsert every document, event, games/sport/venue vertex, chunk and edge.
+
+    A Chunk vertex carries no vector: each embedded chunk's vector goes to
+    `embedding_model`'s own Embedding_* vertex (primary id = chunk_id), with
+    a HAS_EMBEDDING edge from the chunk (config-docs/EMBEDDING-SWITCHING.md).
 
     Upserts are accumulated by type and sent with `upsertVertices`/
     `upsertEdges` rather than one REST call per object. The corpus is ~2.9k
@@ -124,6 +130,10 @@ def load_graph(
     e_prev: list[tuple] = []
     e_next: list[tuple] = []
     e_has_chunk: list[tuple] = []
+    v_embedding: list[tuple] = []
+    e_has_embedding: list[tuple] = []
+    config = getattr(client, "config", None)
+    model = resolve_model(embedding_model or getattr(config, "embedding_model", None))
 
     for doc in docs:
         v_document.append((doc.doc_id, {
@@ -215,7 +225,10 @@ def load_graph(
             "token_count": chunk.token_count,
         }
         if chunk.embedding:
-            attrs["emb"] = chunk.embedding
+            if len(chunk.embedding) != model.dim:
+                raise ValueError(f"{chunk.chunk_id}: {len(chunk.embedding)}-dim vector for {model.label}")
+            v_embedding.append((chunk.chunk_id, {"emb": chunk.embedding}))
+            e_has_embedding.append((chunk.chunk_id, chunk.chunk_id, {}))
         v_chunk.append((chunk.chunk_id, attrs))
         e_has_chunk.append((chunk.doc_id, chunk.chunk_id, {}))
         report.chunks += 1
@@ -224,11 +237,11 @@ def load_graph(
     # silently created as an empty stub, which would mask load failures.
     for vtype, payload in (
         ("Document", v_document), ("OlympicEvent", v_event), ("Games", v_games),
-        ("Sport", v_sport), ("Venue", v_venue), ("Chunk", v_chunk),
+        ("Sport", v_sport), ("Venue", v_venue), ("Chunk", v_chunk), (model.vertex_type, v_embedding),
     ):
-        # Chunk rows carry a 1024-float vector each, so they go in smaller
-        # windows to keep any single request a sane size.
-        size = max(1, batch_size // 5) if vtype == "Chunk" else batch_size
+        # Chunk rows carry text and embedding rows a vector each, so they go
+        # in smaller windows to keep any single request a sane size.
+        size = max(1, batch_size // 5) if vtype in ("Chunk", model.vertex_type) else batch_size
         _flush(conn, "V", (vtype,), payload, size)
 
     for src, etype, tgt, payload in (
@@ -239,8 +252,10 @@ def load_graph(
         ("OlympicEvent", "PREV_EDITION", "OlympicEvent", e_prev),
         ("OlympicEvent", "NEXT_EDITION", "OlympicEvent", e_next),
         ("Document", "HAS_CHUNK", "Chunk", e_has_chunk),
+        ("Chunk", "HAS_EMBEDDING", model.vertex_type, e_has_embedding),
     ):
         _flush(conn, "E", (src, etype, tgt), payload, batch_size)
-        report.edges += len(payload)
+        if etype != "HAS_EMBEDDING":
+            report.edges += len(payload)
 
     return report

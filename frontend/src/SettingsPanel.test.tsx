@@ -14,6 +14,7 @@ vi.mock('./services/settingsService', async (importOriginal) => {
     fetchProviders: vi.fn(),
     fetchModels: vi.fn(),
     saveSettings: vi.fn(),
+    fetchEmbeddings: vi.fn(),
   }
 })
 
@@ -31,7 +32,7 @@ const STARTUP = {
   llm_provider_preset: 'nvidia_nim',
   llm_base_host: 'integrate.api.nvidia.com',
   llm_model: 'meta/llama-3.3-70b-instruct',
-  embedding_model: '@cf/baai/bge-m3',
+  embedding_model: 'bge-large-en-v1.5',
   embedding_dim: 1024,
 }
 
@@ -46,6 +47,7 @@ beforeEach(() => {
   vi.resetAllMocks()
   mocked.fetchSettings.mockResolvedValue(STARTUP)
   mocked.fetchProviders.mockResolvedValue(PROVIDERS)
+  mocked.fetchEmbeddings.mockRejectedValue(new Error('not under test'))
   mocked.fetchModels.mockResolvedValue({ models: ['meta/llama-3.3-70b-instruct', 'qwen/qwen3'], note: null })
 })
 

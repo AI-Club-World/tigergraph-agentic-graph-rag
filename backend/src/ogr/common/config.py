@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from pathlib import Path
 from typing import Any
@@ -32,7 +33,6 @@ _FILE_KEYS: dict[str, tuple[str, ...]] = {
     "NVIDIA_FREE_CATALOG_URL": ("llm_config", "nvidia_free_endpoints", "catalog_url"),
     "NVIDIA_FREE_CATALOG_QUERY": ("llm_config", "nvidia_free_endpoints", "catalog_query"),
     "EMBEDDING_MODEL": ("llm_config", "embedding_service", "model_name"),
-    "EMBEDDING_DIM": ("llm_config", "embedding_service", "dimension"),
     "RUN_POOL_SIZE": ("llm_config", "rate_limit", "max_concurrent"),
     "LLM_REQUESTS_PER_MINUTE": ("llm_config", "rate_limit", "requests_per_minute"),
     "LLM_BACKOFF_BASE_S": ("llm_config", "rate_limit", "backoff_base_s"),
@@ -79,6 +79,27 @@ def _env(name: str, default: str | None = None) -> str | None:
     return file_value if file_value is not None else default
 
 
+def _embedding_key(name: str | None) -> str:
+    """The catalog key for EMBEDDING_MODEL. A retired value (the old
+    `@cf/baai/bge-m3`) falls back to the default model: a graph embedded with
+    it uses the pre-switching layout, and a build asks for the reset it needs."""
+    from ogr.common.embedding_models import DEFAULT_MODEL_KEY, UnknownEmbeddingModel, resolve_model
+
+    try:
+        return resolve_model(name).key
+    except UnknownEmbeddingModel:
+        logging.getLogger(__name__).warning(
+            "EMBEDDING_MODEL=%r is not a selectable model; using %s", name, DEFAULT_MODEL_KEY
+        )
+        return DEFAULT_MODEL_KEY
+
+
+def _embedding_dim(name: str | None) -> int:
+    from ogr.common.embedding_models import resolve_model
+
+    return resolve_model(_embedding_key(name)).dim
+
+
 class RunConfig(BaseModel):
     """Run configuration per TECHNICAL-SPEC and DP-1 Option A."""
 
@@ -120,12 +141,13 @@ class RunConfig(BaseModel):
     llm_backoff_base_s: float = Field(default_factory=lambda: float(_env("LLM_BACKOFF_BASE_S", "2")))
     llm_max_retries: int = Field(default_factory=lambda: int(_env("LLM_MAX_RETRIES", "5")))
 
-    # Embeddings — bge-m3 on every tier (common/embeddings.py). Credentials
-    # are env-only; Cloudflare is skipped when they are empty.
-    embedding_model: str = Field(
-        default_factory=lambda: _env("EMBEDDING_MODEL", "@cf/baai/bge-m3")
-    )
-    embedding_dim: int = Field(default_factory=lambda: int(_env("EMBEDDING_DIM", "1024")))
+    # Embeddings — one of common/embedding_models.py, by key. This is the
+    # startup default; the model in use is the active one of the embedding
+    # store (ingest/embedding_index.py), set from Settings. The dimension is
+    # the model's own. Credentials are env-only; Cloudflare is skipped when
+    # they are empty.
+    embedding_model: str = Field(default_factory=lambda: _embedding_key(_env("EMBEDDING_MODEL")))
+    embedding_dim: int = Field(default_factory=lambda: _embedding_dim(_env("EMBEDDING_MODEL")))
     cloudflare_account_id: str = Field(default_factory=lambda: _env("CLOUDFLARE_ACCOUNT_ID", ""))
     cloudflare_api_token: str = Field(default_factory=lambda: _env("CLOUDFLARE_API_TOKEN", ""))
 

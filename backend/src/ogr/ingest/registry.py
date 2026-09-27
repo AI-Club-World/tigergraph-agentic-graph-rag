@@ -22,6 +22,9 @@ from pathlib import Path
 from typing import Any
 
 _LOCK = threading.Lock()
+# Graphs built since per-model embedding types (config-docs/EMBEDDING-SWITCHING.md).
+# A graph without it keeps its vectors on Chunk itself and must be reset.
+LAYOUT = "per_model_embeddings"
 ID_KINDS = (("Document", "doc_ids"), ("OlympicEvent", "event_ids"), ("Chunk", "chunk_ids"))
 
 
@@ -51,9 +54,18 @@ class DatasetRegistry:
         """The graph was (re)created empty with this embedding schema."""
         with _LOCK:
             self._write({
-                "schema": {"embedding_model": embedding_model, "embedding_dim": embedding_dim},
+                "schema": {
+                    "embedding_model": embedding_model, "embedding_dim": embedding_dim, "layout": LAYOUT,
+                },
                 "datasets": {},
             })
+
+    def current_layout(self) -> bool:
+        return (self.read().get("schema") or {}).get("layout") == LAYOUT
+
+    def all_chunk_ids(self) -> set[str]:
+        """Every chunk in the graph — the one corpus embeddings must cover."""
+        return {cid for d in self.read()["datasets"].values() for cid in d.get("chunk_ids", [])}
 
     def record(self, name: str, ids: dict[str, list[str]], counts: dict[str, Any], file_bytes: int) -> None:
         with _LOCK:

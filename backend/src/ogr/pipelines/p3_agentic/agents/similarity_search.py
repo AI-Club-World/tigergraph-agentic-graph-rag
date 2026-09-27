@@ -51,12 +51,14 @@ def run_similarity_search(
     t0 = time.perf_counter()
 
     try:
-        query_vector = embed_query(query, model_name=embedding_model, dim=embedding_dim)
+        # One model key picks both the query embedding and the index searched.
+        query_vector = embed_query(query, model_name=embedding_model, strict=True)
         raw_chunks = client.hybrid_search(
             query_vector=query_vector,
             k=k,
             vtype="Chunk",
             candidate_set=candidate_set,
+            embedding_model=embedding_model,
         )
     except Exception as e:
         logger.error("Q5 similarity search failed: %s", e)

@@ -17,6 +17,10 @@ from ogr.graph.client import TigerGraphClient
 from ogr.pipelines.p1_rag import run_p1_rag
 
 
+# Query embedding is strict (never hash noise): a stand-in model serves it here.
+pytestmark = pytest.mark.usefixtures("fake_embedder")
+
+
 def _create_mock_chunks(count: int = 10):
     """Creates a set of mock chunks with distinct parent doc_ids and chunk_ids."""
     chunks = []

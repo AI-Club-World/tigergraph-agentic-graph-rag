@@ -109,3 +109,49 @@ describe('SearchView', () => {
     expect(screen.getByText('2 steps')).toBeInTheDocument()
   })
 })
+
+describe('SearchView embedding mismatch', () => {
+  const mismatch = async () => {
+    const { ApiError } = await import('./services/http')
+    return new ApiError(
+      'The selected embedding model Qwen3-Embedding-0.6B has no embeddings for this data; a query cannot be searched against another model\'s embeddings.',
+      409,
+      'embedding_mismatch',
+      {
+        code: 'embedding_mismatch',
+        selected: { key: 'qwen3-embedding-0.6b', label: 'Qwen3-Embedding-0.6B', state: 'not_stored', chunks_done: 0, chunks_total: 7 },
+        available: [{ key: 'bge-large-en-v1.5', label: 'bge-large-en-v1.5', dim: 1024 }],
+      },
+    )
+  }
+
+  it('blocks the query and lists only the models with complete embeddings', async () => {
+    mocked.submitQuery.mockRejectedValueOnce(await mismatch())
+    await submit()
+    const dialog = screen.getByRole('alertdialog')
+    expect(dialog).toHaveTextContent('No matching embeddings for Qwen3-Embedding-0.6B')
+    expect(within(dialog).getAllByRole('button').map((b) => b.textContent)).toEqual([
+      'Use bge-large-en-v1.5 (1024d)', 'Cancel query',
+    ])
+    expect(mocked.openQueryStream).not.toHaveBeenCalled()
+  })
+
+  it('runs the same query with the model the user picks', async () => {
+    mocked.submitQuery.mockRejectedValueOnce(await mismatch())
+    await submit()
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Use bge-large-en-v1.5 (1024d)' }))
+    })
+    expect(mocked.submitQuery).toHaveBeenLastCalledWith('who won gold in Rio?', 'bge-large-en-v1.5')
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+    expect(mocked.openQueryStream).toHaveBeenCalledTimes(1)
+  })
+
+  it('cancel runs nothing', async () => {
+    mocked.submitQuery.mockRejectedValueOnce(await mismatch())
+    await submit()
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel query' }))
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+    expect(mocked.submitQuery).toHaveBeenCalledTimes(1)
+  })
+})

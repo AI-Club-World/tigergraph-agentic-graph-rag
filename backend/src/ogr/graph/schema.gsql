@@ -8,6 +8,14 @@
 // so re-running this file against a workspace that already has
 // OlympicGraphRAG installed does not error. Run/Step vertices are cut
 // (BUILD-PLAN §1, "Round 1").
+//
+// Embedding layout (config-docs/EMBEDDING-SWITCHING.md): a Chunk is stored
+// once and carries no vector. Each selectable embedding model owns one
+// Embedding_* vertex type — primary id = the chunk_id it embeds, one HNSW
+// index on its `emb` — linked from its Chunk by HAS_EMBEDDING. The five
+// types always exist, so Q5 always compiles; a model that is not stored
+// simply has no vertices (and so an empty index). Keep in step with
+// common/embedding_models.py (test_embedding_schema checks it).
 
 USE GLOBAL
 
@@ -26,12 +34,18 @@ DROP EDGE HELD_AT
 DROP EDGE PREV_EDITION
 DROP EDGE NEXT_EDITION
 DROP EDGE HAS_CHUNK
+DROP EDGE HAS_EMBEDDING
 DROP VERTEX Document
 DROP VERTEX OlympicEvent
 DROP VERTEX Games
 DROP VERTEX Sport
 DROP VERTEX Venue
 DROP VERTEX Chunk
+DROP VERTEX Embedding_Qwen
+DROP VERTEX Embedding_EmbeddingGemma
+DROP VERTEX Embedding_GteLarge
+DROP VERTEX Embedding_Mxbai
+DROP VERTEX Embedding_BGELarge
 
 CREATE VERTEX Document (
   PRIMARY_ID doc_id STRING,
@@ -85,6 +99,13 @@ CREATE VERTEX Chunk (
   token_count INT
 ) WITH PRIMARY_ID_AS_ATTRIBUTE="true"
 
+// One embedding per chunk per model; the vector attribute is added below.
+CREATE VERTEX Embedding_Qwen (PRIMARY_ID chunk_id STRING) WITH PRIMARY_ID_AS_ATTRIBUTE="true"
+CREATE VERTEX Embedding_EmbeddingGemma (PRIMARY_ID chunk_id STRING) WITH PRIMARY_ID_AS_ATTRIBUTE="true"
+CREATE VERTEX Embedding_GteLarge (PRIMARY_ID chunk_id STRING) WITH PRIMARY_ID_AS_ATTRIBUTE="true"
+CREATE VERTEX Embedding_Mxbai (PRIMARY_ID chunk_id STRING) WITH PRIMARY_ID_AS_ATTRIBUTE="true"
+CREATE VERTEX Embedding_BGELarge (PRIMARY_ID chunk_id STRING) WITH PRIMARY_ID_AS_ATTRIBUTE="true"
+
 // All endpoints pinned explicitly (TECHNICAL-SPEC §2.2 note: v0.2 left four
 // undirected, and direction inversion is a named failure mode).
 CREATE DIRECTED EDGE DESCRIBES (FROM Document, TO OlympicEvent) WITH REVERSE_EDGE="reverse_DESCRIBES"
@@ -94,10 +115,20 @@ CREATE DIRECTED EDGE HELD_AT (FROM OlympicEvent, TO Venue, date_text STRING) WIT
 CREATE DIRECTED EDGE PREV_EDITION (FROM OlympicEvent, TO OlympicEvent)
 CREATE DIRECTED EDGE NEXT_EDITION (FROM OlympicEvent, TO OlympicEvent)
 CREATE DIRECTED EDGE HAS_CHUNK (FROM Document, TO Chunk)
+// Deleting an Embedding_* vertex removes only its own HAS_EMBEDDING edge;
+// the Chunk and every other model's embeddings are untouched.
+CREATE DIRECTED EDGE HAS_EMBEDDING (
+  FROM Chunk, TO Embedding_Qwen |
+  FROM Chunk, TO Embedding_EmbeddingGemma |
+  FROM Chunk, TO Embedding_GteLarge |
+  FROM Chunk, TO Embedding_Mxbai |
+  FROM Chunk, TO Embedding_BGELarge
+) WITH REVERSE_EDGE="reverse_HAS_EMBEDDING"
 
 CREATE GRAPH OlympicGraphRAG (
   Document, OlympicEvent, Games, Sport, Venue, Chunk,
-  DESCRIBES, AT_GAMES, IN_SPORT, HELD_AT, PREV_EDITION, NEXT_EDITION, HAS_CHUNK
+  Embedding_Qwen, Embedding_EmbeddingGemma, Embedding_GteLarge, Embedding_Mxbai, Embedding_BGELarge,
+  DESCRIBES, AT_GAMES, IN_SPORT, HELD_AT, PREV_EDITION, NEXT_EDITION, HAS_CHUNK, HAS_EMBEDDING
 )
 
 // Vector attributes can only be added by ALTER VERTEX inside a SCHEMA_CHANGE
@@ -108,9 +139,13 @@ USE GLOBAL
 
 DROP JOB add_vectors
 
+// One HNSW index per model, sized to that model's output.
 CREATE GLOBAL SCHEMA_CHANGE JOB add_vectors {
-  ALTER VERTEX OlympicEvent ADD VECTOR ATTRIBUTE emb(DIMENSION=1024, METRIC="COSINE");
-  ALTER VERTEX Chunk ADD VECTOR ATTRIBUTE emb(DIMENSION=1024, METRIC="COSINE");
+  ALTER VERTEX Embedding_Qwen ADD VECTOR ATTRIBUTE emb(DIMENSION=1024, METRIC="COSINE");
+  ALTER VERTEX Embedding_EmbeddingGemma ADD VECTOR ATTRIBUTE emb(DIMENSION=768, METRIC="COSINE");
+  ALTER VERTEX Embedding_GteLarge ADD VECTOR ATTRIBUTE emb(DIMENSION=1024, METRIC="COSINE");
+  ALTER VERTEX Embedding_Mxbai ADD VECTOR ATTRIBUTE emb(DIMENSION=1024, METRIC="COSINE");
+  ALTER VERTEX Embedding_BGELarge ADD VECTOR ATTRIBUTE emb(DIMENSION=1024, METRIC="COSINE");
 }
 
 RUN GLOBAL SCHEMA_CHANGE JOB add_vectors

@@ -59,12 +59,9 @@ def run_p1_rag(
     cfg = config or get_default_config()
     tg_client = client or TigerGraphClient(cfg)
 
-    # Step 1: Embed query
-    try:
-        query_vector = embed_query(query, model_name=cfg.embedding_model, dim=cfg.embedding_dim)
-    except Exception as e:
-        logger.error("Failed to embed query in P1: %s", e)
-        query_vector = [0.0] * cfg.embedding_dim
+    # Step 1: Embed query with the model whose index is searched below. A
+    # failure fails the pipeline: a stand-in vector would search noise.
+    query_vector = embed_query(query, model_name=cfg.embedding_model, strict=True)
 
     # Step 2: Unfiltered retrieval via Q5 (Chunk only, k=10 per DP-1 / DP-2 Option A)
     # AD-9: No candidate_set, no type predicate, no post-retrieval filtering, no re-ranking
@@ -73,6 +70,7 @@ def run_p1_rag(
         k=cfg.k,
         vtype="Chunk",
         candidate_set=None,
+        embedding_model=cfg.embedding_model,
     )
     chunks_returned = len(retrieved_chunks)
 

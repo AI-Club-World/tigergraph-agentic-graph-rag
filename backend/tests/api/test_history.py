@@ -24,6 +24,10 @@ def _record(pipeline: str, status: str = "done") -> PipelineRecord:
     )
 
 
+# Queries and runs start only once the active model's embeddings are complete.
+pytestmark = pytest.mark.usefixtures("ready_embeddings")
+
+
 @pytest.fixture
 def client(monkeypatch, tmp_path):
     monkeypatch.setattr(api_main, "run_p1_rag", lambda query, client, config: _record("rag"))

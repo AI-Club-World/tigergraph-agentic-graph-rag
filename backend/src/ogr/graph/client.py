@@ -7,6 +7,7 @@ import threading
 from typing import Any
 
 from ogr.common.config import RunConfig, get_default_config
+from ogr.common.embedding_models import EMBEDDING_MODELS, EmbeddingModel, resolve_model
 
 logger = logging.getLogger(__name__)
 
@@ -114,17 +115,24 @@ class TigerGraphClient:
         k: int = 10,
         vtype: str = "Chunk",
         candidate_set: list[str] | None = None,
+        embedding_model: str | None = None,
     ) -> list[dict[str, Any]]:
-        """Q5: hybrid_search(query_vector, k, vtype, candidate_set).
-        Executes vectorSearch over the specified vertex type (Chunk or OlympicEvent).
-        Returns top-k records with resolved parent doc_id via HAS_CHUNK for chunks.
+        """Q5: vector search over the chunks, in `embedding_model`'s own index.
+
+        `query_vector` must come from that same model: callers embed the query
+        and pass the model key from one config value, and the index searched
+        (`emb_type`) is derived from that key here — never from the vector's
+        length, which four of the five models share.
         """
+        model = resolve_model(embedding_model or self.config.embedding_model)
         # Record arguments for inspection and guard test assertion
         self.last_query_args = {
             "query_vector": query_vector,
             "k": k,
             "vtype": vtype,
             "candidate_set": candidate_set,
+            "embedding_model": model.key,
+            "emb_type": model.vertex_type,
         }
 
         # If mock chunks are provided (for testing or offline evaluation)
@@ -146,11 +154,17 @@ class TigerGraphClient:
             logger.warning("TigerGraph connection not available; returning empty result set")
             return []
 
+        if len(query_vector) != model.dim:
+            # A vector of another shape cannot be from this model: refuse it
+            # loudly rather than let the query return [] as "no matches".
+            raise ValueError(
+                f"Query vector has {len(query_vector)} dims; {model.label} embeddings have {model.dim}"
+            )
         try:
             params = {
                 "query_vector": query_vector,
                 "k": k,
-                "vtype": vtype,
+                "emb_type": model.vertex_type,
                 "candidate_set": candidate_set or [],
             }
             # Execute installed query q5_hybrid_search
@@ -211,6 +225,55 @@ class TigerGraphClient:
         if distances:
             chunks.sort(key=lambda c: c["score"], reverse=True)
         return chunks
+
+    # ── Per-model embedding storage (config-docs/EMBEDDING-SWITCHING.md) ──
+
+    def _require_conn(self) -> Any:
+        self._ensure_connection()
+        if self.conn is None:
+            raise ConnectionError("TigerGraph unreachable — set TG_HOST and credentials")
+        return self.conn
+
+    def get_chunk_texts(self, chunk_ids: list[str]) -> dict[str, str]:
+        """Canonical chunk text by id — what a re-embed job embeds."""
+        conn = self._require_conn()
+        vertices = conn.getVerticesById("Chunk", chunk_ids) or []
+        return {v.get("v_id", ""): v.get("attributes", {}).get("text", "") for v in vertices}
+
+    def upsert_embeddings(self, model: EmbeddingModel, rows: list[tuple[str, list[float]]]) -> int:
+        """Write one model's embeddings for a batch of chunks, with their
+        HAS_EMBEDDING edges. Idempotent: the embedding vertex's primary id is
+        the chunk_id, so writing a chunk again (a resumed batch) overwrites
+        that vertex and edge instead of adding a second one."""
+        if not rows:
+            return 0
+        for chunk_id, vector in rows:
+            if len(vector) != model.dim:
+                raise ValueError(f"{chunk_id}: {len(vector)}-dim vector for {model.label} ({model.dim})")
+        conn = self._require_conn()
+        conn.upsertVertices(model.vertex_type, [(cid, {"emb": vector}) for cid, vector in rows])
+        conn.upsertEdges("Chunk", "HAS_EMBEDDING", model.vertex_type, [(cid, cid, {}) for cid, _ in rows])
+        return len(rows)
+
+    def delete_embeddings(
+        self, model: EmbeddingModel, chunk_ids: list[str] | None = None, batch: int = 500
+    ) -> int:
+        """Delete one model's embedding vertices — all of them, or those of
+        `chunk_ids`. Deleting a vertex removes only the edges touching it, so
+        this removes that model's vectors (and so its HNSW entries) and its
+        HAS_EMBEDDING edges, and never a Chunk or another model's data: the
+        only vertex type ever passed to TigerGraph is the model's own."""
+        vertex_type = _embedding_type(model)
+        conn = self._require_conn()
+        if chunk_ids is None:
+            return int(conn.delVertices(vertex_type) or 0)
+        removed = 0
+        for start in range(0, len(chunk_ids), batch):
+            removed += int(conn.delVerticesById(vertex_type, chunk_ids[start:start + batch]) or 0)
+        return removed
+
+    def count_embeddings(self, model: EmbeddingModel) -> int:
+        return int(self._require_conn().getVertexCount(_embedding_type(model)) or 0)
 
     def _run_query(self, query_name: str, params: dict[str, Any]) -> list[dict[str, Any]]:
         """Generic runner for installed Q1–Q4 queries.
@@ -309,6 +372,14 @@ class TigerGraphClient:
             self._vocab_cache[vtype] = vocab
         return vocab
 
+
+
+def _embedding_type(model: EmbeddingModel) -> str:
+    """The model's own vertex type, checked against the catalog: a deletion
+    can never be pointed at Chunk or any type outside the embedding types."""
+    if EMBEDDING_MODELS.get(model.key) != model or not model.vertex_type.startswith("Embedding_"):
+        raise ValueError(f"{model.vertex_type!r} is not an embedding vertex type")
+    return model.vertex_type
 
 
 def _flatten_vertex(item: Any) -> Any:

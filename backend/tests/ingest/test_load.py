@@ -145,14 +145,33 @@ class TestChunkLoading:
     def test_chunks_get_a_vertex_and_a_has_chunk_edge(self):
         conn = _FakeConn()
         chunks = [
-            Chunk(chunk_id="Q1_c0", doc_id="Q1", text="hello", seq=0, token_count=1, embedding=[0.1] * 384),
+            Chunk(chunk_id="Q1_c0", doc_id="Q1", text="hello", seq=0, token_count=1, embedding=[0.1] * 768),
         ]
-        report = load_graph(_client(conn), [parse_document(CANOE)], chunks=chunks)
+        report = load_graph(_client(conn), [parse_document(CANOE)], chunks=chunks, embedding_model="embeddinggemma-300m")
         assert report.chunks == 1
         chunk_vertices = [v for v in conn.vertices if v[0] == "Chunk"]
         assert len(chunk_vertices) == 1
-        assert chunk_vertices[0][2]["emb"] == [0.1] * 384
         assert any(e[2] == "HAS_CHUNK" and e[1] == "Q1" and e[4] == "Q1_c0" for e in conn.edges)
+
+    def test_the_vector_goes_to_the_models_own_embedding_vertex(self):
+        """The canonical Chunk carries no vector; the model's Embedding_* vertex
+        (primary id = chunk_id) does, linked by HAS_EMBEDDING."""
+        conn = _FakeConn()
+        chunks = [
+            Chunk(chunk_id="Q1_c0", doc_id="Q1", text="hello", seq=0, token_count=1, embedding=[0.1] * 768),
+        ]
+        load_graph(_client(conn), [parse_document(CANOE)], chunks=chunks, embedding_model="embeddinggemma-300m")
+        chunk_vertex = next(v for v in conn.vertices if v[0] == "Chunk")
+        assert "emb" not in chunk_vertex[2]
+        assert [v for v in conn.vertices if v[0].startswith("Embedding_")] == [
+            ("Embedding_EmbeddingGemma", "Q1_c0", {"emb": [0.1] * 768}),
+        ]
+        assert ("Chunk", "Q1_c0", "HAS_EMBEDDING", "Embedding_EmbeddingGemma", "Q1_c0", {}) in conn.edges
+
+    def test_a_vector_of_another_models_size_is_refused(self):
+        chunks = [Chunk(chunk_id="Q1_c0", doc_id="Q1", text="x", seq=0, token_count=1, embedding=[0.1] * 1024)]
+        with pytest.raises(ValueError, match="1024-dim vector for EmbeddingGemma-300M"):
+            load_graph(_client(_FakeConn()), [], chunks=chunks, embedding_model="embeddinggemma-300m")
 
     def test_unembedded_chunk_omits_the_emb_attribute(self):
         conn = _FakeConn()

@@ -66,8 +66,12 @@ def test_same_dataset_twice_asks_to_rebuild_or_cancel(env):
     assert env.client.post("/build", headers=HEADERS, json={"dataset": "olympics", "rebuild": True}).status_code == 202
 
 
-def test_graph_with_another_embedding_size_requires_a_reset(env):
-    env.registry.reset("BAAI/bge-small-en-v1.5", 384)
+def test_graph_with_the_single_vector_layout_requires_a_reset(env):
+    # Built before per-model embedding types: its vectors sit on Chunk itself.
+    env.registry.path.parent.mkdir(parents=True, exist_ok=True)
+    env.registry.path.write_text(json.dumps({
+        "schema": {"embedding_model": "@cf/baai/bge-m3", "embedding_dim": 1024}, "datasets": {},
+    }))
     response = env.client.post("/build", headers=HEADERS, json={"dataset": "olympics"})
     assert response.status_code == 409 and response.json()["detail"]["code"] == "reset_required"
     assert env.client.post("/build", headers=HEADERS, json={"dataset": "olympics", "reset": True}).status_code == 202
@@ -117,12 +121,13 @@ def test_second_dataset_keeps_the_first_and_rebuild_replaces_its_own(env, monkey
     conn.getVertexCount.return_value = 0
     conn.delVerticesById.side_effect = lambda vtype, ids: calls.append(("delete", vtype, list(ids))) or len(ids)
     monkeypatch.setattr(api_main, "_get_client", lambda config: SimpleNamespace(
-        conn=conn, _ensure_connection=lambda: None, _vocab_cache={}))
+        conn=conn, _ensure_connection=lambda: None, _vocab_cache={},
+        delete_embeddings=lambda model, ids: calls.append(("delete_embeddings", model.vertex_type, list(ids)))))
     monkeypatch.setattr(schema, "install_schema", lambda client: calls.append(("install_schema",)))
     monkeypatch.setattr(schema, "install_queries", lambda client: calls.append(("install_queries",)))
     monkeypatch.setattr(vector_status, "wait_until_ready", lambda *a, **k: {})
-    monkeypatch.setattr(chunk_embed, "embed_chunks", lambda chunks: None)
-    monkeypatch.setattr(api_main, "load_graph", lambda client, docs, chunks: SimpleNamespace(
+    monkeypatch.setattr(chunk_embed, "embed_chunks", lambda chunks, model=None, strict=False: None)
+    monkeypatch.setattr(api_main, "load_graph", lambda client, docs, chunks, *_a: SimpleNamespace(
         documents=len(docs), olympic_events=0, games=0, sports=0, venues=0, chunks=len(chunks),
         edges=len(chunks), prev_edges_resolved=0, next_edges_resolved=0))
     (env.corpora / "finance.jsonl").write_text(
@@ -141,7 +146,13 @@ def test_second_dataset_keeps_the_first_and_rebuild_replaces_its_own(env, monkey
     again = _run_build_stream(env.client, {"dataset": "olympics", "rebuild": True})
     assert again[-1]["status"] == "ready"
     assert ("delete", "Document", ["Q1"]) in calls
+    # The rebuilt dataset's chunks lose their embeddings too (no orphaned
+    # Embedding_* vertices), for the stored model only.
+    assert ("delete_embeddings", "Embedding_BGELarge", ["Q1_c0"]) in calls
     assert any(e["stage"] == "remove_previous" and e["status"] == "done" for e in again)
+    store = api_main._embedding_store()
+    assert store.stored() == ["bge-large-en-v1.5"]
+    assert store.model_status("bge-large-en-v1.5", env.registry.all_chunk_ids())["complete"]
     assert set(env.registry.read()["datasets"]) == {"olympics", "finance"}
 
 
@@ -159,8 +170,8 @@ def test_stages_are_scoped_to_the_pipelines_they_serve(env, monkeypatch):
     monkeypatch.setattr(schema, "install_schema", lambda client: None)
     monkeypatch.setattr(schema, "install_queries", lambda client: None)
     monkeypatch.setattr(vector_status, "wait_until_ready", lambda *a, **k: {})
-    monkeypatch.setattr(chunk_embed, "embed_chunks", lambda chunks: None)
-    monkeypatch.setattr(api_main, "load_graph", lambda client, docs, chunks: SimpleNamespace(
+    monkeypatch.setattr(chunk_embed, "embed_chunks", lambda chunks, model=None, strict=False: None)
+    monkeypatch.setattr(api_main, "load_graph", lambda client, docs, chunks, *_a: SimpleNamespace(
         documents=1, olympic_events=1, games=1, sports=1, venues=1, chunks=4,
         edges=4 + 6, prev_edges_resolved=0, next_edges_resolved=0))
 
@@ -180,7 +191,7 @@ def test_stages_are_scoped_to_the_pipelines_they_serve(env, monkeypatch):
     assert set(built["ready_ms"]) == {"rag", "graphrag", "agentic_graphrag"}
 
 
-def test_current_build_can_be_picked_up_after_a_reload(env, monkeypatch):
+def test_current_build_can_be_picked_up_after_a_reload(env, monkeypatch, fake_embedder):
     api_main._builds.clear()
     assert env.client.get("/build/current", headers=HEADERS).json() == {"build": None}
     events = _run_build_stream(env.client, {"dataset": "olympics"})  # fails at schema (no TigerGraph)

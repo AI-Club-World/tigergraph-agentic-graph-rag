@@ -42,6 +42,13 @@ from sse_starlette.sse import EventSourceResponse
 from ogr.api.security import StreamTokenStore, get_config, require_api_key
 from ogr.common.config import RunConfig, get_default_config
 from ogr.common.contracts import PipelineRecord, QueryLevelRecord
+from ogr.common.embedding_models import (
+    EMBEDDING_MODELS,
+    MAX_STORED_MODELS,
+    EmbeddingModel,
+    UnknownEmbeddingModel,
+    resolve_model,
+)
 from ogr.common.trials import TrialLog
 from ogr.eval.aggregator import aggregate_query
 from ogr.eval.batch_runner import default_pipelines, effective_pool_size, run_batch, run_config_header
@@ -50,6 +57,7 @@ from ogr.eval.history import RUN_ID_RE, import_run, list_runs, read_run, summari
 from ogr.graph.client import TigerGraphClient
 from ogr.ingest import dataset_meta
 from ogr.ingest.chunk_embed import chunk_and_embed_corpus
+from ogr.ingest.embedding_index import EmbeddingStore, SwitchRefused, run_job
 from ogr.ingest.infobox import parse_corpus
 from ogr.ingest.load import load_graph
 from ogr.ingest.progress import BuildEvent, BuildProgress
@@ -99,7 +107,13 @@ _runtime_overrides: dict[str, Any] = {}
 
 def _get_config_with_overrides() -> RunConfig:
     base = get_default_config()
-    return base.model_copy(update=_runtime_overrides) if _runtime_overrides else base
+    update = dict(_runtime_overrides)
+    # The embedding model in use is the store's active one (set by a switch),
+    # with its own dimension; EMBEDDING_MODEL is only the first default.
+    active = _embedding_store().active()
+    if active in EMBEDDING_MODELS:
+        update.update(embedding_model=active, embedding_dim=EMBEDDING_MODELS[active].dim)
+    return base.model_copy(update=update) if update else base
 
 
 # Override the per-route dependency so every existing route automatically
@@ -118,18 +132,17 @@ OUT_DIR = _REPO_ROOT / "out"
 
 class QueryRequest(BaseModel):
     query: str
+    # The embedding model to search with (a catalog key); default: the active
+    # one. Sent after the user picks a complete model in the mismatch popup.
+    embedding_model: str | None = None
 
 
 class SettingsPatch(BaseModel):
     llm_provider: Literal["gemini", "nvidia_nim", "groq"] | None = None
     llm_model: str | None = None
+    # Only an instant switch (the model is complete); anything that needs
+    # embedding goes through POST /embeddings/switch and its explicit choice.
     embedding_model: str | None = None
-
-
-# Embedding dim is fixed per supported model; unknown models keep current dim.
-_EMBEDDING_DIMS: dict[str, int] = {
-    "@cf/baai/bge-m3": 1024,
-}
 
 
 def _trials() -> TrialLog:
@@ -250,7 +263,6 @@ async def get_provider_models(provider: Literal["gemini", "nvidia_nim", "groq"])
 def patch_settings(body: SettingsPatch) -> dict[str, Any]:
     """Update runtime model/embedding without a server restart. The selected
     LLM applies to all three pipelines: each run snapshots config once."""
-    global _tg_client
     if body.llm_provider is not None:
         from ogr.common.llm import PROVIDER_PRESETS
 
@@ -273,13 +285,207 @@ def patch_settings(body: SettingsPatch) -> dict[str, Any]:
         except Exception:  # noqa: BLE001
             pass
     if body.embedding_model is not None:
-        _runtime_overrides["embedding_model"] = body.embedding_model
-        dim = _EMBEDDING_DIMS.get(body.embedding_model)
-        if dim is not None:
-            _runtime_overrides["embedding_dim"] = dim
-        # Reset TG client so vocabulary cache isn't stale after a rebuild.
-        _tg_client = None
+        model = _catalog_model(body.embedding_model)
+        if model.key != _get_config_with_overrides().embedding_model:
+            _refuse_while_busy()
+            if model.key not in _embedding_store().complete_models(_corpus_chunk_ids()):
+                raise _conflict(
+                    "embedding_switch_required",
+                    f"{model.label} has no complete embeddings; switch through POST /embeddings/switch "
+                    "and choose to re-embed or keep parallel indices.",
+                )
+            _embedding_store().set_active(model.key)
     return _settings_body(_get_config_with_overrides())
+
+
+# ─────────────────────────────────────────── /embeddings ────────────────────
+# Embedding model switching (config-docs/EMBEDDING-SWITCHING.md). Every
+# refusal is enforced here, whatever state a (possibly stale) UI shows.
+
+_embedding_job: dict[str, Any] = {"task": None}
+
+
+def _embedding_store() -> EmbeddingStore:
+    return EmbeddingStore(OUT_DIR / "embeddings.json")
+
+
+def _corpus_chunk_ids() -> set[str]:
+    return _registry().all_chunk_ids()
+
+
+def _catalog_model(name: str) -> EmbeddingModel:
+    try:
+        return resolve_model(name)
+    except UnknownEmbeddingModel as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+
+
+def _build_running() -> bool:
+    return any("task" in b and not b["task"].done() for b in _builds.values())
+
+
+def _embedding_job_running() -> bool:
+    task = _embedding_job.get("task")
+    return task is not None and not task.done()
+
+
+def _refuse_while_busy() -> None:
+    """Switching is refused while an ingestion build or a re-embed job runs."""
+    if _build_running():
+        raise _conflict(
+            "build_running", "An ingestion build is running; the embedding model cannot change until it ends."
+        )
+    if _embedding_job_running():
+        raise _conflict("embedding_job_running", "A re-embed job is running; wait for it to finish.")
+
+
+def _embedding_overview(config: RunConfig) -> dict[str, Any]:
+    overview = _embedding_store().overview(_corpus_chunk_ids(), config.embedding_model)
+    job = overview["job"]
+    if job and job.get("status") == "running" and not _embedding_job_running():
+        # The process that ran it is gone (restart): it can only be resumed.
+        job = {**job, "status": "failed", "error": job.get("error") or "Interrupted by a server restart"}
+        overview["job"] = job
+    build = _build_running()
+    overview["build_running"] = build
+    overview["switch_disabled_reason"] = (
+        "An ingestion build is running." if build
+        else "A re-embed job is running." if _embedding_job_running()
+        else None
+    )
+    overview["layout_current"] = _registry().current_layout() or not _registry().exists
+    return overview
+
+
+@router.get("/embeddings")
+async def get_embeddings(config: RunConfig = Depends(get_config)) -> dict[str, Any]:
+    """Every selectable model with its state for the corpus (complete,
+    incomplete, building, failed, not stored), the 2-model cap and the job."""
+    return await asyncio.to_thread(_embedding_overview, config)
+
+
+@router.get("/embeddings/plan")
+async def get_embedding_plan(model: str, config: RunConfig = Depends(get_config)) -> dict[str, Any]:
+    """What switching to `model` would do right now: the dialog's real state."""
+    key = _catalog_model(model).key
+    plan = await asyncio.to_thread(_embedding_store().plan, key, _corpus_chunk_ids(), config.embedding_model)
+    overview = await asyncio.to_thread(_embedding_overview, config)
+    plan["switch_disabled_reason"] = overview["switch_disabled_reason"]
+    return plan
+
+
+class EmbeddingSwitch(BaseModel):
+    model: str
+    # No default: a model without complete embeddings needs the user's choice.
+    mode: Literal["replace", "parallel"] | None = None
+    evict: str | None = None
+
+
+def _start_embedding_job(config: RunConfig) -> None:
+    from ogr.common.embeddings import embed_texts, embedding_backend
+    from ogr.graph.vector_status import wait_until_ready
+
+    client = _get_client(config)
+
+    def embed(model: EmbeddingModel, texts: list[str]) -> list[list[float]]:
+        return embed_texts(texts, model_name=model.key, strict=True)
+
+    def job() -> dict[str, Any]:
+        store = _embedding_store()
+        result = run_job(
+            store,
+            client,
+            corpus=_corpus_chunk_ids,
+            embed=embed,
+            wait_ready=lambda: wait_until_ready(config, 600.0, conn=client.conn),
+            backend=lambda m: embedding_backend(m.key),
+        )
+        _trials().append(
+            "embedding_job", result.get("status", "error"), subject=result.get("model"),
+            mode=result.get("mode"), deleted=result.get("delete"), error=result.get("error"),
+            chunks=result.get("chunks_done"),
+        )
+        return result
+
+    _embedding_job["task"] = asyncio.create_task(asyncio.to_thread(job))
+
+
+@router.post("/embeddings/switch", status_code=202)
+async def post_embedding_switch(
+    body: EmbeddingSwitch, config: RunConfig = Depends(get_config)
+) -> dict[str, Any]:
+    """Switch the embedding model. Complete already → instant. Otherwise the
+    body must say how: `replace` deletes the outgoing model's embeddings and
+    re-embeds (queries wait for it), `parallel` builds alongside and keeps the
+    old model queryable. At the 2-model cap `evict` must name the model to
+    delete; that deletion runs before the new model's embedding starts."""
+    _refuse_while_busy()
+    key = _catalog_model(body.model).key
+    if body.evict is not None:
+        body.evict = _catalog_model(body.evict).key
+    try:
+        result = _embedding_store().begin_switch(
+            key, body.mode, body.evict, _corpus_chunk_ids(), config.embedding_model
+        )
+    except SwitchRefused as e:
+        raise _conflict(e.code, e.message, **e.extra) from e
+    if not result["switched"]:
+        _start_embedding_job(config)
+    return result
+
+
+@router.post("/embeddings/resume", status_code=202)
+async def post_embedding_resume(config: RunConfig = Depends(get_config)) -> dict[str, Any]:
+    """Continue a failed job from its last checkpointed batch."""
+    _refuse_while_busy()
+    try:
+        job = _embedding_store().begin_resume()
+    except SwitchRefused as e:
+        raise _conflict(e.code, e.message, **e.extra) from e
+    _start_embedding_job(config)
+    return {"job": job}
+
+
+@router.post("/embeddings/{model}/complete", status_code=202)
+async def post_embedding_complete(model: str, config: RunConfig = Depends(get_config)) -> dict[str, Any]:
+    """Embed the chunks a stored model is missing (a dataset built while it
+    was not the active model)."""
+    _refuse_while_busy()
+    key = _catalog_model(model).key
+    try:
+        job = _embedding_store().begin_complete(key, _corpus_chunk_ids())
+    except SwitchRefused as e:
+        raise _conflict(e.code, e.message, **e.extra) from e
+    _start_embedding_job(config)
+    return {"job": job}
+
+
+def _query_config(config: RunConfig, requested: str | None) -> RunConfig:
+    """The config a query or batch runs with — or a refusal. The selected
+    model must have complete embeddings; the check is by model identity, so
+    two 1024-dim models are never treated as interchangeable. There is no
+    fallback to another model: the caller must name one it was offered."""
+    model = _catalog_model(requested) if requested else resolve_model(config.embedding_model)
+    store = _embedding_store()
+    corpus = _corpus_chunk_ids()
+    status = store.model_status(model.key, corpus)
+    if not status["complete"]:
+        available = [EMBEDDING_MODELS[k].public() for k in store.complete_models(corpus)]
+        why = {
+            "not_stored": "has no embeddings for this data",
+            "building": "is still being embedded",
+            "failed": "has an incomplete (failed) embedding job",
+            "incomplete": f"covers only {status['chunks_done']} of {status['chunks_total']} chunks",
+            "evicting": "is being evicted",
+        }.get(status["state"], "has no complete embeddings for this data")
+        raise _conflict(
+            "embedding_mismatch",
+            f"The selected embedding model {model.label} {why}; a query cannot be searched against "
+            "another model's embeddings.",
+            selected=status,
+            available=available,
+        )
+    return config.model_copy(update={"embedding_model": model.key, "embedding_dim": model.dim})
 
 
 async def _timed_check(name: str, timeout_s: float, check, *args) -> dict[str, Any]:
@@ -326,6 +532,8 @@ async def health_embedding(config: RunConfig = Depends(get_config)) -> dict[str,
 
 @router.post("/query", status_code=202)
 async def post_query(body: QueryRequest, config: RunConfig = Depends(get_config)) -> dict[str, str]:
+    # Blocked, not warned: a query never searches an index of another model.
+    config = await asyncio.to_thread(_query_config, config, body.embedding_model)
     _evict_finished(_queries)
     query_id = str(uuid.uuid4())
     token = _stream_tokens.issue(query_id)
@@ -604,17 +812,28 @@ async def _start_build(body: BuildRequest, config: RunConfig) -> dict[str, str]:
     corpus = _corpus_file(body.dataset)
     if not corpus.exists():
         raise HTTPException(status_code=404, detail=f"Unknown dataset {body.dataset!r}")
-    if any(not b["task"].done() for b in _builds.values() if "task" in b):
+    if _build_running():
         raise _conflict("build_running", "A build is already running; wait for it to finish.")
+    if _embedding_job_running():
+        # The job embeds the corpus the build would change under it.
+        raise _conflict("embedding_job_running", "A re-embed job is running; build once it finishes.")
 
     registry = _registry()
+    store = _embedding_store()
+    active = config.embedding_model
+    if not body.reset and active not in store.stored() and len(store.stored()) >= MAX_STORED_MODELS:
+        # Only after a switch failed mid-eviction: resume it first (the cap).
+        raise _conflict(
+            "embedding_cap",
+            f"{len(store.stored())} models' embeddings are stored and the active one is not among them; "
+            "resume the failed re-embed job in Settings before building.",
+        )
     if not body.reset:
-        schema = registry.read().get("schema")
-        if schema and schema.get("embedding_dim") != config.embedding_dim:
+        if registry.exists and not registry.current_layout():
             raise _conflict(
                 "reset_required",
-                f"The graph holds {schema.get('embedding_dim')}-dim vectors but the embedding model "
-                f"produces {config.embedding_dim}-dim ones. Building needs a full reset, which removes "
+                "The graph was built with one vector on each Chunk; embedding switching keeps each "
+                "model's embeddings in its own vertex type. Building needs a full reset, which removes "
                 "every loaded dataset.",
             )
         if not registry.exists and await asyncio.to_thread(_graph_has_documents, _get_client(config)):
@@ -658,6 +877,7 @@ async def _run_build(build_id: str, queue: asyncio.Queue, config: RunConfig, req
     from ogr.graph.schema import install_queries, install_schema
     from ogr.graph.vector_status import wait_until_ready
     from ogr.ingest.chunk_embed import embed_chunks
+    from ogr.ingest.embedding_index import CHECKPOINT_BATCH
 
     events = _builds[build_id].setdefault("events", []) if build_id in _builds else []
 
@@ -668,6 +888,10 @@ async def _run_build(build_id: str, queue: asyncio.Queue, config: RunConfig, req
 
     corpus = CORPUS_DIR / f"{request.dataset}.jsonl"
     registry = _registry()
+    store = _embedding_store()
+    # A build embeds with the active model only; another stored model is left
+    # without the new chunks (shown incomplete, completed from Settings).
+    model = resolve_model(config.embedding_model)
     progress = BuildProgress(on_event=on_event)
     # Which pipelines each stage serves: RAG answers from chunk vectors only,
     # GraphRAG from the graph only, Agentic GraphRAG from the graph with the
@@ -700,13 +924,14 @@ async def _run_build(build_id: str, queue: asyncio.Queue, config: RunConfig, req
         progress.finish(stage, affected, items_done=len(chunks))
 
         begin("embed_chunks", vector_pipelines, items_total=len(chunks))
-        step = 500
+        step = CHECKPOINT_BATCH
         for start in range(0, len(chunks), step):
-            await asyncio.to_thread(embed_chunks, chunks[start:start + step])
+            # strict: vectors that reach an index come from the model, never hash noise.
+            await asyncio.to_thread(embed_chunks, chunks[start:start + step], model.key, True)
             progress.progress(stage, affected, min(start + step, len(chunks)), len(chunks))
-        backend = await asyncio.to_thread(embedding_backend)
+        backend = await asyncio.to_thread(embedding_backend, model.key)
         progress.finish(
-            stage, affected, items_done=len(chunks), note=f"{config.embedding_model} via {backend}"
+            stage, affected, items_done=len(chunks), note=f"{model.label} via {backend}"
         )
 
         client = _get_client(config)
@@ -716,7 +941,8 @@ async def _run_build(build_id: str, queue: asyncio.Queue, config: RunConfig, req
             raise ConnectionError("TigerGraph unreachable — set TG_HOST and credentials")
         if request.reset or not registry.exists:
             await asyncio.to_thread(install_schema, client)
-            registry.reset(config.embedding_model, config.embedding_dim)
+            registry.reset(model.key, model.dim)
+            store.reset(model.key)
             progress.finish(stage, affected, items_done=1, note="graph created (empty)")
         else:
             loaded = ", ".join(registry.read()["datasets"]) or "none"
@@ -725,6 +951,12 @@ async def _run_build(build_id: str, queue: asyncio.Queue, config: RunConfig, req
         if request.rebuild and registry.get(request.dataset):
             begin("remove_previous", everyone)
             removable = registry.removable_ids(request.dataset)
+            # Deleting a Chunk drops its HAS_EMBEDDING edges but not the
+            # Embedding_* vertices, so each stored model's are removed too.
+            gone = removable.get("Chunk", [])
+            for key in store.stored():
+                await asyncio.to_thread(client.delete_embeddings, EMBEDDING_MODELS[key], gone)
+            store.remove_covered(gone)
             removed = await asyncio.to_thread(_delete_vertices, client, removable)
             registry.forget(request.dataset)
             progress.finish(
@@ -734,7 +966,7 @@ async def _run_build(build_id: str, queue: asyncio.Queue, config: RunConfig, req
         # One load call writes graph and chunk vertices; its counts are
         # reported to the pipelines each part serves.
         begin("load_vertices", graph_pipelines)
-        load = await asyncio.to_thread(load_graph, client, docs, chunks)
+        load = await asyncio.to_thread(load_graph, client, docs, chunks, 500, model.key)
         entities = load.documents + load.olympic_events + load.games + load.sports + load.venues
         relationships = load.edges - load.chunks  # every chunk adds one HAS_CHUNK edge
         progress.finish(
@@ -746,7 +978,10 @@ async def _run_build(build_id: str, queue: asyncio.Queue, config: RunConfig, req
             note=f"PREV_EDITION {load.prev_edges_resolved} resolved, NEXT_EDITION {load.next_edges_resolved}",
         )
         begin("load_chunks", vector_pipelines, items_total=load.chunks)
-        progress.finish(stage, affected, items_done=load.chunks, note="Chunk vertices with bge-m3 vectors")
+        progress.finish(
+            stage, affected, items_done=load.chunks,
+            note=f"Chunk vertices + {model.vertex_type} ({model.label}, {model.dim}-dim)",
+        )
         registry.record(
             request.dataset,
             ids={
@@ -757,7 +992,7 @@ async def _run_build(build_id: str, queue: asyncio.Queue, config: RunConfig, req
             counts={
                 "documents": load.documents, "events": load.olympic_events, "chunks": load.chunks,
                 "entities": entities, "relationships": relationships, "vectors": load.chunks,
-                "embedding_backend": backend,
+                "embedding_backend": backend, "embedding_model": model.key,
             },
             file_bytes=corpus.stat().st_size,
         )
@@ -773,6 +1008,10 @@ async def _run_build(build_id: str, queue: asyncio.Queue, config: RunConfig, req
         begin("vector_index", vector_pipelines)
         await asyncio.to_thread(wait_until_ready, config, 600.0, conn=client.conn)
         progress.finish(stage, affected, items_done=1, note="Ready_for_query")
+        # Covered only once queryable: a model is never 'complete' before its index is.
+        store.add_covered(model.key, [c.chunk_id for c in chunks], backend)
+        if not store.active():
+            store.set_active(model.key)
         progress.ready(vector_pipelines)
         ready_ms.update(dict.fromkeys(vector_pipelines, round((time.monotonic() - started) * 1000)))
         registry.update(request.dataset, ready_ms=ready_ms)
@@ -899,6 +1138,8 @@ async def _start_batch(body: BatchRequest, config: RunConfig) -> dict[str, str]:
         raise HTTPException(status_code=409, detail=f"Run {run_id!r} already exists")
     if body.latency_mode:
         config = config.model_copy(update={"latency_mode": body.latency_mode})
+    # Same hard block as a query: a run searches only complete embeddings.
+    config = await asyncio.to_thread(_query_config, config, None)
 
     run_config = {
         # Off the event loop: the header records the embedding backend, which

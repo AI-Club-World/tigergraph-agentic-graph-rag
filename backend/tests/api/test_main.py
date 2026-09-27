@@ -31,6 +31,10 @@ def _record(pipeline: str, answer: str = "26") -> PipelineRecord:
     )
 
 
+# Queries and runs start only once the active model's embeddings are complete.
+pytestmark = pytest.mark.usefixtures("ready_embeddings")
+
+
 @pytest.fixture
 def client(monkeypatch):
     monkeypatch.setattr(api_main, "run_p1_rag", lambda query, client, config: _record("rag"))
@@ -146,12 +150,12 @@ class TestBuildStream:
         assert response.status_code == 404
         assert "absent" in response.json()["detail"]
 
-    def test_no_pipeline_is_ready_without_tigergraph(self, client, monkeypatch, tmp_path):
+    def test_no_pipeline_is_ready_without_tigergraph(self, client, monkeypatch, tmp_path, fake_embedder):
         """Every pipeline queries TigerGraph, so a build that cannot reach it
         stops at schema_install and marks nothing ready (it used to mark RAG
         ready right after local chunk+embed)."""
         corpus = tmp_path / "corpus.jsonl"
-        monkeypatch.setattr(api_main, "OUT_DIR", tmp_path / "out")
+        monkeypatch.setattr(api_main, "OUT_DIR", tmp_path / "fresh-out")  # nothing built yet
         corpus.write_text(
             json.dumps({"doc_id": "Q1", "title": "Sailing at the 2016 Summer Olympics", "text": "Sailing text."})
             + "\n",

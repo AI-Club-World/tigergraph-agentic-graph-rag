@@ -18,8 +18,8 @@ approximation from the corpus's own `approx_tokens` field (chars/4), which is
 a document-level accounting number, not a chunking rule; the two are not
 expected to agree exactly.
 
-Embedding is bge-m3 (1024-dim, COSINE) via `common/embeddings.py` — an
-embedding model, no LLM call (AD-6). Loading the resulting
+Embedding uses the named model from `common/embedding_models.py` via
+`common/embeddings.py` — an embedding model, no LLM call (AD-6). Loading the resulting
 chunks into TigerGraph is GRAPH-05's job, not this module's; this module's
 output is a plain list of `Chunk` objects a caller can embed and hand to a
 loader.
@@ -89,11 +89,13 @@ def chunk_document(
     ]
 
 
-def embed_chunks(chunks: list[Chunk]) -> None:
-    """Embed every chunk's text in place, as one batched model call."""
+def embed_chunks(chunks: list[Chunk], model_name: str | None = None, strict: bool = False) -> None:
+    """Embed every chunk's text in place with `model_name`, as one batched
+    model call. The build passes strict=True: vectors written to an index
+    must come from the model, never the hash fallback."""
     if not chunks:
         return
-    vectors = embed_texts([chunk.text for chunk in chunks])
+    vectors = embed_texts([chunk.text for chunk in chunks], model_name=model_name, strict=strict)
     for chunk, vector in zip(chunks, vectors, strict=True):
         chunk.embedding = vector
 

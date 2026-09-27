@@ -22,6 +22,11 @@ from ogr.graph.client import TigerGraphClient
 from ogr.pipelines.p3_agentic.agents.entity_linking import EntityLinker
 from ogr.pipelines.p3_agentic.orchestrator import append_reducer, run_p3_agentic
 
+import pytest
+
+# Query embedding is strict (never hash noise): a stand-in model serves it here.
+pytestmark = pytest.mark.usefixtures("fake_embedder")
+
 CLOSED_STOP_VOCABULARY = {
     "sufficient_evidence",
     "step_budget_exhausted",

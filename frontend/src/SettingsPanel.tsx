@@ -5,8 +5,8 @@ import { Notice } from './components/Notice'
  */
 
 import { useEffect, useRef, useState } from 'react'
+import { EmbeddingSettings } from './components/EmbeddingSettings'
 import {
-  EMBEDDING_OPTIONS,
   fetchModels,
   fetchProviders,
   fetchSettings,
@@ -47,7 +47,7 @@ function GearIcon() {
 export function SettingsPanel() {
   const [open, setOpen] = useState(false)
   const [settings, setSettings] = useState<AppSettings | null>(null)
-  const [draft, setDraft] = useState<{ llm_provider: string; llm_model: string; embedding_model: string } | null>(null)
+  const [draft, setDraft] = useState<{ llm_provider: string; llm_model: string } | null>(null)
   const [providers, setProviders] = useState<ProviderInfo[]>([])
   const [models, setModels] = useState<string[]>([])
   const [modelsError, setModelsError] = useState<string | null>(null)
@@ -68,7 +68,7 @@ export function SettingsPanel() {
     fetchSettings()
       .then((s) => {
         setSettings(s)
-        setDraft({ llm_provider: providerIdOf(s), llm_model: s.llm_model, embedding_model: s.embedding_model })
+        setDraft({ llm_provider: providerIdOf(s), llm_model: s.llm_model })
         setCustomModel('')
       })
       .catch(() => setFeedback({ ok: false, text: 'Could not load current settings.' }))
@@ -126,22 +126,20 @@ export function SettingsPanel() {
     setFeedback(null)
     const effectiveModel = customModel.trim() || draft.llm_model
     try {
-      // Only what changed: an embedding_model field resets the server's
-      // TigerGraph client, and an unchanged model need not rebuild the LLM.
+      // Only what changed: an unchanged model need not rebuild the LLM. The
+      // embedding model switches on its own (EmbeddingSettings), never here.
       // Compared with the provider shown on load: keeping it (e.g. NVIDIA reached
       // through the startup OpenAI-compatible config) changes only the model.
       const providerChanged = settings !== null && draft.llm_provider !== providerIdOf(settings)
       const modelChanged = providerChanged || effectiveModel !== settings?.llm_model
-      const embeddingChanged = draft.embedding_model !== settings?.embedding_model
       const updated = await saveSettings({
         ...(providerChanged ? { llm_provider: draft.llm_provider } : {}),
         ...(modelChanged ? { llm_model: effectiveModel } : {}),
-        ...(embeddingChanged ? { embedding_model: draft.embedding_model } : {}),
       })
       // The health indicator reflects the old model until re-checked.
       triggerRecheckOnFailure()
       setSettings(updated)
-      setDraft({ llm_provider: providerIdOf(updated), llm_model: updated.llm_model, embedding_model: updated.embedding_model })
+      setDraft({ llm_provider: providerIdOf(updated), llm_model: updated.llm_model })
       setCustomModel('')
       const label = providers.find((p) => p.id === providerIdOf(updated))?.label ?? updated.llm_provider
       setFeedback({ ok: true, text: `Saved — all pipelines now use ${label} / ${updated.llm_model}` })
@@ -317,31 +315,8 @@ export function SettingsPanel() {
                   </div>
                 </fieldset>
 
-                {/* Embedding model selector */}
-                <fieldset className="settings-fieldset">
-                  <legend className="label">Knowledge Base · Embedding Model</legend>
-                  <p className="muted small settings-embed-note">
-                    Changing the embedding model requires a graph rebuild to take effect.
-                  </p>
-                  <div className="settings-embed-grid">
-                    {EMBEDDING_OPTIONS.map((opt) => (
-                      <label
-                        key={opt.value}
-                        className={`settings-embed-card ${draft.embedding_model === opt.value ? 'selected' : ''}`}
-                      >
-                        <input
-                          type="radio"
-                          name="embedding_model"
-                          value={opt.value}
-                          checked={draft.embedding_model === opt.value}
-                          onChange={() => setDraft((d) => d && { ...d, embedding_model: opt.value })}
-                        />
-                        <span className="settings-embed-label">{opt.label}</span>
-                        <span className="settings-embed-dim muted small">{opt.dim}d</span>
-                      </label>
-                    ))}
-                  </div>
-                </fieldset>
+                {/* Embedding model: switched through its own decision dialog */}
+                <EmbeddingSettings />
 
                 {/* Actions */}
                 <div className="settings-actions">

@@ -53,11 +53,22 @@ def test_tigergraph_check_uses_rest_echo_not_version():
 def test_embedding_ok_when_cloudflare_answers(monkeypatch):
     from ogr.common import embeddings
 
-    monkeypatch.setattr(embeddings, "_embed_cloudflare", lambda texts, a, t: [[0.1] * 1024])
+    monkeypatch.setattr(embeddings, "_embed_cloudflare", lambda texts, a, t, model_id: [[0.1] * 1024])
     status, detail = verify.check_embedding(
-        RunConfig(cloudflare_account_id="a", cloudflare_api_token="t")
+        RunConfig(cloudflare_account_id="a", cloudflare_api_token="t", embedding_model="bge-large-en-v1.5")
     )
-    assert status == "OK" and "1024-dim" in detail
+    assert status == "OK" and "1024-dim" in detail and "@cf/baai/bge-large-en-v1.5" in detail
+
+
+def test_embedding_names_a_model_cloudflare_does_not_host(monkeypatch):
+    from ogr.common import embeddings
+
+    monkeypatch.setattr(embeddings, "_MODELS", {})
+    monkeypatch.setattr("huggingface_hub.try_to_load_from_cache", lambda *a, **k: None)
+    status, detail = verify.check_embedding(
+        RunConfig(cloudflare_account_id="a", cloudflare_api_token="t", embedding_model="embeddinggemma-300m")
+    )
+    assert status == "FAIL" and "does not host EmbeddingGemma-300M" in detail and "google/embeddinggemma-300m" in detail
 
 
 def test_embedding_fails_with_no_tier(monkeypatch):

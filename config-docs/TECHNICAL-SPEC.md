@@ -19,7 +19,7 @@ Status: **v0.3 — synchronised with implementation plans, 2026-09-21.** Superse
 | Layer | Choice | Notes |
 |---|---|---|
 | Graph + vector store | TigerGraph Savanna (Community Edition fallback) | 1024-dim embeddings fit either |
-| Embedding model | BAAI bge-m3, 1024-dim, COSINE — one model for every pipeline, served by the first available host: Cloudflare Workers AI `@cf/baai/bge-m3` → local `sentence-transformers` `BAAI/bge-m3` (→ hash fallback, recorded). NVIDIA NIM retired `baai/bge-m3` (HTTP 410 since 2026-08-25), so it is not a tier | Same model on every tier, so vectors share one index space (`LLM-ALLOCATION-AUDIT.md` §3, DP-4) |
+| Embedding model | One of five selectable models — Qwen3-Embedding-0.6B, EmbeddingGemma-300M (768-dim), gte-large-en-v1.5, mxbai-embed-large-v1, bge-large-en-v1.5 (default; Cloudflare → local) — COSINE, each in its own `Embedding_*` vertex type and HNSW index; switched at runtime from Settings | A query is only ever searched against its own model's index, by model identity (`EMBEDDING-SWITCHING.md`) |
 | Reranker | Cloudflare `@cf/baai/bge-reranker-base` cross-encoder, P3 fallback prose only | No LLM reranker; P1 stays unfiltered (AD-9). Input order kept when unavailable |
 | LLM | **Pluggable — `LLM_PROVIDER` selects the client: `anthropic`/`claude` → native Claude (`langchain-anthropic`), `google`/`gemini`/`google_genai` → native Gemini (`langchain-google-genai`), anything else (`openai`, `openai_compatible`, `groq`, `ollama`, vLLM, llama.cpp, OpenRouter…) → OpenAI-compatible client at `LLM_BASE_URL`.** One boundary: `common/llm.py`; every provider shares one retry policy, one rate limiter and LangChain `usage_metadata` accounting. Pinned within a run, swappable between runs. **Runtime presets** (Settings panel / `PATCH /settings`): `gemini` (Flash, Flash-Lite), `nvidia_nim` (all text models in the live catalog), `groq` — keys env-only; an exhausted rate limit stops the run with an error naming provider/model, never a fallback to another provider | No LLM in the scoring loop. A capability probe selects native tool-calling or a JSON-schema fallback (§14) |
 | Backend | **Python 3.11 · FastAPI · `sse-starlette` · LangGraph/LangChain · pyTigerGraph ≥ 2.0** | `asyncio.gather` for concurrent invocation; the sync pipelines run in worker threads and share one `TigerGraphClient`, which is safe because pyTigerGraph ≥ 2.0 keeps one HTTP session per thread. Python is forced: `sentence-transformers` and `pyTigerGraph` are Python-only |
@@ -118,7 +118,7 @@ Question file rows: `{ "qid", "question", "qtype", "answer": ["string"], "gold_d
 
 The run header written to `out/{run_id}.jsonl` is the non-secret `run_config`:
 ```json
-{ "llm_provider": "string", "llm_model": "string", "llm_base_url": "string|null", "temperature": 0, "embedding_model": "@cf/baai/bge-m3", "embedding_backend": "cloudflare|sentence-transformers|hash_fallback", "k": 10, "chunk_tokens": 300, "chunk_overlap": 50, "max_steps": 6, "max_tokens_per_query": 20000, "max_total_tokens": 5000000, "pool_size": "number (1 in timing mode)", "latency_mode": "throughput|timing", "seed": "number|null", "requests_per_minute": 30, "dataset": "string", "started_at": "ISO-8601" }
+{ "llm_provider": "string", "llm_model": "string", "llm_base_url": "string|null", "temperature": 0, "embedding_model": "bge-large-en-v1.5", "embedding_backend": "cloudflare|sentence-transformers|hash_fallback", "k": 10, "chunk_tokens": 300, "chunk_overlap": 50, "max_steps": 6, "max_tokens_per_query": 20000, "max_total_tokens": 5000000, "pool_size": "number (1 in timing mode)", "latency_mode": "throughput|timing", "seed": "number|null", "requests_per_minute": 30, "dataset": "string", "started_at": "ISO-8601" }
 ```
 `embedding_backend` is `hash_fallback` when the embedding model failed to load —
 vector results in such a run are not semantic, and the header says so.
@@ -389,7 +389,7 @@ No open technical decisions remain. Full rationale and rejected alternatives in
 | Frontend framework | **Closed** — React + Vite |
 | Streaming transport | **Closed** — SSE; `POST → 202`, `GET …/stream?token=` |
 | Ground-truth scoring | **Closed** — deterministic EM/F1, no LLM judge |
-| Embedding model | **Closed** — BAAI bge-m3, 1024-dim (Cloudflare → local); **vectors stored in TigerGraph** |
+| Embedding model | **Closed** — five selectable models, at most 2 stored at once, per-model vertex types + HNSW indices in TigerGraph (`EMBEDDING-SWITCHING.md`) |
 | LLM provider | **Closed** — pluggable (local or free cloud), one boundary, pinned per run |
 | Batch output storage | **Closed** — append-only JSONL per run, `run_config` header |
 | Trace-as-graph write-back | **Cut from Round 1** |
@@ -426,7 +426,7 @@ batch record because it is part of the run's identity.
     },
     "embedding_service": {
       "embedding_model_service": "local",
-      "model_name": "@cf/baai/bge-m3",
+      "model_name": "bge-large-en-v1.5",
       "dimension": 1024,
       "similarity": "COSINE"
     },

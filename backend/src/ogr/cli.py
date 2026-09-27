@@ -86,9 +86,11 @@ def _build(corpus: str, vector_timeout_s: float) -> int:
     """The same stages as the API's POST /build, headless, for `make reproduce`.
     Ends with the vector readiness gate (TECHNICAL-SPEC §11): a benchmark must
     not start before the index reports Ready_for_query."""
+    from ogr.common.embedding_models import resolve_model
     from ogr.graph.schema import install_queries, install_schema
     from ogr.graph.vector_status import VectorNotReadyError, wait_until_ready
-    from ogr.ingest.chunk_embed import chunk_and_embed_corpus
+    from ogr.ingest.chunk_embed import chunk_and_embed_corpus, embed_chunks
+    from ogr.ingest.embedding_index import EmbeddingStore
     from ogr.ingest.infobox import parse_corpus
     from ogr.ingest.load import load_graph
     from ogr.ingest.registry import DatasetRegistry
@@ -99,17 +101,23 @@ def _build(corpus: str, vector_timeout_s: float) -> int:
     if client.conn is None:
         print("TigerGraph unreachable — set TG_HOST and credentials (run `verify`).", file=sys.stderr)
         return 1
-    print(f"chunk+embed {corpus} with {config.embedding_model} ...")
-    chunks = chunk_and_embed_corpus(corpus, config.chunk_tokens, config.chunk_overlap)
+    out_dir = Path(__file__).resolve().parents[3] / "out"
+    store = EmbeddingStore(out_dir / "embeddings.json")
+    # The model Settings last made active, else EMBEDDING_MODEL.
+    model = resolve_model(store.active() or config.embedding_model)
+    print(f"chunk+embed {corpus} with {model.label} ({model.dim}-dim) ...")
+    chunks = chunk_and_embed_corpus(corpus, config.chunk_tokens, config.chunk_overlap, embed=False)
+    embed_chunks(chunks, model.key, strict=True)  # never hash noise into an index
     print(f"  {len(chunks)} chunks; installing schema (resets the graph and every loaded dataset) ...")
     install_schema(client)
     # Same registry the API's multi-dataset build keeps; the reset above
     # leaves exactly this one dataset in the graph.
-    registry = DatasetRegistry(Path(__file__).resolve().parents[3] / "out" / "datasets.json")
-    registry.reset(config.embedding_model, config.embedding_dim)
+    registry = DatasetRegistry(out_dir / "datasets.json")
+    registry.reset(model.key, model.dim)
+    store.reset(model.key)
     docs, _report = parse_corpus(corpus)
     print(f"  loading {len(docs)} documents ...")
-    load = load_graph(client, docs, chunks)
+    load = load_graph(client, docs, chunks, embedding_model=model.key)
     registry.record(
         Path(corpus).stem,
         ids={
@@ -127,6 +135,7 @@ def _build(corpus: str, vector_timeout_s: float) -> int:
     except (RuntimeError, VectorNotReadyError) as e:
         print(str(e), file=sys.stderr)
         return 1
+    store.add_covered(model.key, [c.chunk_id for c in chunks])
     print("Build complete; vector index Ready_for_query.")
     return 0
 

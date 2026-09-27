@@ -46,9 +46,24 @@ class TestSchemaFile:
             assert f"CREATE DIRECTED EDGE {edge} (FROM {frm}, TO {to}" in text
         assert "PREV_EDITION" in text and "NEXT_EDITION" in text
 
-    def test_vector_attributes_are_1024_dim_cosine(self):
+    def test_each_model_has_its_own_vertex_type_index_and_edge(self):
+        """schema.gsql must match common/embedding_models.py: one Embedding_*
+        type per model, one HNSW index sized to that model, one HAS_EMBEDDING
+        pair from Chunk — and no vector on the canonical Chunk itself."""
+        import re
+
+        from ogr.common.embedding_models import EMBEDDING_MODELS
+
         text = SCHEMA_PATH.read_text(encoding="utf-8")
-        assert text.count('DIMENSION=1024, METRIC="COSINE"') == 2
+        for model in EMBEDDING_MODELS.values():
+            vt = model.vertex_type
+            assert f'CREATE VERTEX {vt} (PRIMARY_ID chunk_id STRING) WITH PRIMARY_ID_AS_ATTRIBUTE="true"' in text
+            assert f'ALTER VERTEX {vt} ADD VECTOR ATTRIBUTE emb(DIMENSION={model.dim}, METRIC="COSINE");' in text
+            assert f"FROM Chunk, TO {vt}" in text
+            assert f"DROP VERTEX {vt}" in text
+        assert text.count("ADD VECTOR ATTRIBUTE") == len(EMBEDDING_MODELS)
+        assert not re.search(r"ALTER VERTEX (Chunk|OlympicEvent) ADD VECTOR", text)
+        assert 'WITH REVERSE_EDGE="reverse_HAS_EMBEDDING"' in text
 
     def test_install_is_idempotent_by_dropping_first(self):
         text = SCHEMA_PATH.read_text(encoding="utf-8")
@@ -73,10 +88,18 @@ class TestQueryFiles:
             assert f"CREATE OR REPLACE QUERY {name}(" in text
             assert f"INSTALL QUERY {name}" in text
 
-    def test_q5_vtype_parameter_branches_between_chunk_and_event(self):
+    def test_q5_searches_each_models_own_index_and_returns_chunks(self):
+        from ogr.common.embedding_models import EMBEDDING_MODELS
+
         text = (QUERIES_DIR / "q5_hybrid_search.gsql").read_text(encoding="utf-8")
-        assert "Chunk.emb" in text
-        assert "OlympicEvent.emb" in text
+        for model in EMBEDDING_MODELS.values():
+            vt = model.vertex_type
+            assert f'emb_type == "{vt}"' in text
+            # Both the unfiltered and the candidate-set search use this model's index only.
+            assert text.count(f"vectorSearch({{{vt}.emb}}") == 2
+        assert "Chunk.emb" not in text and "OlympicEvent.emb" not in text
+        assert "-(reverse_HAS_EMBEDDING>)- Chunk:c" in text
+        assert "PRINT TopChunks AS top_chunks" in text and "PRINT @@distances AS distances" in text
 
 
 class TestInstallers:

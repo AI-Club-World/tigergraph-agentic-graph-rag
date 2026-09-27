@@ -7,6 +7,8 @@ import { VerdictStrip } from './components/VerdictStrip'
 import { TracePanel } from './TracePanel'
 import { RequiresServices } from './ServiceStatus'
 import { getQueryResult, openQueryStream, submitQuery } from './services/queryService'
+import { ApiError } from './services/http'
+import { EmbeddingMismatchDialog, type EmbeddingMismatch } from './components/EmbeddingMismatchDialog'
 import { PIPELINE_IDS, type PipelineId, type QueryLevelRecord, type TraceStep } from './types'
 
 type Columns = Record<PipelineId, ColumnState>
@@ -29,6 +31,9 @@ export function SearchView() {
   const [result, setResult] = useState<QueryLevelRecord | null>(null)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [inFlight, setInFlight] = useState(false)
+  // A query the server blocked: its selected embedding model has no complete
+  // embeddings. It runs again only with a model the user picks from the list.
+  const [mismatch, setMismatch] = useState<{ query: string; detail: EmbeddingMismatch } | null>(null)
   const cancelRef = useRef<(() => void) | null>(null)
   // Identifies the current run, so a late response from a superseded run
   // (its result fetch outlives the stream cancel) is dropped.
@@ -36,7 +41,7 @@ export function SearchView() {
 
   useEffect(() => () => cancelRef.current?.(), [])
 
-  async function runQuery(query: string) {
+  async function runQuery(query: string, embeddingModel?: string) {
     cancelRef.current?.()
     const run = ++runRef.current
     const current = () => run === runRef.current
@@ -46,12 +51,17 @@ export function SearchView() {
     setSubmitError(null)
     setInFlight(true)
 
+    setMismatch(null)
     let accepted
     try {
-      accepted = await submitQuery(query)
+      accepted = await submitQuery(query, embeddingModel)
     } catch (error) {
       if (!current()) return
-      setSubmitError(error instanceof Error ? error.message : 'Could not reach the API')
+      if (error instanceof ApiError && error.code === 'embedding_mismatch' && error.detail) {
+        setMismatch({ query, detail: { ...(error.detail as unknown as EmbeddingMismatch), message: error.message } })
+      } else {
+        setSubmitError(error instanceof Error ? error.message : 'Could not reach the API')
+      }
       setColumns(IDLE)
       setInFlight(false)
       return
@@ -133,8 +143,15 @@ export function SearchView() {
               {consoleLabel}
             </span>
           </header>
-          <QueryInput onSubmit={runQuery} disabled={inFlight} />
+          <QueryInput onSubmit={(query) => void runQuery(query)} disabled={inFlight} />
         </section>
+        {mismatch && (
+          <EmbeddingMismatchDialog
+            mismatch={mismatch.detail}
+            onPick={(model) => void runQuery(mismatch.query, model)}
+            onCancel={() => setMismatch(null)}
+          />
+        )}
 
         <p className="sr-only" aria-live="polite" role="status">
           {announcement}

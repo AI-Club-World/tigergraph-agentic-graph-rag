@@ -13,9 +13,13 @@ export interface QueryStreamHandlers {
   onError: (message: string) => void
 }
 
-/** POST /query -> 202 {query_id, stream_token} (TECHNICAL-SPEC §4.1, §5). */
-export async function submitQuery(query: string): Promise<QueryAccepted> {
-  if (!config.useMockApi) return post<QueryAccepted>('/query', { query })
+/** POST /query -> 202 {query_id, stream_token} (TECHNICAL-SPEC §4.1, §5).
+ *  `embeddingModel` searches with that model instead of the active one — only
+ *  one the server offered as complete (409 embedding_mismatch otherwise). */
+export async function submitQuery(query: string, embeddingModel?: string): Promise<QueryAccepted> {
+  if (!config.useMockApi) {
+    return post<QueryAccepted>('/query', { query, ...(embeddingModel ? { embedding_model: embeddingModel } : {}) })
+  }
 
   await delay(120)
   const scenario = scenarioFor(query)

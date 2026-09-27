@@ -1,14 +1,20 @@
 """Embedding utilities for OGR pipelines.
-One model — BAAI bge-m3, 1024-dim — for ingestion and every pipeline's query
-path, so the index and the queries are always embedded by the same model.
 
-The model is served by the first host that works (DP-4, LLM-ALLOCATION plan):
-Cloudflare Workers AI `@cf/baai/bge-m3` → local sentence-transformers
-`BAAI/bge-m3` → hash fallback. Cloudflare is skipped when its credentials are
-absent. Every tier runs the same model, so a vector from any tier lives in the
-one index space. (NVIDIA NIM retired `baai/bge-m3` on 2026-08-25 — HTTP 410 —
-and hosts no other bge-m3, so it cannot be a tier: a different NVIDIA model
-would put query vectors in a different space from the index.)
+Every call names the embedding model (`common/embedding_models.py`); the
+index a vector is written to and the index a query vector searches are both
+chosen from that same model key, so the two can never come from different
+models (config-docs/EMBEDDING-SWITCHING.md).
+
+A model is served by the first host that works: Cloudflare Workers AI (only
+for a model Cloudflare hosts, and only with credentials) → local
+sentence-transformers → hash fallback. Every real tier runs the same model,
+so a vector from any of them lives in that model's one space.
+
+The hash fallback is noise, not a model. Non-strict callers get it (loudly
+logged, recorded as the run's `embedding_backend`) so a machine without
+weights can still exercise the pipelines; `strict=True` raises instead, and
+every write to an embedding index is strict — noise is never stored as a
+model's embeddings.
 """
 
 from __future__ import annotations
@@ -20,42 +26,49 @@ import math
 import threading
 import urllib.request
 
+from ogr.common.embedding_models import EmbeddingModel, resolve_model
+
 logger = logging.getLogger(__name__)
 
-CLOUDFLARE_MODEL = "@cf/baai/bge-m3"
-LOCAL_MODEL = "BAAI/bge-m3"
 # Texts per HTTP request; keeps each request well under provider size limits.
 REMOTE_BATCH_SIZE = 50
 
-# model_name -> loaded model, or None when loading failed (not retried).
+# hf_id -> loaded model, or None when loading failed (not retried).
 _MODELS: dict[str, object | None] = {}
 _MODELS_LOCK = threading.Lock()
 
 
-def get_embedding_model(model_name: str = LOCAL_MODEL):
-    """Loads and caches the local embedding model, one instance per model name."""
+class EmbeddingUnavailable(RuntimeError):
+    """No real tier could serve the model (raised only in strict mode)."""
+
+
+def get_embedding_model(model_name: str, trust_remote_code: bool = False):
+    """Loads and caches a local sentence-transformers model, one instance per name."""
     with _MODELS_LOCK:
         if model_name not in _MODELS:
             try:
                 from sentence_transformers import SentenceTransformer
 
+                kwargs = {"trust_remote_code": True} if trust_remote_code else {}
                 try:
                     # Cached weights first: an online check on every process
                     # start hits Hugging Face rate limits (90 s waits observed).
-                    _MODELS[model_name] = SentenceTransformer(model_name, local_files_only=True)
+                    _MODELS[model_name] = SentenceTransformer(model_name, local_files_only=True, **kwargs)
                 except Exception:
-                    _MODELS[model_name] = SentenceTransformer(model_name)
+                    _MODELS[model_name] = SentenceTransformer(model_name, **kwargs)
             except Exception as e:
-                # Every embedding after this is a hash pseudo-vector, so
-                # semantic search runs against noise. Say so loudly, once.
                 logger.error(
-                    "Embedding model %r failed to load (%s); using the hash fallback — "
-                    "vector search results are NOT semantic",
+                    "Embedding model %r failed to load (%s); non-strict callers get the hash "
+                    "fallback — vector search results are NOT semantic",
                     model_name,
                     e,
                 )
                 _MODELS[model_name] = None
         return _MODELS[model_name]
+
+
+def _local(model: EmbeddingModel):
+    return get_embedding_model(model.hf_id, model.trust_remote_code)
 
 
 def _post_json(url: str, payload: dict, token: str, timeout_s: float = 60.0) -> dict:
@@ -74,33 +87,36 @@ def _post_json(url: str, payload: dict, token: str, timeout_s: float = 60.0) -> 
         return json.loads(response.read())
 
 
-def _embed_cloudflare(texts: list[str], account_id: str, token: str) -> list[list[float]]:
-    url = f"https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/{CLOUDFLARE_MODEL}"
+def _embed_cloudflare(texts: list[str], account_id: str, token: str, model_id: str) -> list[list[float]]:
+    url = f"https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/{model_id}"
     return _post_json(url, {"text": texts}, token)["result"]["data"]
 
 
-def _remote_tiers() -> list[tuple[str, object]]:
-    """(name, embed_fn) for each remote host whose credentials are configured."""
+def _remote_tiers(model: EmbeddingModel) -> list[tuple[str, object]]:
+    """(name, embed_fn) for each remote host that serves `model` and is configured."""
     from ogr.common.config import get_default_config
 
     cfg = get_default_config()
     tiers: list[tuple[str, object]] = []
-    if cfg.cloudflare_account_id and cfg.cloudflare_api_token:
+    if model.cloudflare_id and cfg.cloudflare_account_id and cfg.cloudflare_api_token:
         tiers.append((
             "cloudflare",
-            lambda batch: _embed_cloudflare(batch, cfg.cloudflare_account_id, cfg.cloudflare_api_token),
+            lambda batch: _embed_cloudflare(
+                batch, cfg.cloudflare_account_id, cfg.cloudflare_api_token, model.cloudflare_id
+            ),
         ))
     return tiers
 
 
 def embedding_backend(model_name: str | None = None) -> str:
-    """Primary tier — 'cloudflare', 'sentence-transformers' or
-    'hash_fallback' — recorded in each batch run's header so a degraded run is
-    visible in its results (NFR-4)."""
-    tiers = _remote_tiers()
+    """Primary tier for the model — 'cloudflare', 'sentence-transformers' or
+    'hash_fallback' — recorded in each batch run's header and each embedding
+    index so a degraded run is visible in its results (NFR-4)."""
+    model = resolve_model(model_name)
+    tiers = _remote_tiers(model)
     if tiers:
         return tiers[0][0]
-    return "sentence-transformers" if get_embedding_model() is not None else "hash_fallback"
+    return "sentence-transformers" if _local(model) is not None else "hash_fallback"
 
 
 def _normalize(vector: list[float]) -> list[float]:
@@ -116,42 +132,62 @@ def _fallback_vector(text: str, dim: int) -> list[float]:
     return _normalize(raw)
 
 
-def _embed_batch(texts: list[str], dim: int, batch_size: int) -> list[list[float]]:
-    """Embed one batch through the first tier that succeeds."""
-    for name, embed in _remote_tiers():
+def _embed_batch(model: EmbeddingModel, texts: list[str], batch_size: int, strict: bool) -> list[list[float]]:
+    """Embed one batch (prompts already applied) through the first tier that succeeds."""
+    errors = []
+    for name, embed in _remote_tiers(model):
         try:
             vectors = embed(texts)
             if len(vectors) != len(texts):
                 raise ValueError(f"{len(vectors)} vectors for {len(texts)} texts")
-            return [_normalize(v) for v in vectors]
+            return [_check_dim(model, _normalize(v)) for v in vectors]
         except Exception as e:
-            logger.warning("Embedding tier %s failed (%s); trying the next tier", name, str(e)[:200])
-    model = get_embedding_model()
-    if model is not None:
-        vectors = model.encode(texts, normalize_embeddings=True, batch_size=batch_size)
-        return [[float(x) for x in vector] for vector in vectors]
-    return [_fallback_vector(text, dim) for text in texts]
+            errors.append(f"{name}: {str(e)[:200]}")
+            logger.warning(
+                "Embedding tier %s failed for %s (%s); trying the next tier", name, model.key, str(e)[:200]
+            )
+    local = _local(model)
+    if local is not None:
+        vectors = local.encode(texts, normalize_embeddings=True, batch_size=batch_size)
+        return [_check_dim(model, [float(x) for x in vector]) for vector in vectors]
+    if strict:
+        raise EmbeddingUnavailable(
+            f"No host could serve {model.label}: {'; '.join(errors) or 'no remote tier'}; "
+            f"local {model.hf_id} not loadable"
+        )
+    return [_fallback_vector(text, model.dim) for text in texts]
+
+
+def _check_dim(model: EmbeddingModel, vector: list[float]) -> list[float]:
+    if len(vector) != model.dim:
+        raise ValueError(f"{model.label} returned a {len(vector)}-dim vector; expected {model.dim}")
+    return vector
 
 
 def embed_query(
     text: str,
     model_name: str | None = None,
-    dim: int = 1024,
+    dim: int | None = None,
+    strict: bool = False,
 ) -> list[float]:
-    """Generates a normalized bge-m3 embedding vector for query text.
-    `model_name` is kept for caller compatibility; every tier serves bge-m3."""
-    return _embed_batch([text], dim, batch_size=1)[0]
+    """A normalized query embedding from `model_name`, with its query prompt.
+    `dim` is kept for caller compatibility; the model fixes the dimension."""
+    model = resolve_model(model_name)
+    return _embed_batch(model, [model.query_prefix + text], batch_size=1, strict=strict)[0]
 
 
 def embed_texts(
     texts: list[str],
     model_name: str | None = None,
-    dim: int = 1024,
+    dim: int | None = None,
     batch_size: int = 64,
+    strict: bool = False,
 ) -> list[list[float]]:
-    """Batch form of embed_query — GRAPH-04 embeds every document's chunks,
-    so texts go to the host in batches rather than one request per text."""
+    """Document embeddings from `model_name` (its document prompt applied),
+    sent to the host in batches rather than one request per text."""
+    model = resolve_model(model_name)
+    prepared = [model.doc_prefix + t for t in texts]
     vectors: list[list[float]] = []
-    for start in range(0, len(texts), REMOTE_BATCH_SIZE):
-        vectors.extend(_embed_batch(texts[start:start + REMOTE_BATCH_SIZE], dim, batch_size))
+    for start in range(0, len(prepared), REMOTE_BATCH_SIZE):
+        vectors.extend(_embed_batch(model, prepared[start:start + REMOTE_BATCH_SIZE], batch_size, strict))
     return vectors

@@ -7,6 +7,8 @@ export class ApiError extends Error {
     readonly status: number,
     /** Machine-readable reason when the server sends a structured detail. */
     readonly code?: string,
+    /** The whole structured detail (e.g. the models an embedding_mismatch offers). */
+    readonly detail?: Record<string, unknown>,
   ) {
     super(message)
     this.name = 'ApiError'
@@ -25,17 +27,19 @@ async function parse<T>(res: Response): Promise<T> {
     if (res.status >= 500) triggerRecheckOnFailure()
     let detail = res.statusText
     let code: string | undefined
+    let structured: Record<string, unknown> | undefined
     try {
       const body = (await res.json()) as { detail?: string | { code?: string; message?: string } }
       if (typeof body.detail === 'string') detail = body.detail
       else if (body.detail) {
         detail = body.detail.message ?? detail
         code = body.detail.code
+        structured = body.detail as Record<string, unknown>
       }
     } catch {
       // Non-JSON error body; keep the status text.
     }
-    throw new ApiError(detail, res.status, code)
+    throw new ApiError(detail, res.status, code, structured)
   }
   return (await res.json()) as T
 }

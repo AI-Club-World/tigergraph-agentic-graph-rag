@@ -28,6 +28,10 @@ def _record(pipeline: str) -> PipelineRecord:
     )
 
 
+# Queries and runs start only once the active model's embeddings are complete.
+pytestmark = pytest.mark.usefixtures("ready_embeddings")
+
+
 @pytest.fixture
 def client(monkeypatch, tmp_path):
     questions = tmp_path / "questions"

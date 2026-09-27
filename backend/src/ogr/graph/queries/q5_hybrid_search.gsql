@@ -1,40 +1,75 @@
 USE GRAPH OlympicGraphRAG
 
-// Q5: hybrid_search(query_vector, k, vtype, candidate_set) — TECHNICAL-SPEC §3.
-// The P1/P2/P3 semantic-search path, and the only query both `Chunk` and
-// `OlympicEvent` share (both carry `emb`). DP-3: one query, `vtype` branches
-// inside the body — this is the whole reason the library stays at exactly
-// five installed queries (AD-7) instead of a sixth for events.
+// Q5: hybrid_search(query_vector, k, emb_type, candidate_set) — TECHNICAL-SPEC §3,
+// per-model embedding layout (config-docs/EMBEDDING-SWITCHING.md).
+// The P1/P3 semantic-search path. `emb_type` names the Embedding_* vertex
+// type of the model the query vector was embedded with; the caller derives
+// both from one model key (graph/client.py hybrid_search), so a query vector
+// only ever meets its own model's HNSW index. An unknown `emb_type` returns
+// nothing rather than falling through to some other model's index.
 //
-// `PRINT ... AS top_chunks` matches client.py's `_normalize_q5_results`,
-// which reads `raw_res[0]["top_chunks"]`.
+// vectorSearch ranks Embedding_* vertices; reverse_HAS_EMBEDDING leads back
+// to the canonical Chunk for its text. An Embedding_* primary id IS its
+// chunk_id, so `distances` (keyed by embedding vertex) joins on chunk id in
+// client.py's `_normalize_q5_results`, which reads `raw_res[0]["top_chunks"]`.
 
 CREATE OR REPLACE QUERY q5_hybrid_search(
-  LIST<FLOAT> query_vector, INT k = 10, STRING vtype = "Chunk", SET<STRING> candidate_set
+  LIST<FLOAT> query_vector, INT k = 10, STRING emb_type = "Embedding_BGELarge", SET<STRING> candidate_set
 ) FOR GRAPH OlympicGraphRAG SYNTAX V2 {
 
   // vectorSearch only returns a ranked vertex set; the similarity scores come
   // back separately through the optional `distance_map`. Without it every
   // result reaches the client with score 0.0.
   MapAccum<VERTEX, FLOAT> @@distances;
+  SetAccum<VERTEX> @@hits;
 
-  IF vtype == "OlympicEvent" THEN
+  IF emb_type == "Embedding_Qwen" THEN
     IF candidate_set.size() > 0 THEN
-      CandidateSeeds = SELECT e FROM OlympicEvent:e WHERE candidate_set.contains(e.event_id);
-      TopResults = vectorSearch({OlympicEvent.emb}, query_vector, k, {candidate_set: CandidateSeeds, distance_map: @@distances});
+      Seeds = SELECT e FROM Embedding_Qwen:e WHERE candidate_set.contains(e.chunk_id);
+      Top = vectorSearch({Embedding_Qwen.emb}, query_vector, k, {candidate_set: Seeds, distance_map: @@distances});
     ELSE
-      TopResults = vectorSearch({OlympicEvent.emb}, query_vector, k, {distance_map: @@distances});
+      Top = vectorSearch({Embedding_Qwen.emb}, query_vector, k, {distance_map: @@distances});
     END;
-  ELSE
+    Top = SELECT e FROM Top:e ACCUM @@hits += e;
+  ELSE IF emb_type == "Embedding_EmbeddingGemma" THEN
     IF candidate_set.size() > 0 THEN
-      CandidateSeeds = SELECT c FROM Chunk:c WHERE candidate_set.contains(c.chunk_id);
-      TopResults = vectorSearch({Chunk.emb}, query_vector, k, {candidate_set: CandidateSeeds, distance_map: @@distances});
+      Seeds = SELECT e FROM Embedding_EmbeddingGemma:e WHERE candidate_set.contains(e.chunk_id);
+      Top = vectorSearch({Embedding_EmbeddingGemma.emb}, query_vector, k, {candidate_set: Seeds, distance_map: @@distances});
     ELSE
-      TopResults = vectorSearch({Chunk.emb}, query_vector, k, {distance_map: @@distances});
+      Top = vectorSearch({Embedding_EmbeddingGemma.emb}, query_vector, k, {distance_map: @@distances});
     END;
+    Top = SELECT e FROM Top:e ACCUM @@hits += e;
+  ELSE IF emb_type == "Embedding_GteLarge" THEN
+    IF candidate_set.size() > 0 THEN
+      Seeds = SELECT e FROM Embedding_GteLarge:e WHERE candidate_set.contains(e.chunk_id);
+      Top = vectorSearch({Embedding_GteLarge.emb}, query_vector, k, {candidate_set: Seeds, distance_map: @@distances});
+    ELSE
+      Top = vectorSearch({Embedding_GteLarge.emb}, query_vector, k, {distance_map: @@distances});
+    END;
+    Top = SELECT e FROM Top:e ACCUM @@hits += e;
+  ELSE IF emb_type == "Embedding_Mxbai" THEN
+    IF candidate_set.size() > 0 THEN
+      Seeds = SELECT e FROM Embedding_Mxbai:e WHERE candidate_set.contains(e.chunk_id);
+      Top = vectorSearch({Embedding_Mxbai.emb}, query_vector, k, {candidate_set: Seeds, distance_map: @@distances});
+    ELSE
+      Top = vectorSearch({Embedding_Mxbai.emb}, query_vector, k, {distance_map: @@distances});
+    END;
+    Top = SELECT e FROM Top:e ACCUM @@hits += e;
+  ELSE IF emb_type == "Embedding_BGELarge" THEN
+    IF candidate_set.size() > 0 THEN
+      Seeds = SELECT e FROM Embedding_BGELarge:e WHERE candidate_set.contains(e.chunk_id);
+      Top = vectorSearch({Embedding_BGELarge.emb}, query_vector, k, {candidate_set: Seeds, distance_map: @@distances});
+    ELSE
+      Top = vectorSearch({Embedding_BGELarge.emb}, query_vector, k, {distance_map: @@distances});
+    END;
+    Top = SELECT e FROM Top:e ACCUM @@hits += e;
   END;
 
-  PRINT TopResults AS top_chunks;
+  // Back from the ranked embeddings to their canonical chunks (text, doc_id).
+  Hits = {@@hits};
+  TopChunks = SELECT c FROM Hits:e -(reverse_HAS_EMBEDDING>)- Chunk:c;
+
+  PRINT TopChunks AS top_chunks;
   PRINT @@distances AS distances;
 }
 

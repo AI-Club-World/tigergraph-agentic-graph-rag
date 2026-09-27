@@ -81,38 +81,42 @@ def check_tigergraph(config: RunConfig, client=None) -> tuple[str, str]:
 
 
 def check_embedding(config: RunConfig) -> tuple[str, str]:
-    """Which bge-m3 tier would serve embeddings right now (DP-4 chain).
+    """Which tier would serve the active embedding model right now.
 
-    OK   = Cloudflare answered a one-text request.
-    SKIP = degraded but semantic: local bge-m3 (loaded or cached) serves.
-    FAIL = no working tier — vectors would be hash noise."""
+    OK   = Cloudflare (for a model it hosts) answered a one-text request.
+    SKIP = degraded but semantic: the local model (loaded or cached) serves.
+    FAIL = no working tier — queries and re-embed jobs would fail (strict)."""
     import time
 
     from ogr.common import embeddings
+    from ogr.common.embedding_models import resolve_model
 
+    model = resolve_model(config.embedding_model)
     cf_note = "no Cloudflare credentials"
-    if config.cloudflare_account_id and config.cloudflare_api_token:
+    if not model.cloudflare_id:
+        cf_note = f"Cloudflare does not host {model.label}"
+    elif config.cloudflare_account_id and config.cloudflare_api_token:
         t0 = time.perf_counter()
         try:
             [vector] = embeddings._embed_cloudflare(
-                ["ok"], config.cloudflare_account_id, config.cloudflare_api_token
+                ["ok"], config.cloudflare_account_id, config.cloudflare_api_token, model.cloudflare_id
             )
             ms = (time.perf_counter() - t0) * 1000
-            return OK, f"Cloudflare {embeddings.CLOUDFLARE_MODEL}, {len(vector)}-dim, {ms:.0f} ms"
+            return OK, f"Cloudflare {model.cloudflare_id}, {len(vector)}-dim, {ms:.0f} ms"
         except Exception as e:
             cf_note = f"Cloudflare failed ({type(e).__name__}: {str(e)[:120]})"
 
-    if embeddings._MODELS.get(embeddings.LOCAL_MODEL) is not None:
-        return SKIP, f"{cf_note}; local {embeddings.LOCAL_MODEL} loaded and serving"
+    if embeddings._MODELS.get(model.hf_id) is not None:
+        return SKIP, f"{cf_note}; local {model.hf_id} loaded and serving"
     try:
         from huggingface_hub import try_to_load_from_cache
 
-        cached = isinstance(try_to_load_from_cache(embeddings.LOCAL_MODEL, "config.json"), str)
+        cached = isinstance(try_to_load_from_cache(model.hf_id, "config.json"), str)
     except Exception:
         cached = False
     if cached:
-        return SKIP, f"{cf_note}; local {embeddings.LOCAL_MODEL} cached (loads on first use)"
-    return FAIL, f"{cf_note}; local {embeddings.LOCAL_MODEL} not downloaded — vectors would be hash noise"
+        return SKIP, f"{cf_note}; local {model.hf_id} cached (loads on first use)"
+    return FAIL, f"{cf_note}; local {model.hf_id} not downloaded — vectors would be hash noise"
 
 
 def check_queries(config: RunConfig) -> tuple[str, str]:

@@ -16,8 +16,7 @@
     },
     "embedding_service": {
       "embedding_model_service": "cloudflare, local (first available)",
-      "model_name": "@cf/baai/bge-m3",
-      "dimension": 1024,
+      "model_name": "bge-large-en-v1.5",
       "similarity": "COSINE"
     },
     "rate_limit": {

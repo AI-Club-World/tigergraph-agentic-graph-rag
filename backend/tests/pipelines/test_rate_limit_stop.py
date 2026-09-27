@@ -15,6 +15,10 @@ from ogr.pipelines.p3_agentic.agents.entity_linking import EntityLinker
 from ogr.pipelines.p3_agentic.orchestrator import run_p3_agentic
 
 
+# Query embedding is strict (never hash noise): a stand-in model serves it here.
+pytestmark = pytest.mark.usefixtures("fake_embedder")
+
+
 class _TooManyRequests(Exception):
     status_code = 429
 
