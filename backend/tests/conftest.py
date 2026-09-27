@@ -10,6 +10,7 @@ import os
 os.environ["HF_HUB_OFFLINE"] = "1"
 for _key in (
     "CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_API_TOKEN", "NVIDIA_API_KEY", "GEMINI_API_KEY", "GROQ_API_KEY",
+    "EMBEDDING_HOST_URL", "EMBEDDING_REMOTE", "EMBEDDING_CLOUDFLARE",
 ):
     os.environ[_key] = ""
 

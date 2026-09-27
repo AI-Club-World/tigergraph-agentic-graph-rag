@@ -35,6 +35,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print the agentic investigation trace step by step",
     )
 
+    report_parser = subparsers.add_parser(
+        "report", help="Markdown report for a run: where the agent pays for itself, routing, agents"
+    )
+    report_parser.add_argument("run", type=str, help="Run JSONL file (out/<run_id>.jsonl)")
+    report_parser.add_argument("--out", type=str, default=None, help="Write here instead of stdout")
+
+    export_parser = subparsers.add_parser(
+        "export", help="Submission JSON for a run: answers, tokens, citations and agentic traces"
+    )
+    export_parser.add_argument("run", type=str, help="Run JSONL file (out/<run_id>.jsonl)")
+    export_parser.add_argument("--out", type=str, required=True)
+
     verify_parser = subparsers.add_parser(
         "verify", help="Check the LLM, embedding and TigerGraph endpoints are reachable"
     )
@@ -202,13 +214,30 @@ def main(argv=None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
+    if args.command == "report":
+        from ogr.eval.report import build_report
+
+        text = build_report(Path(args.run))
+        if args.out:
+            Path(args.out).write_text(text + "\n", encoding="utf-8")
+            print(f"Report written to {args.out}")
+        else:
+            print(text)
+        return 0
+
+    if args.command == "export":
+        from ogr.eval.report import write_export
+
+        count = write_export(Path(args.run), Path(args.out))
+        print(f"Exported {count} question(s) to {args.out}")
+        return 0
+
     if args.command == "verify":
         from ogr.verify import run as run_verify
 
         return run_verify(pre_build=args.pre_build)
 
     if args.command == "coverage":
-        from pathlib import Path
 
         from ogr.ingest.infobox import parse_corpus
 
@@ -221,7 +250,6 @@ def main(argv=None) -> int:
 
     if args.command == "batch":
         from datetime import UTC, datetime
-        from pathlib import Path
 
         from ogr.common.llm import LLMRateLimitError
         from ogr.eval.batch_runner import (
