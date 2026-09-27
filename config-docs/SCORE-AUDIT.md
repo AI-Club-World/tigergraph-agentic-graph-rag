@@ -129,7 +129,9 @@ settled decision (asked before implementing); **U** = needs the user
 | 5 | TigerGraph workspace stopped (no auto-start) | The owner started it |
 | 6 | Reset the graph (old one-vector-per-chunk layout)? | Yes, reset and rebuild |
 | 7 | Which LLM for all three pipelines? | NVIDIA `deepseek-v4.1-flash` (one model for P1, P2 and P3) |
-| 8 | Embeddings (Cloudflare quota spent, HTTP 429) | The owner's self-hosted `bge-large-en-v1.5` service (`EMBEDDING_HOST_URL`), checked equal to local bge-large (cosine 1.000) |
+| 8 | Embeddings (Cloudflare quota spent, HTTP 429) | The owner's self-hosted `bge-large-en-v1.5` service (`EMBEDDING_HOST_URL`), checked equal to local bge-large (cosine 1.000). Its first tunnel died mid-build; the owner restarted it on a new URL |
+| 9 | deepseek-v4.1-flash measured at ~290 s per call (≈50 h for the benchmark) | Switch all three pipelines to NVIDIA `nvidia/nemotron-3-super-120b-a12b` (0.8 s short call, ~2 min per question across three pipelines). Same model for P1, P2, P3 |
+| 10 | Q2 returns only a count, so count answers cite nothing (grounding 0) — R item, changes retrieved context | Approved before the run: Q2 also returns the counted events (event_id, name, doc_id); count unchanged |
 | — | Accuracy fixes (routing, chunking, k, prompts) | Not decided yet. Raised only once the measured run shows which question types fail (§3 C1) |
 | — | Server-side admin key for destructive routes (C4 R item) | Not raised: it changes the auth design. The documented security model (README) stands |
 
@@ -147,17 +149,15 @@ Largest gap first. Done items name their commit on `application-integration`.
 | 6 | C2 | Grounded column on the dashboard (works without gold) | S | Done, e345f25 |
 | 7 | C4 | Graph query failures reported in trace notes and `error_detail` | S | Done, 38b4e54 |
 | 8 | C4 | `make smoke`, `make results`; docs for all of the above | S | Done, f47c073 |
-| 9 | C1 | Rebuild the graph (per-model layout), run public 100 + hidden 50 with one LLM | U | Running: rebuild in progress |
+| 9 | C1 | Rebuild the graph (per-model layout), run public 100 + hidden 50 with one LLM | U | Rebuild done (2,951 docs, 16,669 chunks, index ready); benchmark `r1` running |
+| 9a | C2/C1 | Q2 returns its counted events, so count answers are cited | R, approved | Done, e189298 (Q2 reinstalled live) |
 | 10 | C1 | Root-cause failing question types from the run; accuracy fixes | R | After 9, each raised with the owner first |
 | 11 | C6 | `WRITEUP.md` with measured results; demo video script | S | After 9 (needs real numbers) |
 | 12 | C6 | Record the demo video | U | Owner |
 
-**Blocker on 9 (2026-09-27):** the self-hosted embedding service's Cloudflare
-quick tunnel went down during the build (every request returns a Cloudflare
-Tunnel error page, HTTP 500). The build fell back to local bge-large on CPU,
-which gives the same vectors at about 1.2 chunks/s, roughly 4 hours for
-16,669 chunks. A restarted host (a new tunnel URL in `EMBEDDING_HOST_URL`)
-would bring that back to minutes.
+**Resolved blockers on 9 (2026-09-27):** the first embedding tunnel died
+mid-build (the CPU fallback would have taken ~4 h); the owner restarted it
+and the rebuild finished in minutes. The LLM was switched (decision 9).
 
 ## 6. Post-implementation scores
 
