@@ -85,6 +85,7 @@ def _normalize_traverse_results(raw: Any) -> list[dict[str, Any]]:
         results.append({
             "event_id": attrs.get("event_id", item.get("v_id", "")),
             "event_name": attrs.get("event_name", ""),
+            "title": attrs.get("title", ""),
             "doc_id": attrs.get("doc_id", ""),
             "source": "graph_traversal",
         })

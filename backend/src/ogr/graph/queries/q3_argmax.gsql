@@ -11,7 +11,7 @@ CREATE OR REPLACE QUERY q3_argmax(
   STRING field = "competitors"
 ) FOR GRAPH OlympicGraphRAG SYNTAX V2 {
 
-  TYPEDEF TUPLE<STRING event_id, STRING event_name, STRING doc_id, DOUBLE value> Ranked;
+  TYPEDEF TUPLE<STRING event_id, STRING event_name, STRING doc_id, STRING title, DOUBLE value> Ranked;
   HeapAccum<Ranked>(3, value DESC) @@top3;
 
   Events = {OlympicEvent.*};
@@ -33,7 +33,7 @@ CREATE OR REPLACE QUERY q3_argmax(
       ELSE
         rankValue = e.competitors
       END,
-      @@top3 += Ranked(e.event_id, e.event_name, doc.doc_id, rankValue);
+      @@top3 += Ranked(e.event_id, e.event_name, doc.doc_id, doc.title, rankValue);
 
   PRINT @@top3 AS results;
 }

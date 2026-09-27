@@ -14,7 +14,7 @@ USE GRAPH OlympicGraphRAG
 CREATE OR REPLACE QUERY q4_traverse(STRING anchor = "", STRING edge_type = "PREV_EDITION", INT hops = 1)
 FOR GRAPH OlympicGraphRAG SYNTAX V2 {
 
-  TYPEDEF TUPLE<STRING event_id, STRING event_name, STRING doc_id> EventRow;
+  TYPEDEF TUPLE<STRING event_id, STRING event_name, STRING doc_id, STRING title> EventRow;
   ListAccum<EventRow> @@rows;
 
   Start = SELECT e FROM OlympicEvent:e WHERE e.event_id == anchor OR e.event_name == anchor;
@@ -25,8 +25,10 @@ FOR GRAPH OlympicGraphRAG SYNTAX V2 {
       PRINT Venues AS venues;
     ELSE
       VenueEvents = SELECT e FROM Venue:ve -(reverse_HELD_AT>:conn)- OlympicEvent:e
-                    WHERE ve.venue_name == anchor
-                    ACCUM @@rows += EventRow(e.event_id, e.event_name, "");
+                    WHERE ve.venue_name == anchor;
+      // Each event's page (doc_id, title), so venue answers are citable too.
+      VenueDocs = SELECT e FROM VenueEvents:e -(reverse_DESCRIBES>:conn)- Document:doc
+                  ACCUM @@rows += EventRow(e.event_id, e.event_name, doc.doc_id, doc.title);
       PRINT @@rows AS results;
     END;
   ELSE
@@ -44,7 +46,7 @@ FOR GRAPH OlympicGraphRAG SYNTAX V2 {
     END;
 
     Resolved = SELECT e FROM Current:e -(reverse_DESCRIBES>:conn)- Document:doc
-      ACCUM @@rows += EventRow(e.event_id, e.event_name, doc.doc_id);
+      ACCUM @@rows += EventRow(e.event_id, e.event_name, doc.doc_id, doc.title);
     PRINT @@rows AS results;
   END;
 }

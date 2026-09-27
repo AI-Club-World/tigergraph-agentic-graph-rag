@@ -182,6 +182,7 @@ def _normalize_count_results(raw: Any) -> tuple[list[dict[str, Any]], int]:
     for m in members[:MAX_COUNT_MEMBERS]:
         results.append({
             "counted_event": m.get("event_name", ""),
+            "title": m.get("title", ""),
             "event_id": m.get("event_id", ""),
             "doc_id": m.get("doc_id", ""),
             "source": "aggregation_count",
@@ -198,6 +199,7 @@ def _normalize_argmax_results(raw: Any) -> list[dict[str, Any]]:
         results.append({
             "event_id": attrs.get("event_id", item.get("v_id", "")),
             "event_name": attrs.get("event_name", ""),
+            "title": attrs.get("title", ""),
             "value": attrs.get("value", attrs.get("win_value", "")),
             "doc_id": attrs.get("doc_id", ""),
             "source": "aggregation_argmax",

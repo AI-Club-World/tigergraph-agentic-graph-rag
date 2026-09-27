@@ -23,7 +23,7 @@ FOR GRAPH OlympicGraphRAG SYNTAX V2 {
   // Nothing on the Python side treats them as lists (they are read out of the
   // flat evidence dict by name and fed to the prompt as text).
   TYPEDEF TUPLE<
-    STRING event_id, STRING event_name, STRING doc_id,
+    STRING event_id, STRING event_name, STRING doc_id, STRING title,
     INT competitors, STRING competitors_text, INT nations, STRING nations_text,
     STRING date_text, INT date_year, INT date_month, INT date_day_start, INT date_day_end,
     STRING gold, STRING silver, STRING bronze,
@@ -32,6 +32,7 @@ FOR GRAPH OlympicGraphRAG SYNTAX V2 {
   ListAccum<EventRow> @@rows;
 
   SumAccum<STRING> @doc_id;
+  SumAccum<STRING> @title;
   SumAccum<STRING> @gold_s;
   SumAccum<STRING> @silver_s;
   SumAccum<STRING> @bronze_s;
@@ -49,13 +50,13 @@ FOR GRAPH OlympicGraphRAG SYNTAX V2 {
   // edge (declared WITH REVERSE_EDGE="reverse_DESCRIBES" in schema.gsql) —
   // OlympicEvent itself does not store doc_id.
   Resolved = SELECT e FROM Candidates:e -(reverse_DESCRIBES>:conn)- Document:doc
-             ACCUM e.@doc_id += doc.doc_id
+             ACCUM e.@doc_id += doc.doc_id, e.@title += doc.title
              POST-ACCUM
                FOREACH g IN e.gold DO e.@gold_s += g + "; " END,
                FOREACH sv IN e.silver DO e.@silver_s += sv + "; " END,
                FOREACH b IN e.bronze DO e.@bronze_s += b + "; " END,
                @@rows += EventRow(
-                 e.event_id, e.event_name, e.@doc_id,
+                 e.event_id, e.event_name, e.@doc_id, e.@title,
                  e.competitors, e.competitors_text, e.nations, e.nations_text,
                  e.date_text, e.date_year, e.date_month, e.date_day_start, e.date_day_end,
                  e.@gold_s, e.@silver_s, e.@bronze_s,

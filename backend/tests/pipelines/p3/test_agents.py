@@ -114,7 +114,8 @@ class TestAggregationConformance:
         """Q2 prints the count, then its members; the count stays Q2's."""
         from ogr.pipelines.p3_agentic.agents.aggregation import MAX_COUNT_MEMBERS, run_aggregation
         members = [
-            {"event_id": f"sailing-2016-e{i:02d}", "event_name": f"Event {i}", "doc_id": f"Q{i}"}
+            {"event_id": f"sailing-2016-e{i:02d}", "event_name": f"Event {i}", "doc_id": f"Q{i}",
+             "title": f"Sailing at the 2016 Summer Olympics – Event {i}"}
             for i in range(MAX_COUNT_MEMBERS + 5)
         ]
         client = _make_client(mock_query_results=[
@@ -127,8 +128,8 @@ class TestAggregationConformance:
         assert head["counted_events_listed"] == f"{MAX_COUNT_MEMBERS} of 35"
         assert len(rest) == MAX_COUNT_MEMBERS
         assert rest[0] == {
-            "counted_event": "Event 0", "event_id": "sailing-2016-e00", "doc_id": "Q0",
-            "source": "aggregation_count",
+            "counted_event": "Event 0", "title": "Sailing at the 2016 Summer Olympics – Event 0",
+            "event_id": "sailing-2016-e00", "doc_id": "Q0", "source": "aggregation_count",
         }
 
     def test_argmax_returns_agent_result(self):
@@ -176,3 +177,23 @@ class TestMultiHopConformance:
         anchors = _make_anchors()
         result = run_multi_hop(client, intent, anchors)
         assert result.error is not None
+
+
+class TestRowsCarryThePageTitle:
+    """Gold answers are page titles; graph rows carry them so the model can answer with one."""
+
+    def test_traverse_rows_keep_the_title(self):
+        from ogr.pipelines.p3_agentic.agents.graph_traversal import _normalize_traverse_results
+        row = _normalize_traverse_results([{
+            "event_id": "e1", "event_name": "Soling", "doc_id": "Q7400327",
+            "title": "Sailing at the 2000 Summer Olympics – Soling",
+        }])[0]
+        assert row["title"] == "Sailing at the 2000 Summer Olympics – Soling"
+
+    def test_argmax_rows_keep_the_title(self):
+        from ogr.pipelines.p3_agentic.agents.aggregation import _normalize_argmax_results
+        row = _normalize_argmax_results([{
+            "event_id": "e1", "event_name": "Fleet/Match", "doc_id": "Q7400327",
+            "title": "Sailing at the 2000 Summer Olympics – Soling", "value": 48,
+        }])[0]
+        assert row["title"] == "Sailing at the 2000 Summer Olympics – Soling"

@@ -19,7 +19,7 @@ USE GRAPH OlympicGraphRAG
 // states what it could not parse rather than silently dropping it.
 //
 // The counted events are printed too (a second block: event_id, event_name,
-// doc_id), so a count answer can cite the events behind it. The first block
+// doc_id, title), so a count answer can cite the events behind it. The first block
 // stays the count: TigerGraphClient._run_query unwraps only a list in the
 // first block, and the aggregation agent reads both.
 
@@ -28,7 +28,7 @@ CREATE OR REPLACE QUERY q2_count_where(
   STRING constraints_json = "[]", STRING field = "competitors"
 ) FOR GRAPH OlympicGraphRAG SYNTAX V2 {
 
-  TYPEDEF TUPLE<STRING event_id, STRING event_name, STRING doc_id> Member;
+  TYPEDEF TUPLE<STRING event_id, STRING event_name, STRING doc_id, STRING title> Member;
   SumAccum<INT> @@count;
   SumAccum<INT> @@excluded_count;
   OrAccum @counted;
@@ -110,7 +110,7 @@ CREATE OR REPLACE QUERY q2_count_where(
 
   Members = SELECT e FROM Matched:e -(reverse_DESCRIBES>)- Document:doc
     WHERE e.@counted
-    ACCUM @@members += Member(e.event_id, e.event_name, doc.doc_id);
+    ACCUM @@members += Member(e.event_id, e.event_name, doc.doc_id, doc.title);
 
   // `count` is a GSQL reserved word and cannot be a PRINT alias.
   PRINT @@count AS count_value, @@excluded_count AS excluded_count;
