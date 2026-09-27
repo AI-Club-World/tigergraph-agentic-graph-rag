@@ -218,6 +218,35 @@ class EntityLinker:
         return None, candidates
 
 
+def narrow_to_date(rows: list[dict], anchors: ResolvedAnchors) -> list[dict]:
+    """Keep the rows whose event date covers the anchored day ("held at X on
+    16 August 2008"): same month, day within [date_day_start, date_day_end].
+    Year-only or month-only anchors narrow by what they give. Falls back to
+    all rows when none match, like narrow_to_games."""
+    if not rows or not (anchors.date_year or anchors.date_month):
+        return rows
+
+    def covers(r: dict) -> bool:
+        if anchors.date_year and r.get("date_year") and int(r["date_year"]) != anchors.date_year:
+            return False
+        if anchors.date_month and r.get("date_month") and int(r["date_month"]) != anchors.date_month:
+            return False
+        if anchors.date_day_start and r.get("date_day_start"):
+            start = int(r["date_day_start"])
+            end = int(r.get("date_day_end") or 0) or start
+            return start <= anchors.date_day_start <= end
+        return True
+
+    kept = [r for r in rows if covers(r)]
+    return kept or rows
+
+
+def edition_of(event_id: str) -> str:
+    """`athletics-2008-Summer-men-s-shot-put` -> `2008-Summer` ("" if none)."""
+    match = re.search(r"-(\d{4}-(?:Summer|Winter))-", f"-{event_id}-")
+    return match.group(1) if match else ""
+
+
 def lookup_named_event(client: Any, anchors: ResolvedAnchors, target_field: str = "") -> list[dict]:
     """Q1 on the event the anchors name: by the derived event_id when there is
     one and it exists, else by title / event_id, narrowed to the Games anchor."""

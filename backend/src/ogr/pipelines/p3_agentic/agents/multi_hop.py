@@ -24,7 +24,9 @@ from ogr.graph.client import TigerGraphClient
 from ogr.pipelines.p3_agentic.agents.agent_result import AgentResult
 from ogr.pipelines.p3_agentic.agents.entity_linking import (
     ResolvedAnchors,
+    edition_of,
     lookup_named_event,
+    narrow_to_date,
     narrow_to_games,
 )
 from ogr.pipelines.p3_agentic.intent import IntentSchema
@@ -82,8 +84,18 @@ def run_venue_events(
         events = client._run_query(
             "q4_traverse", {"anchor": anchors.venue, "edge_type": "HELD_AT", "hops": 1}
         )
+        # Narrow to the anchored edition before the cap: a stadium hosts dozens
+        # of events per Games, and the cap would otherwise keep an arbitrary 30.
+        events = events or []
+        year = anchors.date_year or (int(anchors.games[:4]) if anchors.games else None)
+        in_edition = [
+            ev for ev in events
+            if (anchors.games and edition_of(ev.get("event_id", "")) == anchors.games)
+            or (not anchors.games and year and edition_of(ev.get("event_id", "")).startswith(f"{year}-"))
+        ]
+        events = in_edition or events
         rows: list[dict[str, Any]] = []
-        for event in (events or [])[:MAX_VENUE_EVENTS]:
+        for event in events[:MAX_VENUE_EVENTS]:
             event_id = event.get("event_id", "")
             if event_id:
                 rows += [_evidence(r, event_id, target_field)
@@ -91,7 +103,7 @@ def run_venue_events(
     except Exception as e:
         logger.error("Venue expansion failed: %s", e)
         return AgentResult(error=str(e), latency_ms=(time.perf_counter() - t0) * 1000.0)
-    evidence = narrow_to_games(rows, anchors.games)
+    evidence = narrow_to_date(narrow_to_games(rows, anchors.games), anchors)
     return AgentResult(
         evidence=evidence,
         chunks_returned=len(evidence),
