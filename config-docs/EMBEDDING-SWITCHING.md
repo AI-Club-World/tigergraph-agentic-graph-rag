@@ -19,7 +19,12 @@ identified by its **key**, never by its dimension.
 | `embeddinggemma-300m` | EmbeddingGemma-300M | 768 | `Embedding_EmbeddingGemma` | local (gated on Hugging Face: accept the licence, set `HF_TOKEN`) |
 | `gte-large-en-v1.5` | gte-large-en-v1.5 | 1024 | `Embedding_GteLarge` | local (`trust_remote_code`) |
 | `mxbai-embed-large-v1` | mxbai-embed-large-v1 | 1024 | `Embedding_Mxbai` | local |
-| `bge-large-en-v1.5` (default) | bge-large-en-v1.5 | 1024 | `Embedding_BGELarge` | Cloudflare `@cf/baai/bge-large-en-v1.5`, falls back to local |
+| `bge-large-en-v1.5` (default) | bge-large-en-v1.5 | 1024 | `Embedding_BGELarge` | Cloudflare `@cf/baai/bge-large-en-v1.5` with `pooling: "cls"`, falls back to local |
+
+Cloudflare's bge models default to mean pooling, while BGE and the local
+sentence-transformers model use CLS pooling. The request pins CLS, so both
+tiers produce vectors in the same space and a per-batch fallback cannot mix
+two spaces in one index.
 
 Each model's query and document prompts from its model card (for example
 Qwen3's `Instruct: … Query:` and EmbeddingGemma's `task: search result |
@@ -81,14 +86,19 @@ existing join is unchanged.
 ```
 
 - **Stored** means the model has an entry. Its slot is reserved when its job
-  starts, which is what counts against the cap.
+  starts, which is what counts against the cap. A model being evicted is not
+  counted, because its deletion runs first in the next job.
 - **`covered`** is the set of chunk ids whose embedding is written *and*
   checkpointed.
 - A model is **complete** when it covers every corpus chunk, no job is
   running or failed on it, and it is not being evicted. Only complete models
   are queryable.
 - The states shown in the UI are `complete`, `incomplete` (n/m chunks),
-  `building`, `failed`, `evicting` and `not_stored`.
+  `building`, `failed`, `evicting`, `indexing` and `not_stored`.
+- **`indexing`** means the vectors are written but the index is not yet
+  confirmed queryable. A build records coverage right after its load, and
+  clears the flag when the index reports ready. If the build fails in
+  between, **Complete** only waits for the index; it does not re-embed.
 - **Active** is the model queries use by default.
   `_get_config_with_overrides` sets `embedding_model` and `embedding_dim`
   from it for every route. `EMBEDDING_MODEL` is only the first default.
@@ -134,6 +144,10 @@ deleted and the model that would be kept.
 - **Evicting the active model** is allowed. The new model becomes active at
   once, and queries wait for it or use the other complete model through the
   mismatch popup.
+- **A failed eviction is never left half done.** A new switch carries the
+  failed job's pending deletions into its own job, where they run first.
+  Switching back to a model whose eviction failed re-embeds it from scratch,
+  because its remaining vectors can't be trusted.
 - **Builds respect the cap too.** A build refuses (`409 embedding_cap`) in
   the one state where it could add a third model: a switch that failed
   mid-eviction.
@@ -144,8 +158,11 @@ deleted and the model that would be kept.
 deletion path for embeddings (eviction, the replaced model, and a dataset
 rebuild's removed chunks):
 
-- It calls `delVertices(<model's Embedding_X>)`, or `delVerticesById` for
-  given chunk ids. The type comes from the catalog and is re-checked
+- It calls `delVertices(<model's Embedding_X>)`. For given chunk ids it runs
+  one interpreted GSQL query per 200 ids (`to_vertex_set` + `DELETE`), and
+  falls back to `delVerticesById` if the server refuses interpreted mode;
+  pyTigerGraph sends one REST call per id. Chunk texts for a job are read
+  the same way. The type comes from the catalog and is re-checked
   (`_embedding_type`), so a deletion can never be pointed at `Chunk` or any
   non-embedding type.
 - Deleting a vertex in TigerGraph removes only the edges touching it. That
@@ -220,8 +237,10 @@ Failure and resume:
   (`chunk_id`). Nothing is duplicated; tested with exact vertex and edge
   counts.
 - **Server restart.** A job recorded as `running` whose task is gone is
-  reported as `failed` ("Interrupted by a server restart") and is
-  resumable.
+  recorded as `failed` ("Interrupted by a server restart") on the next
+  request. That makes it resumable and stops it blocking switches and
+  queries. The job slot is held from the moment a job is recorded until its
+  task exists, so this recovery can't catch a job that is just starting.
 - **What Settings shows.** The job line reads running (phase, batch n/m,
   chunks), failed with its error and a **Resume** button, or complete. Each
   model shows its state. A stored model that lacks chunks, because a dataset
@@ -236,7 +255,8 @@ enforced by the server, so a stale or concurrent UI cannot get around it.
 | Condition | Refused | Code |
 |---|---|---|
 | Ingestion build running | `/embeddings/switch`, `/resume`, `/{model}/complete`, `PATCH /settings {embedding_model}` | `build_running` |
-| Re-embed job running | the same, and `POST /build` | `embedding_job_running` |
+| Re-embed job running | the same, and `POST /build`, `POST /batch` | `embedding_job_running` / `busy` |
+| Benchmark run in progress | `/embeddings/switch`, `/resume`, `/{model}/complete`, `POST /build` | `batch_running` |
 | Target not complete, no `mode` | `/embeddings/switch` | `mode_required` |
 | `PATCH /settings` to a model that is not complete | `PATCH /settings` | `embedding_switch_required` |
 | At the cap, no or invalid `evict` | `/embeddings/switch` | `eviction_required`, `invalid_eviction` |
@@ -245,14 +265,16 @@ enforced by the server, so a stale or concurrent UI cannot get around it.
 
 `GET /embeddings` reports `build_running` and `switch_disabled_reason`, and
 the panel polls every 3 s while a build or job runs, so the control
-re-enables by itself.
+re-enables by itself. Builds, runs and jobs reserve their slot before their
+first `await`, so two requests can't both pass a "nothing is running" check.
 
 ## 10. Builds
 
 A build embeds with the **active** model only, strictly, in 500-chunk steps.
 It writes canonical `Chunk` vertices plus that model's `Embedding_X` vertices
-and `HAS_EMBEDDING` edges, and adds the chunks to `covered` only after the
-vector index is ready. A reset build clears the embedding state along with
+and `HAS_EMBEDDING` edges. It adds the chunks to `covered` as `indexing`
+right after the load, and the model becomes complete only once the vector
+index is ready. A reset build clears the embedding state along with
 the graph. Another stored model is not re-embedded by a build; it shows
 `incomplete` and is completed from Settings.
 
