@@ -132,6 +132,23 @@ class TestAggregationConformance:
             "event_id": "sailing-2016-e00", "doc_id": "Q0", "source": "aggregation_count",
         }
 
+    def test_count_row_says_what_it_counted_and_members_show_the_filtered_value(self):
+        from ogr.pipelines.p3_agentic.agents.aggregation import run_aggregation
+        client = _make_client(mock_query_results=[
+            {"count_value": 1, "excluded_count": 0},
+            {"members": [{"event_id": "b1", "event_name": "Sprint", "doc_id": "Q9", "title": "T",
+                          "competitors": 90, "nations": 30, "date_year": 2006}]},
+        ])
+        intent = IntentSchema(
+            operation="COUNT", anchor=Anchor(sport="Biathlon", games="2006-Winter"),
+            constraints=[AnchorConstraint(field="competitors", op=">", value=72)],
+        )
+        result = run_aggregation(client, intent, _make_anchors(sport="Biathlon", games="2006-Winter"))
+        assert result.evidence[0]["counted"] == "Olympic events in Biathlon at 2006-Winter with competitors > 72"
+        assert list(result.evidence[1])[:6] == [
+            "counted_event", "title", "competitors", "date_year", "nations", "event_id",
+        ]
+
     def test_argmax_returns_agent_result(self):
         from ogr.pipelines.p3_agentic.agents.aggregation import run_aggregation
         client = _make_client(mock_query_results=[

@@ -110,6 +110,10 @@ def _run_count_where(
 
     latency_ms = (time.perf_counter() - t0) * 1000.0
     evidence, excluded_count = _normalize_count_results(raw)
+    if evidence:
+        # Say what the number counts: a bare "count: 4" next to a list of
+        # events reads as unexplained, and the model then refuses to use it.
+        evidence[0]["counted"] = _count_description(anchors, usable)
     notes = f"Q2 count_where: field={params['field']}"
     if dropped:
         notes += f", constraints not supported by Q2 and ignored: {'; '.join(dropped)}"
@@ -155,6 +159,19 @@ def _run_argmax(
     )
 
 
+def _count_description(anchors: ResolvedAnchors, constraints: list[dict[str, Any]]) -> str:
+    """"Olympic events in Biathlon at 2006-Winter with competitors > 72"."""
+    scope = [
+        f"in {anchors.sport}" if anchors.sport else "",
+        f"at {anchors.games}" if anchors.games else "",
+        f"held at {anchors.venue}" if anchors.venue else "",
+    ]
+    text = " ".join(["Olympic events", *[p for p in scope if p]])
+    if constraints:
+        text += " with " + " and ".join(f"{c['field']} {c['op']} {c['value']:g}" for c in constraints)
+    return text
+
+
 def _normalize_count_results(raw: Any) -> tuple[list[dict[str, Any]], int]:
     """Q2's count row first, then the counted events it names (capped at
     MAX_COUNT_MEMBERS) so the answer can cite them. The count is Q2's, never
@@ -183,6 +200,7 @@ def _normalize_count_results(raw: Any) -> tuple[list[dict[str, Any]], int]:
         results.append({
             "counted_event": m.get("event_name", ""),
             "title": m.get("title", ""),
+            **{f: m[f] for f in sorted(Q2_FIELDS) if m.get(f)},
             "event_id": m.get("event_id", ""),
             "doc_id": m.get("doc_id", ""),
             "source": "aggregation_count",
