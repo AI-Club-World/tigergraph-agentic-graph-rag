@@ -1,50 +1,52 @@
 # tigergraph-agentic-graph-rag
 
-> **Picking this up fresh? Start at
-> [`config-docs/CONTINUE.md`](config-docs/CONTINUE.md).** It covers what runs
-> today, what does not and why, what you need to supply, and the ordered list
-> of what to build next.
->
-> **Current state in one line:** three pipelines, the GSQL query library, the
-> ingestion path, the FastAPI service and the UI are all implemented and can
-> run end to end against a real TigerGraph workspace and a real LLM — see
-> [Getting started](#getting-started) below. Without those two credentials
-> supplied, the frontend still runs on its own against fixture data
-> (`VITE_USE_MOCK_API` defaults to `true`). [`config-docs/AUDIT.md`](config-docs/AUDIT.md)
-> and [`config-docs/AUDIT-03.md`](config-docs/AUDIT-03.md) record what was
-> checked and how.
+Three pipelines — RAG, GraphRAG and Agentic GraphRAG — answer the same
+questions over the same corpus, side by side. The benchmark shows when a
+multi-step agentic investigation beats simpler retrieval, and when it is
+overkill once tokens, latency and complexity are counted.
 
-Three pipelines — RAG, GraphRAG and Agentic GraphRAG — answering the same
-questions over the same corpus, benchmarked to determine when a multi-step
-agentic investigation beats simpler retrieval and when it is overkill once
-token and complexity cost are counted.
+The repo holds two modules:
 
-This is the integration branch. It holds the `backend/` module (record
-contracts, all three pipelines, ingestion, the GSQL query library, the
-deterministic scorer/dispatcher/aggregator and the FastAPI service), the
-`frontend/` module (three-column comparison UI, build view, dashboard and
-per-question eval table), and the `scripts/` vector spike.
+- `backend/`: the FastAPI service, the three pipelines, ingestion, the GSQL
+  schema and query library, the deterministic scorer/dispatcher/aggregator, the
+  batch runner and the CLI.
+- `frontend/`: the React UI, with Search, Build, Dashboard and History screens
+  and a Settings panel.
+
+## Documentation
+
+| Document | What it is |
+|---|---|
+| [`config-docs/APPLICATION-SPEC.md`](config-docs/APPLICATION-SPEC.md) | Functional and non-functional requirements (FR/NFR) |
+| [`config-docs/ARCHITECTURE-SPEC.md`](config-docs/ARCHITECTURE-SPEC.md) | Architecture diagram, the agents, routing, decision log, engineering guards, where the LLM is used, known limitations |
+| [`config-docs/TECHNICAL-SPEC.md`](config-docs/TECHNICAL-SPEC.md) | Stack, graph schema, query library, record contracts, evaluation |
+| [`config-docs/UI-SPEC.md`](config-docs/UI-SPEC.md) | Frontend contract: screens, states, data, formatting |
+| [`config-docs/EMBEDDING-SWITCHING.md`](config-docs/EMBEDDING-SWITCHING.md) | Selectable embedding models, per-model storage, the switch/re-embed jobs |
+| [`config-docs/DEPLOY.md`](config-docs/DEPLOY.md) | Hosting the frontend on Netlify |
+| [`data/README.md`](data/README.md) | The corpus and question sets, and how dataset names are resolved |
+| [`ATTRIBUTION.md`](ATTRIBUTION.md) | Licences for the corpus, embedding models and software |
 
 ## Getting started
 
-Two independent pieces run here: the **backend** (FastAPI + the three
-pipelines + TigerGraph) and the **frontend** (the React UI). The frontend
-works on its own with no backend at all — it defaults to fixture data — but
-to see real answers from a real graph and a real LLM, both need to be running
-at once, in two terminals, pointed at each other.
+Two pieces run here: the **backend** (FastAPI, the three pipelines and
+TigerGraph) and the **frontend** (the React UI). For real answers, run both at
+once in two terminals, pointed at each other. The frontend can also run alone
+on fixture data (mock mode). Mock mode is **off** by default. See
+[Mock mode](#mock-mode).
+
+On Windows, `run.bat` opens both dev servers in separate windows. It uses
+`backend/run-backend.bat`, which expects a virtual environment at
+`backend/.venv`, and `frontend/run-frontend.bat`.
 
 ### Prerequisites
 
 | Needed | Version | Why |
 |---|---|---|
-| Python | 3.11+ | Backend (FastAPI, the pipelines, ingestion) |
+| Python | 3.11+ | Backend |
 | Node.js | 20+ | Frontend (Vite, React) |
-| A TigerGraph workspace | Savanna (cloud) or Community Edition 4.2+ | Vectors *and* the graph both live there — no FAISS/Chroma/pgvector substitute |
-| An LLM endpoint | any OpenAI-compatible API | Intent parsing, generation, groundedness checks |
-
-The TigerGraph workspace and LLM endpoint are only required to run the
-**backend** for real. Skip both and just run the frontend (below) to explore
-the UI on illustrative fixture data.
+| A TigerGraph workspace | Savanna (cloud) or Community Edition 4.2+ | Vectors *and* the graph both live there. There is no FAISS/Chroma/pgvector substitute |
+| An LLM endpoint | Gemini, Groq, NVIDIA NIM, Anthropic, OpenAI, or any OpenAI-compatible server (Ollama, llama.cpp, vLLM) | Intent parsing, answer generation, groundedness checks |
+| An embedding backend | Cloudflare Workers AI credentials, or local `sentence-transformers` | Chunk and query embeddings |
 
 ### 1. Configure the backend
 
@@ -54,325 +56,301 @@ From the repo root:
 cp env.example .env
 ```
 
-Fill in `.env`:
+Settings are read in this order: the environment (`.env`) first, then
+`config/server_config.json` (committed, contains no secrets), then the code
+default. The main variables:
 
 | Variable(s) | What to put there |
 |---|---|
-| `TG_HOST` | Your workspace endpoint (Savanna: workspace page → **Connect**) |
-| `TG_TOKEN`, or `TG_USERNAME`/`TG_PASSWORD`, or `TG_SECRET`, or `TG_JWT_TOKEN` | Whichever credential style your workspace issues, in that order of preference — see the comment above `_connect()` in `backend/src/ogr/graph/client.py` if more than one is set |
-| `LLM_PROVIDER`, `LLM_MODEL`, `LLM_API_KEY` (and `LLM_BASE_URL` for anything that isn't `api.openai.com`) | Any OpenAI-compatible endpoint — a paid key, a free-tier key, or a local server (Ollama, llama.cpp, vLLM) |
-| `OGR_API_KEY` | Any string of 8+ characters. Required — the API refuses every request (except `/health`) until this is set. Generate one with `python -c "import secrets; print(secrets.token_urlsafe(24))"` |
+| `TG_HOST` | Your workspace endpoint, the full `https://…` URL (Savanna: workspace page → **Connect**) |
+| `TG_TOKEN`, or `TG_USERNAME`/`TG_PASSWORD`, or `TG_SECRET`, or `TG_JWT_TOKEN` | Whichever credential style your workspace issues. See the comment above `_connect()` in `backend/src/ogr/graph/client.py` if you set more than one |
+| `TG_CLOUD` | `true` for Savanna. It changes how pyTigerGraph builds URLs and negotiates auth |
+| `TG_GRAPHNAME` | Defaults to `OlympicGraphRAG` |
+| `LLM_PROVIDER`, `LLM_MODEL`, `LLM_API_KEY`, `LLM_BASE_URL` | The startup LLM. `LLM_PROVIDER` is `anthropic`, `google`, `openai` or `openai_compatible`. For `openai_compatible` (Groq, Ollama, …), set `LLM_BASE_URL` too. Code default: `openai_compatible`, `qwen2.5:7b-instruct` at `http://localhost:11434/v1` (Ollama) |
+| `GEMINI_API_KEY`, `GROQ_API_KEY`, `NVIDIA_API_KEY` | Keys for the three providers you can pick at runtime in the Settings panel. Leave a provider's key empty and that provider is disabled in the panel. The chosen model applies to all three pipelines |
+| `EMBEDDING_MODEL` | The startup embedding model, by key (table below). Default `bge-large-en-v1.5`. After the first switch in Settings, the active model is stored in `out/embeddings.json` and overrides this value |
+| `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN` | Workers AI. They serve `bge-large-en-v1.5` embeddings and the Agentic pipeline's reranker (`@cf/baai/bge-reranker-base`). Without them, embeddings run locally with `sentence-transformers` |
+| `OGR_API_KEY` | Required. Every authenticated route returns `503` until it is set. Generate one with `python -c "import secrets; print(secrets.token_urlsafe(24))"` |
+| `OGR_CORS_ORIGINS` | Browser origins allowed to call the API. Defaults to `http://localhost:5173,http://127.0.0.1:5173`, the Vite dev server |
+| `RUN_K`, `RUN_CHUNK_TOKENS`, `RUN_CHUNK_OVERLAP` | Retrieval and chunking (10 / 300 / 50). They are fixed before the first run and never tuned against results |
+| `RUN_MAX_STEPS`, `RUN_MAX_TOKENS_PER_QUERY`, `RUN_MAX_TOTAL_TOKENS` | Agentic loop limit (6), per-query token budget (20,000) and whole-run token ceiling (5,000,000; `0` turns it off) |
+| `RUN_POOL_SIZE`, `RUN_LATENCY_MODE`, `LLM_REQUESTS_PER_MINUTE` | Batch concurrency (2), `throughput` or `timing`, and the client-side rate limit (30 in `server_config.json`; `0` turns it off) |
+| `HEALTH_LLM_TIMEOUT_S` | How long `/health/llm` waits for its one-token completion (120 s) |
 
-`OGR_CORS_ORIGINS` already defaults to the Vite dev server's origins
-(`http://localhost:5173`), so it needs no change for local development.
+The five selectable embedding models (`backend/src/ogr/common/embedding_models.py`).
+The graph stores embeddings for at most two of them at once.
+
+| `EMBEDDING_MODEL` key | Hugging Face id | Dim | Served by |
+|---|---|---|---|
+| `qwen3-embedding-0.6b` | `Qwen/Qwen3-Embedding-0.6B` | 1024 | local |
+| `embeddinggemma-300m` | `google/embeddinggemma-300m` | 768 | local |
+| `gte-large-en-v1.5` | `Alibaba-NLP/gte-large-en-v1.5` | 1024 | local |
+| `mxbai-embed-large-v1` | `mixedbread-ai/mxbai-embed-large-v1` | 1024 | local |
+| `bge-large-en-v1.5` (default) | `BAAI/bge-large-en-v1.5` | 1024 | Cloudflare when configured, else local |
 
 `.env` is git-ignored. Never commit real values, and never put a secret in a
-`VITE_`-prefixed variable — those are compiled into the browser bundle (see
-"Swapping mock → real API" under Frontend, below).
+`VITE_`-prefixed variable: those values are compiled into the browser bundle.
 
-### 2. Install and start the backend
-
-```bash
-pip install -e "backend[dev]"          # installs FastAPI, the pipelines, pytest, ruff
-python -m ogr.cli verify               # confirms the LLM and TigerGraph endpoints are reachable
-```
-
-`verify` checks credentials without spending more than a few tokens or
-touching the graph. If it reports the five GSQL queries (`q1_lookup` …
-`q5_hybrid_search`) are **not** installed, run the one-time build first — it
-chunks and embeds the corpus, installs the schema, loads the graph and
-installs the queries (idempotent; safe to re-run):
+### 2. Install, verify and build
 
 ```bash
-python -m ogr.cli build                # only needed once per TigerGraph workspace
+pip install -e "backend[dev]"
+python -m ogr.cli verify --pre-build   # LLM, embedding and TigerGraph reachable; missing queries are a warning
+python -m ogr.cli build                # chunk + embed, install schema, load graph, install Q1–Q5
 ```
 
-Then start the API:
+`verify` spends only a few tokens and changes nothing. Without `--pre-build`,
+missing GSQL queries (`q1_lookup` … `q5_hybrid_search`) count as a failure.
+
+`build` **resets the graph**. It reinstalls the schema, so every dataset that
+was loaded before is removed. It then loads `data/corpus/corpus.jsonl` (change
+this with `--corpus`) with the active embedding model. It waits for the vector
+index to report `Ready_for_query` (`--vector-timeout`, default 600 s). To add
+datasets alongside the ones already loaded, use the Build screen instead
+(`POST /build`).
+
+### 3. Start the API
 
 ```bash
 python -m uvicorn ogr.api.main:app --app-dir backend/src --host 127.0.0.1 --port 8000
 ```
 
-Confirm it's up: `curl http://127.0.0.1:8000/health` → `{"status":"ok"}`.
-Leave this running in its own terminal.
+Check it: `curl http://127.0.0.1:8000/health` → `{"status":"ok"}`.
 
-### 3. Install and start the frontend
-
-In a second terminal:
+### 4. Start the frontend
 
 ```bash
 cd frontend
 npm install
-cp .env.example .env
-```
-
-Edit `frontend/.env` to point at the backend you just started:
-
-```bash
-VITE_USE_MOCK_API=false
-VITE_API_BASE_URL=http://127.0.0.1:8000
-VITE_API_KEY=<the same value as OGR_API_KEY in the backend's .env>
-```
-
-```bash
+cp .env.example .env    # set VITE_API_KEY to the backend's OGR_API_KEY
 npm run dev
 ```
 
-Open **http://localhost:5173**. Submit a query on the Search screen — all
-three pipeline columns, the trace panel and the verdict strip should fill in
-with real data.
+Open **http://localhost:5173**. The defaults already point at
+`http://127.0.0.1:8000` with mock mode off.
 
-To skip all of this and just look at the UI, leave `frontend/.env` unset (or
-`VITE_USE_MOCK_API=true`) and run only step 3 — no backend, no credentials,
-no TigerGraph.
+### Reproduce everything
 
-### Troubleshooting
+With `.env` filled in, `make reproduce` runs these steps in order:
 
-| Symptom | Likely cause |
-|---|---|
-| Frontend shows a `MOCK DATA` badge in the header | `VITE_USE_MOCK_API` is `true` (or unset) in `frontend/.env` — restart `npm run dev` after changing it, Vite only reads `.env` at startup |
-| Every backend request gets `401 Unauthorized` | `OGR_API_KEY` is unset on the backend, or doesn't match `VITE_API_KEY` on the frontend |
-| Backend requests fail in the browser console with a CORS error | The frontend isn't running on an origin listed in `OGR_CORS_ORIGINS` (defaults to `localhost:5173`/`127.0.0.1:5173`) — add yours and restart the backend |
-| `ogr.cli verify` fails on TigerGraph | Check `TG_HOST` is the full `https://…` workspace URL, and that exactly one credential style is filled in correctly |
-| `ogr.cli verify` fails on the LLM with a `429`/quota error | The configured key has no remaining credit — swap in a different provider or a local server (`LLM_BASE_URL=http://localhost:11434/v1` for Ollama, no key needed) |
-| A query pipeline returns "not mentioned" / empty citations for every question | `ogr.cli verify` passes but the five GSQL queries aren't installed yet, or the graph is empty — run `python -m ogr.cli build` |
+1. `install`: `pip install -e backend[dev]` and `npm ci`.
+2. `check`: ruff, pytest, eslint, the frontend build and vitest.
+3. `verify`: runs `verify --pre-build`.
+4. `build`: rebuilds the graph.
+5. `benchmark` and `timing`: run `data/questions/eval_public.jsonl` in `throughput` and `timing` mode.
+6. `holdout`: runs `acceptance/holdout/eval_hidden.jsonl`.
 
-## Documentation
+Every step shares one `RUN_ID`. Outputs go to `out/<RUN_ID>-public.jsonl`,
+`-public-timing.jsonl` and `-holdout.jsonl`.
 
-The specs, implementation plans and audit records live in
-[`config-docs/`](config-docs/):
+## Security model
 
-| Document | What it is |
-|---|---|
-| [`CONTINUE.md`](config-docs/CONTINUE.md) | **Start here** — handoff: state, blockers, what to build next |
-| [`APPLICATION-SPEC.md`](config-docs/APPLICATION-SPEC.md) | Functional and non-functional requirements (FR/NFR) |
-| [`ARCHITECTURE-SPEC.md`](config-docs/ARCHITECTURE-SPEC.md) | C4 views, the seven agents, necessity routing, decision records |
-| [`TECHNICAL-SPEC.md`](config-docs/TECHNICAL-SPEC.md) | Stack, graph schema, query library, record contracts, evaluation |
-| [`BUILD-PLAN.md`](config-docs/BUILD-PLAN.md) | Task table, gates, branching model |
-| [`implementation-plan-RAG.md`](config-docs/implementation-plan-RAG.md) | P1 plan |
-| [`implementation-plan-GRAPH.md`](config-docs/implementation-plan-GRAPH.md) | P2 and the shared foundation |
-| [`implementation-plan-AGENT.md`](config-docs/implementation-plan-AGENT.md) | P3 plan |
-| [`implementation-plan-UI.md`](config-docs/implementation-plan-UI.md) | UI, scorer, dispatcher and batch plan |
-| [`UI-SPEC.md`](config-docs/UI-SPEC.md) | Frontend contract — screens, states, data, formatting; design-tool ready |
-| [`AUDIT.md`](config-docs/AUDIT.md) | What is implemented, what is not, and the evidence |
-| [`INTEGRATION.md`](config-docs/INTEGRATION.md) | How the feature branches were merged |
-| [`DEPLOY.md`](config-docs/DEPLOY.md) | Hosting the frontend on Netlify |
+The API key is a speed bump, not authentication. The frontend sends
+`VITE_API_KEY` as `X-API-Key`. Because it is a `VITE_` variable, it is
+**compiled into the public JavaScript bundle**, and anyone who can load the UI
+can read it. It protects only against casual access.
 
-Source files cite these documents by name in their docstrings (for example
-`Plan: implementation-plan-AGENT.md Group 4`); the names are unchanged, only
-the directory moved.
+Anyone holding the key can:
+
+- reset or rebuild the graph,
+- upload datasets,
+- switch or evict embedding models,
+- change the LLM provider and model,
+- start benchmarks that spend your LLM quota.
+
+Run the backend on localhost or a private network, or put it behind real
+authentication (a VPN, or a reverse proxy with SSO or basic auth). Do not
+expose it to the internet with only `OGR_API_KEY`. Never reuse a key that
+protects anything else. Backend secrets (`TG_*`, `LLM_API_KEY`, provider keys,
+`CLOUDFLARE_API_TOKEN`) stay in the backend `.env`. They never go in the
+frontend.
 
 # Backend
 
-## Run it
-
-See [Getting started](#getting-started) above for the full setup (`.env`,
-TigerGraph, an LLM endpoint). Once configured:
-
-```bash
-pip install -e "backend[dev]"
-python -m uvicorn ogr.api.main:app --app-dir backend/src --host 127.0.0.1 --port 8000
-```
+## CLI (`python -m ogr.cli`)
 
 | Command | What it does |
 |---|---|
-| `python -m ogr.cli verify` | Checks the LLM and TigerGraph endpoints are reachable, and whether Q1–Q5 are installed. Spends only a few tokens, changes nothing |
-| `python -m ogr.cli build` | One-time per workspace: chunk + embed the corpus, install the schema, load the graph, install Q1–Q5. Idempotent |
-| `python -m ogr.cli ask "<question>" --pipelines rag,graphrag,agentic_graphrag` | Answer one question from the terminal, without the API or frontend |
-| `python -m ogr.cli batch <questions.jsonl> --out out/run.jsonl` | Run a full question set through all three pipelines (`EVAL-04`) |
-| `python -m uvicorn ogr.api.main:app --app-dir backend/src --port 8000` | Start the HTTP API the frontend talks to |
-| `cd backend && pytest -q` | Run the test suite |
-| `cd backend && ruff check src tests` | Lint |
+| `verify [--pre-build]` | Checks the LLM, the embedding backend and TigerGraph, and whether Q1–Q5 are installed. Exit code 0 only when nothing fails |
+| `build [--corpus PATH] [--vector-timeout S]` | Full reset and load of one corpus, as described above |
+| `batch QUESTIONS.jsonl --out OUT.jsonl [--run-id ID] [--mode throughput\|timing]` | Runs a question set through all three pipelines and appends one scored record per question (details below) |
+| `ask "<question>" [--pipelines rag,graphrag,agentic_graphrag] [--json] [--show-trace]` | Answers one question from the terminal. Default pipeline: `rag`. Aliases: `graph`, `agentic` |
+| `coverage [--corpus PATH] [--out out/ingest-coverage.md]` | Parses the corpus infoboxes and writes the ingest coverage report |
 
-Or, from a clean clone with `.env` filled in, `make reproduce` runs
-`install → check → verify → build → benchmark → timing → holdout` in one go
-(see `Makefile`).
+How `batch` behaves:
 
-## P1 Baseline (Honest Unfiltered RAG)
+- **Run id.** Defaults to a UTC timestamp. The mode defaults to `RUN_LATENCY_MODE`. `timing` runs with a pool size of 1, so its latencies are comparable.
+- **Resume.** Rerunning the same command against an existing `--out` file skips every question already recorded successfully. A question whose latest record has a pipeline error is retried, and the new record supersedes the old one.
+- **Stops and exit codes.** A rate-limit error stops the run: no new question starts. If any question was not recorded, or the `RUN_MAX_TOTAL_TOKENS` ceiling was reached, the command exits 1 with the reason. The ceiling counts tokens across resumes. Rerun to continue.
 
-The P1 baseline pipeline implements standard, unfiltered Retrieval-Augmented Generation (RAG) over the entire document corpus. By architectural decision (AD-9), P1 receives **no type filtering, no candidate sets, no relevance thresholds, and no re-ranking**. Because the corpus contains 26.7% non-Olympic documents (including films, officeholder biographies, and tennis tournaments), unfiltered dense retrieval exposes the fundamental ceiling of standard text vector search on complex multi-hop, aggregation, and domain-specific questions. P1's ceiling is deliberately visible rather than masked; masking or type-filtering this baseline would quietly rig the three-way comparison against GraphRAG (P2) and Agentic GraphRAG (P3).
+Tests and lint: `cd backend && pytest -q` and `cd backend && ruff check src tests`.
 
-## Where the LLM is, and is not
+## HTTP API
 
-**No LLM sits in the scoring path.** Exact match and token F1 are computed
-deterministically against the verified gold answers (SQuAD-style normalization),
-so the reported numbers are reproducible run-to-run for identical inputs
-(NFR-6, AD-4). Verified gold answers already exist; a reference-free LLM judge
-is the tool for the *absence* of ground truth, not a weaker substitute when
-labels are present.
+Routes from `backend/src/ogr/api/main.py`. **Auth** is `X-API-Key` unless
+stated otherwise. An unset `OGR_API_KEY` returns `503` on every key-protected
+route. A wrong or missing key returns `401`. The two SSE streams take the
+single-use `stream_token` from the start response as `?token=`, because
+browser `EventSource` cannot send headers.
 
-The Agentic pipeline (P3) does make **one** LLM call inside its evidence
-evaluator, a groundedness check that asks whether the retrieved evidence can
-answer the question (DP-4). That is a **retrieval decision** — it determines
-whether the agent keeps investigating — and it never contributes to a score.
-The evaluator's first stage, the scope-coverage gate, is fully deterministic.
-Stating this plainly because the Evidence Evaluator is described elsewhere as
-"deterministic" while performing a groundedness check, which reads as a
-contradiction until the two roles are separated.
+| Method and path | Auth | Purpose |
+|---|---|---|
+| `GET /health` | none | Liveness: `{"status":"ok"}` |
+| `GET /health/db`, `/health/llm`, `/health/embedding` | none | One dependency check each. Results are cached for 30 s, and hosts are redacted |
+| `GET /settings` | none | Effective LLM provider/model and embedding model (no secrets) |
+| `GET /settings/providers` | key | Gemini / NVIDIA NIM / Groq presets and whether each key is set |
+| `GET /settings/models?provider=` | key | That provider's live model list. NVIDIA is narrowed to free endpoints |
+| `PATCH /settings` | key | Change the provider/model at runtime. Also switches the embedding model when the target is already complete |
+| `GET /embeddings` | key | Each embedding model's state, the 2-model cap and the current job |
+| `GET /embeddings/plan?model=` | key | What switching to `model` would do |
+| `POST /embeddings/switch` | key | Switch the embedding model. `mode` is `replace` or `parallel`. At the cap, `evict` names the model to delete |
+| `POST /embeddings/resume` | key | Continue a failed re-embed job from its last batch |
+| `POST /embeddings/{model}/complete` | key | Embed the chunks a stored model is missing |
+| `POST /query` | key | `{query, embedding_model?}` → `202 {query_id, stream_token}`. Returns `409 embedding_mismatch` when the model has no complete embeddings |
+| `GET /query/{id}/stream?token=` | stream token | SSE: `trace`, `pipeline`, `done` |
+| `GET /query/{id}/result` | key | The merged `QueryLevelRecord`. Returns `409` while the query is still running |
+| `GET /corpora` | key | Datasets in `data/corpus/` with display names, and which are loaded |
+| `POST /corpora/{name}` | key | Upload a JSONL dataset (the request body is the file). Options: `unique`, `overwrite`, `title`, `source_file` |
+| `PATCH /corpora/{name}` | key | Rename a dataset (`title`, `description`) |
+| `POST /build` | key | `{dataset, rebuild, reset}` → `202 {build_id, stream_token}`. Returns `409` with `already_built`, `reset_required`, `build_running`, `embedding_job_running`, `batch_running` or `embedding_cap` |
+| `GET /build/current` | key | The latest build and its events, so a reloaded page can resume following it |
+| `GET /build/{id}/stream?token=` | stream token | SSE: `build`, `done` |
+| `GET /datasets` | key | Question sets in `data/questions/` |
+| `POST /batch` | key | `{dataset, run_id?, latency_mode?, resume?}` → `202 {run_id, status}`. Records go to `out/{run_id}.jsonl` |
+| `GET /runs` | key | One summary per stored run, newest first |
+| `POST /runs/import` | key | Import a run export, a record list or a native JSONL file. Returns `409` if the run id already exists |
+| `GET /batch/{run_id}/records` | key | A run's scored records |
+| `GET /history?kind=&limit=` | key | Every query, build, benchmark and embedding-job attempt (`out/history.jsonl`), newest first |
 
-Every model call in P3 is routed through one accounting module and attributed
-to a numbered trace step, and the sum of per-step tokens is reconciled against
-the record total. Where a provider reports no usage, the model's own tokenizer
-is used and the figure is labelled `local_tokenizer`; where the model exposes
-no tokenizer either, the figure is labelled `estimated` rather than being
-presented as a count.
+State is kept in process memory (one uvicorn worker). A restart loses
+in-flight queries and builds. Runs, history, the dataset registry and the
+embedding store are files under `out/`.
 
-## What P3's agent design actually is
+## Design notes
 
-P3 is a deterministic `StateGraph` with exactly **two** LLM touchpoints per
-run — the intent parse and, when the loop runs, one groundedness check per
-iteration. Routing (LOOKUP-direct vs. scoped-aggregate vs. loop), the
-stopping decision, and fallback tool selection are all plain Python, not
-model choices. Read the design as "deterministic orchestration with minimal
-LLM touchpoints," not free-form multi-tool ReAct — the model never chooses
-which tool to call next.
+How the pipelines differ, where the LLM is called, and the known limitations
+of the comparison are in `config-docs/ARCHITECTURE-SPEC.md`. Two facts that
+matter when reading results:
 
-## A caveat on the measured lift
-
-P3 can accumulate evidence across up to `RUN_MAX_STEPS` (default 6) loop
-iterations plus fallback tools, while P1 takes a single k=10 vector-search
-shot per AD-9. Part of any accuracy lift P3 shows over P1 is therefore "more
-retrieval attempts," not purely "smarter retrieval" — both are real
-properties of the architectures being compared, but they are not the same
-claim, and the submission should say so rather than let a reader assume the
-whole gap is investigative skill.
+- No LLM sits in the scoring path. EM and token F1 are computed
+  deterministically against the gold answers.
+- P1 (RAG) is deliberately unfiltered: one k=10 vector search with no
+  reranking or type filter. The Agentic pipeline can make several retrieval
+  attempts, so part of any lift over P1 comes from *more attempts*, not only
+  *smarter retrieval*.
 
 # Frontend
-
-## Run it
-
-```bash
-cd frontend && npm install && cp .env.example .env && npm run dev
-```
-
-Then open http://localhost:5173. No backend is required — `VITE_USE_MOCK_API`
-defaults to `true`. To run this against a real backend instead of fixtures,
-see [Getting started](#getting-started) above.
 
 | Command | What it does |
 |---|---|
 | `npm run dev` | Vite dev server on :5173 |
-| `npm run build` | Type-check (`tsc --noEmit`) then production build into `frontend/dist` |
+| `npm run build` | Type-check (`tsc --noEmit`), then a production build into `frontend/dist` |
 | `npm run preview` | Serve the production build |
-| `npm run lint` | ESLint over `src` |
+| `npm run lint` | ESLint |
 | `npm test` | Vitest (jsdom) |
 
 ## Screens
 
-| Route | Screen | Covers |
-|---|---|---|
-| `/` | Three-column query comparison, live trace panel, verdict strip | FR-1 … FR-10 |
-| `/build` | Choose or upload a dataset (JSONL in `data/corpus/`), build it into the shared graph — other datasets stay loaded; an already-built dataset asks Rebuild or Cancel — with per-pipeline readiness | PLAN-004 Group 4, DP-6 A, DP-7 A |
-| `/dashboard` | Three tabs: **Dashboard** (aggregate view over one batch run, TECHNICAL-SPEC §10), **Run benchmark** (run, history, import/export, compare) and **Eval table** (every question × three pipelines, FR-20) | FR-13, FR-15, FR-20 |
-| `/history` | Every query, build and benchmark attempt (`out/history.jsonl`) with filters and search | — |
+| Route | Screen |
+|---|---|
+| `/` | **Search**. One question, three result columns that settle independently, the live agentic trace and the verdict strip. **Stop waiting** stops following a slow run. If the embedding model has no complete embeddings, a popup offers the models that do |
+| `/build` | **Build**. Pick, upload or rename a dataset (JSONL in `data/corpus/`) and build it into the shared graph next to datasets already loaded. Building a loaded dataset asks Rebuild or Cancel. Readiness is shown per pipeline, and a failure notice gives the reason |
+| `/dashboard` | **Dashboard**, with three tabs (`?tab=dashboard\|runs\|eval`). **Dashboard**: aggregates over one run, including a cost/latency/reliability table and the agents-invoked table. **Run benchmark**: start a run; history, import/export and comparison. **Eval table**: every question × three pipelines, with drill-down |
+| `/history` | **History**. Every query, build, benchmark and embedding-job attempt, with type/status filters and search |
+| `/benchmarks`, `/eval` | Redirect to the Run benchmark and Eval table tabs (keeping `?run=`) |
 
-The Dashboard and Eval table tabs read a run id from `?run=`; on a live backend
-they open the newest run, in mock mode `latest`. `/benchmarks` and `/eval`
-redirect to their tabs. The mock
-transport ships two runs: `latest` (20 scored questions) and `hidden` (8
-questions with no gold, so the gold and score columns disappear — the same
-component renders the hidden set).
+The header shows health indicators for TigerGraph, the LLM and the embedding
+backend. Features whose service is down are blocked, with a contact link
+(`VITE_ADMIN_EMAIL`). The **Settings** panel (gear icon) sets:
 
-## Light and dark mode
+- the LLM provider (Gemini, NVIDIA NIM or Groq) and model, with a filter over
+  the provider's live model list and a custom model id field;
+- the embedding model, through a decision dialog (re-embed or keep parallel
+  indices; eviction at the 2-model cap). See
+  `config-docs/EMBEDDING-SWITCHING.md`.
 
-The toggle sits in the header. It defaults to the OS setting
-(`prefers-color-scheme`) and remembers an explicit choice in `localStorage`
-under `ogr-theme`; `index.html` applies the value before first paint so there is
-no flash. Every colour is a CSS custom property defined twice in `index.css` —
-once under `:root, :root[data-theme='dark']` and once under
-`:root[data-theme='light']`. Chart colours reference the same tokens
-(`components/colors.ts`), so bars, swatches and scatter points follow the
-switch. Because `var()` only resolves in CSS, SVG shapes set them via `style`
-rather than the `fill`/`stroke` attributes.
+The panel closes itself 10 s after a successful Apply. Settings are hidden in
+mock mode.
+
+On the Dashboard tabs, `?run=` selects a run. Without it, a live backend opens
+its newest run.
+
+## Mock mode
+
+Mock mode is off unless `VITE_USE_MOCK_API=true`. Any other value, including
+empty, uses the live backend. In mock mode:
+
+- every screen replays fixtures from `src/fixtures/`, which are illustrative
+  and not measured;
+- a `mock data` chip shows in the header;
+- runs `latest` (20 scored questions) and `hidden` (8, no gold) are available;
+- the Settings panel, uploads and History need the live backend.
+
+`VITE_MOCK_LATENCY_SCALE=0` makes the replay instant.
 
 ## Folder structure
 
 ```
 frontend/
-  .env.example              every configurable value, including the mock switch
+  .env.example            every build-time variable
+  public/_redirects       SPA rewrite for folder deploys
   src/
-    config.ts               the single config point (base URL, API key, mock switch)
-    types.ts                the §6 data model — PipelineRecord, TraceStep, BatchRecord, …
-    format.ts               number/duration formatting, mean, median
-    main.tsx  App.tsx       router shell
-    SearchView.tsx          three-column query surface
-    TracePanel.tsx          live agentic trace (also reused in the eval drill-down)
-    BuildView.tsx           three-column ingestion build
-    Dashboard.tsx           aggregate benchmark view
-    EvalTable.tsx           per-question table with drill-down
-    components/             QueryInput, ResultColumn, VerdictStrip, CitationList,
-                            StatusBadge, RunPicker, Charts, colors
+    config.ts             the single config point (base URL, API key, mock switch, polling)
+    types.ts              record contracts: PipelineRecord, TraceStep, BatchRecord, RunSummary, …
+    format.ts             number/duration formatting, mean, median
+    main.tsx  App.tsx     router shell, header, redirects
+    SearchView.tsx        Search screen
+    TracePanel.tsx        agentic trace (also used in the eval drill-down)
+    BuildView.tsx         Build screen: dataset picker/upload/rename, per-pipeline progress
+    DashboardPage.tsx     Dashboard tabs
+    Dashboard.tsx         aggregate view over one run
+    BenchmarksView.tsx    Run benchmark tab: run, history, import/export, compare
+    EvalTable.tsx         per-question table with drill-down
+    HistoryView.tsx       History screen
+    SettingsPanel.tsx     provider/model settings
+    ServiceStatus.tsx  useServiceStatus.ts   health indicators, RequiresServices gate
+    useBatchRecords.ts    loads the ?run= run (newest when absent, live)
+    useTheme.ts           light/dark toggle (localStorage key ogr-theme)
+    components/           QueryInput, ResultColumn, VerdictStrip, CitationList, StatusBadge,
+                          RunPicker, Charts, colors, Icon, Notice, ErrorBoundary,
+                          EmbeddingSettings, EmbeddingMismatchDialog, useDialogFocus
     services/
-      http.ts               fetch wrapper (X-API-Key) + EventSource helper
-      queryService.ts       POST /query, GET /query/{id}/stream, GET /query/{id}/result
-      buildService.ts       POST /build, GET /build/{id}/stream
-      batchService.ts       GET /batch/{run_id}/records
-      mock/transport.ts     fixture replay against a wall clock
-    fixtures/               JSON shaped to the API contracts
+      http.ts             fetch wrapper (X-API-Key, ApiError) + EventSource helper
+      queryService.ts  buildService.ts  batchService.ts  benchmarkService.ts
+      datasetService.ts  historyService.ts  settingsService.ts
+      mock/               transport.ts (fixture replay), runs.ts (mock run history)
+    fixtures/             JSON shaped to the API contracts
+    test/setup.ts
 ```
 
-No state store: local component state is sufficient for four screens.
+Components never touch fixtures. They call `services/*Service.ts`, and each
+service branches on `config.useMockApi`.
 
-## Swapping mock → real API
+## Light and dark mode
 
-Set two values in `frontend/.env`:
+The header toggle defaults to the OS setting and remembers an explicit choice
+in `localStorage` (`ogr-theme`). `index.html` applies it before first paint.
+Colours are CSS custom properties defined per theme in `index.css`. Charts
+set them through `style`, because `var()` does not resolve in SVG attributes.
 
-```bash
-VITE_USE_MOCK_API=false
-VITE_API_BASE_URL=http://127.0.0.1:8000
-VITE_API_KEY=<the value of OGR_API_KEY on the backend>
-```
+# Troubleshooting
 
-Nothing else changes. Components never touch fixtures — they call
-`services/*Service.ts`, and each service branches on `config.useMockApi` at its
-boundary. The real branch is already written against the spec'd endpoints:
-
-| Call | Endpoint |
+| Symptom | Likely cause |
 |---|---|
-| `submitQuery` | `POST /query` → `202 {query_id, stream_token}` |
-| `openQueryStream` | `GET /query/{id}/stream?token=…` (SSE) |
-| `getQueryResult` | `GET /query/{id}/result` |
-| `listCorpora` | `GET /corpora` — datasets in `data/corpus/` and which are loaded (`out/datasets.json`) |
-| `uploadCorpus` | `POST /corpora/{name}` — body is the JSONL (`doc_id`, `text` required per line) |
-| `getCurrentBuild` | `GET /build/current` — latest build and its events (a reloaded Build page resumes following it) |
-| `startBuild` | `POST /build` `{dataset, rebuild, reset}` → `202 {build_id, stream_token}`; `409 {code: already_built \| reset_required \| build_running}` asks first |
-| `getHistory` | `GET /history?kind=` — every attempt, newest first |
-| `openBuildStream` | `GET /build/{id}/stream?token=…` (SSE) |
-| `getBatchRecords` | `GET /batch/{run_id}/records` |
-| `listRuns` | `GET /runs` — one summary per stored run: `run_config` metadata plus per-pipeline EM/F1/P/R, tokens, latency, errors, F1 per 1k tokens |
-| `listDatasets` | `GET /datasets` — question files in `data/questions/` |
-| `startBenchmark` | `POST /batch` `{dataset}` → `202 {run_id}`; records append to `out/{run_id}.jsonl` as questions complete |
-| `importRun` | `POST /runs/import` — a run's JSON export (`{run_id, run_config, records}`), a bare record list, or its native JSONL file; an existing run id is refused (409) |
+| Header shows a `mock data` chip | `VITE_USE_MOCK_API=true` in `frontend/.env`. Restart `npm run dev` after changing it: Vite reads `.env` only at startup |
+| Every request gets `503 OGR_API_KEY is not configured` | `OGR_API_KEY` is unset on the backend |
+| Every request gets `401` | `VITE_API_KEY` does not match `OGR_API_KEY`. Rebuild or restart the frontend after changing it |
+| CORS error in the browser console | The frontend origin is not in `OGR_CORS_ORIGINS`. Add it and restart the backend |
+| `verify` fails on TigerGraph | `TG_HOST` must be the full `https://…` URL, the credentials must be valid, and `TG_CLOUD=true` is needed for Savanna |
+| `verify` fails on the LLM with `429`/quota | The key has no quota left. Pick another provider/model in Settings, or use a local server (`LLM_BASE_URL=http://localhost:11434/v1`, no key needed) |
+| Answers are empty / "not mentioned" for every question | `graph/client.py` does not raise when TigerGraph is unreachable or a query is missing. It logs a warning and returns `[]`. Check the backend log and `verify` before debugging a pipeline, and run `build` if Q1–Q5 are missing |
+| A query opens "No matching embeddings" | The active embedding model has no complete embeddings for the loaded data. Pick an offered model, or finish the job in Settings (Resume / Complete) |
+| Build returns `reset_required` | The graph predates dataset tracking or per-model embedding storage. Confirm "Reset graph and build" (this removes every loaded dataset) |
+| Embedding switching is greyed out | A build, re-embed job or benchmark is running. It re-enables when that ends |
+| `/dashboard`, `/build` or `/history` 404 on refresh of a deployed build | The SPA rewrite is missing. Keep both `netlify.toml` and `frontend/public/_redirects` (see `config-docs/DEPLOY.md`) |
+| `npm ci` fails on Windows with "operation was rejected by your operating system" | A dev server or antivirus is holding `node_modules`. Stop the dev server first. `npm install` is more forgiving |
 
-`X-API-Key` goes on every request. The SSE endpoints take the short-lived
-single-use `stream_token` as `?token=` instead, because browser `EventSource`
-cannot send headers (DP-8).
+# Attribution
 
-### SSE events the backend must emit
-
-`GET /query/{id}/stream` uses named events:
-
-| Event | Payload | Why |
-|---|---|---|
-| `trace` | one `TraceStep` | fills the trace panel as the agent works |
-| `pipeline` | one `PipelineRecord` | lets a column render the moment *its* pipeline finishes, independent of the other two (FR-3, FR-4) |
-| `done` | any | all three settled; the UI then fetches `/query/{id}/result` for the verdict |
-
-
-`GET /build/{id}/stream` emits `build` (one `BuildEvent`) and `done`; a failed
-stage is a `build` event with `status: error`. A dropped stream is recovered
-from `GET /query/{id}/result` (query) or shown as failed.
-`BuildEvent.status` is `running | done | error | ready`; a `ready` event flips
-the readiness badge for the pipelines it names.
-
-## Fixture data
-
-`src/fixtures/*.json` is **illustrative, not measured**. The wikidata QIDs,
-answers and timings are plausible stand-ins so every screen and state can be
-exercised without a backend. Build timings are compressed to ~14 s of replay; a
-real ingest of 2,951 documents takes far longer.
-
-## Attribution
-
-The Olympic Wikipedia corpus the backend ingests is CC BY-SA 4.0. See
-`ATTRIBUTION.md` when the ingestion path lands.
+The corpus is derived from English Wikipedia (CC BY-SA 4.0). The embedding
+models and software carry their own licences. See [`ATTRIBUTION.md`](ATTRIBUTION.md).

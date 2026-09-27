@@ -2,16 +2,24 @@
 
 ## What gets deployed, and what does not
 
-**Only the frontend.** There is no FastAPI service in this repo (`API-01` was
-never built), no TigerGraph workspace and no LLM. The deployed site runs
-entirely on fixture data: `VITE_USE_MOCK_API` defaults to `true` and every
-screen is served from `frontend/src/fixtures/`.
+**Only the frontend.** The FastAPI backend, TigerGraph and the LLM are not
+hosted by Netlify. The bundle's mode is fixed at build time:
 
-So the site is a real, clickable app — search comparison, build view,
-dashboard and the per-question eval table all work — but **it is not answering
-real questions**. Worth saying that when you share the link, or people will
-reasonably assume the pipelines are live. `config-docs/AUDIT.md` records what
-is and is not implemented.
+- **Mock mode** (`VITE_USE_MOCK_API=true`): every screen replays
+  `frontend/src/fixtures/` and the header shows a `mock data` chip. The site is
+  clickable but **does not answer real questions**. Say so when you share the
+  link. The committed `netlify.toml` sets this for Git-linked builds.
+- **Live mode** (any other value, including unset, which is the code default in
+  `frontend/src/config.ts`): the bundle calls the backend at
+  `VITE_API_BASE_URL`. A folder deploy built locally without
+  `VITE_USE_MOCK_API=true` is a live build. With no reachable backend, its
+  health indicators show the services offline and those features are blocked.
+
+For a fixture-only demo from a folder deploy, build with the flag set:
+
+```bash
+cd frontend && VITE_USE_MOCK_API=true npm run build
+```
 
 ## The free path: deploy the built folder, not the repo
 
@@ -28,7 +36,7 @@ is and is not implemented.
 Build locally, then ship `frontend/dist`:
 
 ```bash
-cd frontend && npm install && npm run build
+cd frontend && npm install && npm run build   # add VITE_USE_MOCK_API=true for a fixture demo
 ```
 
 **Either** drag the `frontend/dist` folder onto
@@ -55,9 +63,8 @@ usually the right trade; a paid plan buys automation, not capability.
 Two options, both free:
 
 - **Make the repository public.** Git integration on Netlify's free tier, and
-  GitHub Pages, both work with public repos. Read `config-docs/AUDIT.md`
-  first — it documents plainly what is and is not built, which is the sort of
-  thing you want to be deliberate about publishing.
+  GitHub Pages, both work with public repos. Check first that nothing in the
+  repo should stay private: no `.env`, no run outputs under `out/`.
 - **Mirror only `frontend/dist` to a separate public repo** and point GitHub
   Pages or Netlify at that. Keeps the source private and the built output
   public. Note that a JS bundle is readable, so treat anything in it as public
@@ -85,10 +92,11 @@ every build, so the rewrite is always present in the artifact you upload.
 | `command` | `npm run build` | `tsc --noEmit && vite build` — type-check then bundle. |
 | `publish` | `dist` | Relative to `base`, so `frontend/dist`. |
 | `NODE_VERSION` | `20` | Pinned so a Netlify default bump cannot silently change the build. |
-| `VITE_USE_MOCK_API` | `true` | Explicit, so the deployed mode is visible here rather than buried in `config.ts`. |
+| `VITE_USE_MOCK_API` | `true` | Git-linked builds are fixture demos. The code default is live (`false`), so this line is what makes the deployed site mock. Remove it only when a backend is reachable (see below). |
 
 **The SPA rewrite is load-bearing, not boilerplate.** The app uses
-`BrowserRouter`, so `/build`, `/dashboard` and `/eval` are client-side routes
+`BrowserRouter`, so `/build`, `/dashboard`, `/history` (and the `/eval`,
+`/benchmarks` redirects) are client-side routes
 with no file behind them. Serving `frontend/dist` from a plain static server
 and requesting those paths returns **404** — verified, not assumed:
 
@@ -108,36 +116,49 @@ Cache headers are split deliberately: fingerprinted files under `/assets/*`
 are immutable and cached for a year, while `index.html` must revalidate every
 time or a deploy would keep serving the previous bundle's asset references.
 
-## Do not set `VITE_API_KEY`
+## `VITE_API_KEY` is public
 
-It is compiled into the bundle and shipped to every visitor, so it is not a
-secret. It exists to deter casual access on a shared network, nothing more.
-On a public site leave it unset. Never reuse a value that protects anything
-real. The same applies to `TG_PASSWORD`, `TG_SECRET` and `LLM_API_KEY` — those
-are backend-only and must never appear in a `VITE_`-prefixed variable.
+It is compiled into the bundle and shipped to every visitor, so it is **not a
+secret**. It deters casual access and nothing more. Anyone who has it can
+reset the graph, upload datasets, switch embedding models, change the LLM
+provider and spend your LLM quota. On a mock-mode site leave it unset. For a
+live site:
 
-## Pointing it at a real backend later
+- keep the backend on localhost or a private network, or put it behind real
+  authentication (a VPN, or a reverse proxy with SSO/basic auth);
+- never reuse a value that protects anything real.
 
-Once `API-01` exists and is hosted somewhere reachable, set two variables
-under **Site configuration → Environment variables** and redeploy:
+`TG_PASSWORD`, `TG_SECRET`, `TG_TOKEN`, `LLM_API_KEY`, the provider keys and
+`CLOUDFLARE_API_TOKEN` are backend-only. They must never appear in a
+`VITE_`-prefixed variable.
+
+## Pointing it at a real backend
+
+With the backend hosted somewhere the browser can reach, set these under
+**Site configuration → Environment variables** (or in `frontend/.env` for a
+folder deploy) and rebuild:
 
 ```
 VITE_USE_MOCK_API = false
 VITE_API_BASE_URL = https://<your-api-host>
+VITE_API_KEY      = <the backend's OGR_API_KEY>
 ```
 
-No code change is needed — components never touch fixtures, they call
-`services/*Service.ts`, and each service branches on `config.useMockApi` at
-its own boundary. The backend will also need CORS configured for the Netlify
-origin, and note that the two SSE endpoints authenticate with a short-lived
-`?token=` rather than the `X-API-Key` header, because `EventSource` cannot
-send custom headers.
+Delete the `VITE_USE_MOCK_API = "true"` line from `netlify.toml`, or override
+it in the UI. No code change is needed: components never touch fixtures, and
+each `services/*Service.ts` branches on `config.useMockApi`. Two more things:
+
+- Add the Netlify origin to the backend's `OGR_CORS_ORIGINS`.
+- The two SSE endpoints authenticate with a short-lived single-use `?token=`,
+  not the `X-API-Key` header, because `EventSource` cannot send custom headers.
 
 ## Troubleshooting
 
 | Symptom | Cause |
 |---|---|
 | Build fails on `tsc: not found` | Netlify skipped devDependencies. Check that `NODE_ENV` is not set to `production` in the site's environment variables. |
-| Site loads but `/dashboard` 404s | The `[[redirects]]` block was removed or overridden in the UI. |
+| Site loads but `/dashboard` 404s on refresh | The `[[redirects]]` block was removed or overridden in the UI. |
 | Blank page, console 404s on `/assets/...` | Someone set a subpath. This build uses absolute asset paths; it must be served from a domain root. |
 | Stale UI after a deploy | The `index.html` cache header was changed to something long-lived. |
+| Deployed site shows `mock data` when you expected live | `VITE_USE_MOCK_API=true` is still set in `netlify.toml` or the site environment |
+| Live site shows every service offline | `VITE_API_BASE_URL` is unreachable from the browser, or the origin is missing from `OGR_CORS_ORIGINS` |
