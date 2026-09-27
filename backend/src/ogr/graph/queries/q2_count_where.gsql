@@ -17,14 +17,22 @@ USE GRAPH OlympicGraphRAG
 // Rows with `parse_confidence < 0.9` are excluded from the count and
 // reported separately as `excluded_count` (DP-2 Option A) — the system
 // states what it could not parse rather than silently dropping it.
+//
+// The counted events are printed too (a second block: event_id, event_name,
+// doc_id), so a count answer can cite the events behind it. The first block
+// stays the count: TigerGraphClient._run_query unwraps only a list in the
+// first block, and the aggregation agent reads both.
 
 CREATE OR REPLACE QUERY q2_count_where(
   STRING anchor_sport = "", STRING anchor_games = "", STRING anchor_venue = "",
   STRING constraints_json = "[]", STRING field = "competitors"
 ) FOR GRAPH OlympicGraphRAG SYNTAX V2 {
 
+  TYPEDEF TUPLE<STRING event_id, STRING event_name, STRING doc_id> Member;
   SumAccum<INT> @@count;
   SumAccum<INT> @@excluded_count;
+  OrAccum @counted;
+  ListAccum<Member> @@members;
 
   Events = {OlympicEvent.*};
   IF anchor_sport != "" THEN
@@ -93,14 +101,20 @@ CREATE OR REPLACE QUERY q2_count_where(
       END,
       IF passes THEN
         IF e.parse_confidence >= 0.9 THEN
-          @@count += 1
+          @@count += 1,
+          e.@counted += TRUE
         ELSE
           @@excluded_count += 1
         END
       END;
 
+  Members = SELECT e FROM Matched:e -(reverse_DESCRIBES>)- Document:doc
+    WHERE e.@counted
+    ACCUM @@members += Member(e.event_id, e.event_name, doc.doc_id);
+
   // `count` is a GSQL reserved word and cannot be a PRINT alias.
   PRINT @@count AS count_value, @@excluded_count AS excluded_count;
+  PRINT @@members AS members;
 }
 
 INSTALL QUERY q2_count_where

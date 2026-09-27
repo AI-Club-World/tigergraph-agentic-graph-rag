@@ -110,6 +110,27 @@ class TestAggregationConformance:
         assert isinstance(result.chunks_returned, int)
         assert isinstance(result.latency_ms, float)
 
+    def test_count_lists_the_counted_events_so_they_can_be_cited(self):
+        """Q2 prints the count, then its members; the count stays Q2's."""
+        from ogr.pipelines.p3_agentic.agents.aggregation import MAX_COUNT_MEMBERS, run_aggregation
+        members = [
+            {"event_id": f"sailing-2016-e{i:02d}", "event_name": f"Event {i}", "doc_id": f"Q{i}"}
+            for i in range(MAX_COUNT_MEMBERS + 5)
+        ]
+        client = _make_client(mock_query_results=[
+            {"count_value": 35, "excluded_count": 0}, {"members": members},
+        ])
+        intent = IntentSchema(operation="COUNT", anchor=Anchor(sport="Sailing", games="2016-Summer"))
+        result = run_aggregation(client, intent, _make_anchors(sport="Sailing", games="2016-Summer"))
+        head, rest = result.evidence[0], result.evidence[1:]
+        assert head["count"] == 35
+        assert head["counted_events_listed"] == f"{MAX_COUNT_MEMBERS} of 35"
+        assert len(rest) == MAX_COUNT_MEMBERS
+        assert rest[0] == {
+            "counted_event": "Event 0", "event_id": "sailing-2016-e00", "doc_id": "Q0",
+            "source": "aggregation_count",
+        }
+
     def test_argmax_returns_agent_result(self):
         from ogr.pipelines.p3_agentic.agents.aggregation import run_aggregation
         client = _make_client(mock_query_results=[

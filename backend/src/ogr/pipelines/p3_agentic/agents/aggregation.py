@@ -30,6 +30,9 @@ from ogr.pipelines.p3_agentic.intent import IntentSchema
 
 logger = logging.getLogger(__name__)
 
+# Counted events shown after a Q2 count (a long list only costs tokens).
+MAX_COUNT_MEMBERS = 30
+
 
 def run_aggregation(
     client: TigerGraphClient,
@@ -153,17 +156,34 @@ def _run_argmax(
 
 
 def _normalize_count_results(raw: Any) -> tuple[list[dict[str, Any]], int]:
+    """Q2's count row first, then the counted events it names (capped at
+    MAX_COUNT_MEMBERS) so the answer can cite them. The count is Q2's, never
+    the number of member rows."""
     results: list[dict[str, Any]] = []
     excluded_count = 0
     if not raw or not isinstance(raw, list):
         return results, excluded_count
+    members: list[dict[str, Any]] = []
     for item in raw:
         attrs = item.get("attributes", item)
+        if "members" in attrs:
+            members.extend(m for m in attrs.get("members") or [] if isinstance(m, dict))
+            continue
         if "excluded_count" in attrs:
             excluded_count = attrs["excluded_count"]
         results.append({
             "count": attrs.get("count", attrs.get("count_value", attrs.get("value", 0))),
             "doc_id": attrs.get("doc_id", attrs.get("event_id", "")),
+            "source": "aggregation_count",
+        })
+    members.sort(key=lambda m: str(m.get("event_id", "")))
+    if results and len(members) > MAX_COUNT_MEMBERS:
+        results[0]["counted_events_listed"] = f"{MAX_COUNT_MEMBERS} of {len(members)}"
+    for m in members[:MAX_COUNT_MEMBERS]:
+        results.append({
+            "counted_event": m.get("event_name", ""),
+            "event_id": m.get("event_id", ""),
+            "doc_id": m.get("doc_id", ""),
             "source": "aggregation_count",
         })
     return results, excluded_count
