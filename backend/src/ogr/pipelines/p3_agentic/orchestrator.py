@@ -54,6 +54,24 @@ def append_reducer(existing: list | None, new: list | None) -> list:
     return (existing or []) + (new or [])
 
 
+def _evidence_key(item: dict[str, Any]) -> str:
+    return json.dumps(item, sort_keys=True, default=str)
+
+
+def evidence_reducer(existing: list | None, new: list | None) -> list:
+    """Append-only, but an item already held is not added again: a tool that
+    returns rows the run already has adds nothing, so evidence (and the
+    citations built from it) never repeats and "no new evidence" is visible."""
+    merged = list(existing or [])
+    seen = {_evidence_key(e) for e in merged}
+    for item in new or []:
+        key = _evidence_key(item)
+        if key not in seen:
+            seen.add(key)
+            merged.append(item)
+    return merged
+
+
 class OrchestratorState(TypedDict, total=False):
     """Typed state for the P3 LangGraph StateGraph (PLAN-003 Group 5).
 
@@ -64,7 +82,7 @@ class OrchestratorState(TypedDict, total=False):
     intent: Any | None                     # IntentSchema
     route_initial: str                        # lookup_direct | scoped_aggregate | loop
     path_taken: Annotated[list[str], append_reducer]
-    evidence: Annotated[list[dict[str, Any]], append_reducer]
+    evidence: Annotated[list[dict[str, Any]], evidence_reducer]
     steps: Annotated[list[Any], append_reducer]   # TraceStep objects
     tokens_used: int
     strategy_changed: bool
@@ -109,13 +127,14 @@ def build_p3_graph(
     from ogr.pipelines.p3_agentic.agents.similarity_search import run_similarity_search
     from ogr.pipelines.p3_agentic.evidence import EvidenceEvaluation, evaluate_evidence
     from ogr.pipelines.p3_agentic.intent import IntentParser
-    from ogr.pipelines.p3_agentic.router import first_loop_tool, route
+    from ogr.pipelines.p3_agentic.router import loop_tool_candidates, route
     from ogr.pipelines.p3_agentic.stopping import should_stop
     from ogr.pipelines.p3_agentic.strategy import detect_strategy_change
     from ogr.pipelines.p3_agentic.trace import TraceRecorder
 
-    # Use a mutable wrapper so the recorder persists across node calls within a run
-    _state_store: dict[str, Any] = {}
+    # Use a mutable wrapper so the recorder persists across node calls within a run.
+    # `actions`: (tool, args) already run, so no action repeats with the same inputs.
+    _state_store: dict[str, Any] = {"actions": set()}
 
     # Capability probe: 'auto' inspects the model, true/false force it (PLAT-08).
     supports_tool_calling = resolve_tool_calling_support(
@@ -133,7 +152,9 @@ def build_p3_graph(
 
     def node_parse_intent(state: dict) -> dict:
         question = state.get("question", "")
+        t0 = time.perf_counter()
         intent = intent_parser.parse(question)
+        parse_ms = (time.perf_counter() - t0) * 1000.0
         route_decision = route(intent)
 
         # Initialize trace recorder keyed to this run's route decision
@@ -147,13 +168,15 @@ def build_p3_graph(
         parse_tokens = getattr(intent_parser, "last_tokens", None)
         parse_total = parse_tokens.total if parse_tokens else 0
         if parse_total:
+            # The orchestrator's planning step: what to investigate and which route.
             _state_store["recorder"].record(
-                "entity_linking",
+                "orchestrator",
                 "intent_parser",
                 AgentResult(
                     tokens_input=parse_tokens.input,
                     tokens_output=parse_tokens.output,
-                    notes=f"intent parse via {intent_parser.extraction_path}",
+                    latency_ms=parse_ms,
+                    notes=f"intent parse via {intent_parser.extraction_path}; route {route_decision}",
                 ),
             )
 
@@ -168,7 +191,26 @@ def build_p3_graph(
         intent = state.get("intent")
         if intent is None:
             return {}
+        t0 = time.perf_counter()
         anchors = entity_linker.resolve(intent)
+        recorder: TraceRecorder = _state_store.get("recorder")
+        if recorder:
+            found = {
+                k: v for k, v in (
+                    ("event", getattr(anchors, "event_id", None) or getattr(anchors, "title", None)),
+                    ("games", getattr(anchors, "games", None)),
+                    ("sport", getattr(anchors, "sport", None)),
+                    ("venue", getattr(anchors, "venue", None)),
+                ) if v
+            }
+            recorder.record(
+                "entity_linking",
+                "entity_linker",
+                AgentResult(
+                    latency_ms=(time.perf_counter() - t0) * 1000.0,
+                    notes="resolved " + (", ".join(f"{k}={v}" for k, v in found.items()) or "no anchor"),
+                ),
+            )
         return {"resolved_anchors": anchors}
 
     def node_disambiguate(state: dict) -> dict:
@@ -250,7 +292,8 @@ def build_p3_graph(
             notes="Q1 direct lookup",
         )
         if recorder:
-            recorder.record("entity_linking", "Q1", result, path_name="lookup")
+            recorder.record("graph_traversal", "Q1", result, path_name="lookup")
+        _state_store["actions"].add(("lookup",))
 
         return {
             "evidence": raw or [],
@@ -288,6 +331,11 @@ def build_p3_graph(
 
         # Guard: if anchors not resolved (e.g. intent parse failed), return empty
         if anchors is None:
+            if ("traversal",) in _state_store["actions"]:
+                _state_store["primary_exhausted"] = True
+                return {}
+            _state_store["actions"].add(("traversal",))
+            _state_store["primary_exhausted"] = True
             result = AgentResult(error="No resolved anchors", notes="anchors=None")
             if recorder:
                 recorder.record("graph_traversal", "Q4", result, path_name="traversal")
@@ -296,8 +344,17 @@ def build_p3_graph(
                 "path_taken": ["traversal"],
             }
 
-        # Same first-step choice P2 makes (router.first_loop_tool).
-        tool = first_loop_tool(intent, anchors) if intent else "traversal"
+        # The next action depends on what has been tried: the first pass makes
+        # the same choice P2 does (router.first_loop_tool); later passes take
+        # the next applicable tool not yet run, because re-running one with
+        # the same anchors returns the same rows. None left: nothing to do.
+        tried = {a[0] for a in _state_store["actions"]}
+        candidates = loop_tool_candidates(intent, anchors) if intent else ["traversal"]
+        tool = next((t for t in candidates if t not in tried), None)
+        if tool is None:
+            _state_store["primary_exhausted"] = True
+            return {}
+        _state_store["actions"].add((tool,))
         if tool == "lookup":
             t0 = time.perf_counter()
             rows = narrow_to_games(
@@ -324,7 +381,8 @@ def build_p3_graph(
             tool_name, q_name = "traversal", "Q4"
 
         if recorder:
-            recorder.record("graph_traversal", q_name, result, path_name=tool_name)
+            agent = "multi_hop_reasoning" if tool in ("multi_hop", "venue") else "graph_traversal"
+            recorder.record(agent, q_name, result, path_name=tool_name)
 
         # evidence and path_taken accumulate through the reducer — return only
         # what this step added.
@@ -345,9 +403,11 @@ def build_p3_graph(
         # A loop iteration that added no new evidence would get the same
         # temperature-0 verdict again, so the previous one is reused instead
         # of paying for another groundedness call.
-        evidence_key = frozenset(json.dumps(e, sort_keys=True, default=str) for e in evidence)
+        evidence_key = frozenset(_evidence_key(e) for e in evidence)
         previous = _state_store.get("last_eval")
-        if previous is not None and _state_store.get("last_eval_key") == evidence_key:
+        unchanged = previous is not None and _state_store.get("last_eval_key") == evidence_key
+        t0 = time.perf_counter()
+        if unchanged:
             reused = "; evidence unchanged, verdict reused"
             eval_result = replace(
                 previous,
@@ -364,6 +424,7 @@ def build_p3_graph(
                 reports_usage=reports_usage,
                 question=question,
             )
+        eval_ms = (time.perf_counter() - t0) * 1000.0
         _state_store["last_eval_key"] = evidence_key
 
         # Trigger fallbacks if needed (DP-2 Option A). Only the additions are
@@ -381,15 +442,29 @@ def build_p3_graph(
                 AgentResult(
                     evidence=[],
                     chunks_returned=0,
-                    citations_count=len(evidence),
+                    citations_count=0,  # it evaluates evidence; it cites nothing
                     tokens_input=eval_result.tokens_input,
                     tokens_output=eval_result.tokens_output,
-                    notes=eval_result.notes,
+                    latency_ms=eval_ms,
+                    notes=f"{len(evidence)} evidence items; {eval_result.notes}",
                 ),
             )
 
+        acted = False
         if not eval_result.is_sufficient:
-            if eval_result.fallback_trigger == "scope_coverage_fail":
+            doc_ids = sorted({e.get("doc_id", "") for e in evidence if e.get("doc_id")})
+            actions = _state_store["actions"]
+            if eval_result.fallback_trigger == "scope_coverage_fail" and ("similarity_search",) in actions:
+                # Already searched the same question: only document retrieval is new.
+                trigger = "groundedness_fail" if doc_ids else None
+            else:
+                trigger = eval_result.fallback_trigger
+            already = ("document_retrieval", tuple(doc_ids)) in actions
+            if trigger in ("groundedness_fail", "empty_anchor") and already:
+                trigger = None  # these documents' chunks are already in the evidence
+            if trigger == "scope_coverage_fail":
+                _state_store["actions"].add(("similarity_search",))
+                acted = True
                 sim_result = run_similarity_search(
                     tg_client,
                     question,
@@ -404,12 +479,13 @@ def build_p3_graph(
                 new_path.append("similarity_search")
                 extra_tokens += sim_result.tokens_input + sim_result.tokens_output
 
-            elif eval_result.fallback_trigger in ("groundedness_fail", "empty_anchor"):
-                doc_ids = list({e.get("doc_id", "") for e in evidence if e.get("doc_id")})
+            elif trigger in ("groundedness_fail", "empty_anchor"):
+                _state_store["actions"].add(("document_retrieval", tuple(doc_ids)))
+                acted = True
                 doc_result = run_document_retrieval(
                     tg_client,
                     doc_ids=doc_ids or None,
-                    triggered_by=eval_result.fallback_trigger,
+                    triggered_by=trigger,
                 )
                 # HAS_CHUNK returns every chunk in document order; best first
                 # lets groundedness and the [:20] context see the relevant ones.
@@ -427,6 +503,9 @@ def build_p3_graph(
 
         new_tokens = state.get("tokens_used", 0) + extra_tokens
         _state_store["last_eval"] = eval_result
+        # Nothing new came back and nothing new was tried: another pass would
+        # repeat this one exactly.
+        _state_store["idle"] = unchanged and not acted
 
         return {
             "evidence": new_evidence,
@@ -448,7 +527,8 @@ def build_p3_graph(
         structured = [e for e in evidence if e.get("source") not in prose_sources]
         prose = rerank(question, [e for e in evidence if e.get("source") in prose_sources])
         # Same renderer as P2 (structured rows keep every field).
-        context = format_evidence_context((structured + prose)[:20], empty="No relevant evidence found.")
+        shown = (structured + prose)[:20]
+        context = format_evidence_context(shown, empty="No relevant evidence found.")
 
         try:
             answer, explanation, tokens, token_source, latency_ms = invoke_llm_with_answer_contract(
@@ -478,17 +558,19 @@ def build_p3_graph(
                 latency_ms=latency_ms,
             )
 
-        # Build citations from evidence
+        # Citations are exactly the evidence the model was shown, once each
+        # (the same source for P2: doc_id, else event_id).
         citations = []
-        for e in evidence:
-            doc_id = e.get("doc_id", e.get("event_id", ""))
+        cited: set[tuple[str, str | None]] = set()
+        for e in shown:
+            doc_id = e.get("doc_id") or e.get("event_id") or ""
             chunk_id = e.get("chunk_id")
-            ref_type = "chunk" if chunk_id else "entity"
-            if doc_id:
+            if doc_id and (doc_id, chunk_id) not in cited:
+                cited.add((doc_id, chunk_id))
                 citations.append(Citation(
                     source_id=doc_id,
                     chunk_id=chunk_id,
-                    ref_type=ref_type,
+                    ref_type="chunk" if chunk_id else "entity",
                 ))
 
         # Derive strategy_changed — never set imperatively. The route-vs-path
@@ -496,19 +578,10 @@ def build_p3_graph(
         # catches a fallback that fired inside its own route (DP-2).
         strategy_changed, _ = detect_strategy_change(route_initial, path_taken)
 
-        # Determine stop_reason
-        last_eval = _state_store.get("last_eval")
-        tokens_used = state.get("tokens_used", 0) + tokens.total
-        stop_reason = "sufficient_evidence"
-        if last_eval and hasattr(last_eval, "is_sufficient"):
-            _, stop_reason = should_stop(
-                evaluation=last_eval,
-                step_count=len(path_taken),
-                tools_tried=path_taken,
-                tokens_used=tokens_used,
-                max_steps=getattr(run_config, "max_steps", 6),
-                max_tokens=getattr(run_config, "max_tokens_per_query", 20000),
-            )
+        # Why the investigation stopped, as decided when it stopped (not
+        # recomputed now with the generation tokens added). A one-query route
+        # is never evaluated, so it does not claim sufficient evidence.
+        stop_reason = _state_store.get("stop_reason") or "direct_route"
 
         # Finalize trace
         trace_steps = recorder.finalize() if recorder else []
@@ -560,9 +633,10 @@ def build_p3_graph(
         tokens_used = state.get("tokens_used", 0)
 
         if last_eval is None:
+            _state_store["stop_reason"] = "error"
             return "generate"
 
-        stop, _ = should_stop(
+        stop, reason = should_stop(
             evaluation=last_eval,
             step_count=len(path_taken),
             tools_tried=path_taken,
@@ -570,7 +644,20 @@ def build_p3_graph(
             max_steps=getattr(run_config, "max_steps", 6),
             max_tokens=getattr(run_config, "max_tokens_per_query", 20000),
         )
+        if not stop and _state_store.get("idle") and _state_store.get("primary_exhausted"):
+            stop, reason = True, "no_further_action_available"
+        if stop:
+            _state_store["stop_reason"] = reason
+            _state_store["stop_after_step"] = len(path_taken)
         return "generate" if stop else "loop_traversal"
+
+    def route_after_lookup(state: dict) -> str:
+        """A direct lookup that found nothing is not answered from nothing:
+        the orchestrator escalates to the loop (a strategy change)."""
+        if state.get("evidence"):
+            return "generate"
+        logger.debug("route_after_lookup: Q1 returned nothing → loop")
+        return "loop_traversal"
 
     # -----------------------------------------------------------------------
     # Build graph
@@ -602,8 +689,11 @@ def build_p3_graph(
         },
     )
 
-    # lookup_direct and scoped_aggregate go directly to generate (no loop)
-    graph.add_edge("lookup_direct", "generate")
+    # lookup_direct and scoped_aggregate answer from one query; an empty
+    # lookup escalates to the loop instead.
+    graph.add_conditional_edges(
+        "lookup_direct", route_after_lookup, {"generate": "generate", "loop_traversal": "loop_traversal"}
+    )
     graph.add_edge("scoped_aggregate", "generate")
 
     # Loop: traversal → evaluate → continue | generate
@@ -651,10 +741,15 @@ def _prepare_run(
     return build_p3_graph(model, client, entity_linker, cfg, on_step=on_step)
 
 
-def _error_record(detail: str, latency_ms: float) -> Any:
-    """A PipelineRecord for a run that could not complete (NFR-2: never raise)."""
+def _error_record(detail: str, latency_ms: float, state_store: dict | None = None) -> Any:
+    """A PipelineRecord for a run that could not complete (NFR-2: never raise).
+    The steps already taken, and the tokens they spent, stay on the record:
+    a failed investigation still cost what it cost."""
     from ogr.common.contracts import PipelineRecord, TokenUsage
 
+    recorder = (state_store or {}).get("recorder")
+    steps = recorder.finalize() if recorder else []
+    spent = recorder.cumulative_tokens() if recorder else TokenUsage()
     return PipelineRecord(
         pipeline="agentic_graphrag",
         answer="",
@@ -662,10 +757,10 @@ def _error_record(detail: str, latency_ms: float) -> Any:
         citations=[],
         chunks_returned=0,
         citations_count=0,
-        tokens=TokenUsage(),
+        tokens=TokenUsage(input=spent.input, output=spent.output, total=spent.total),
         token_source="provider",
         latency_ms=latency_ms,
-        trace=[],
+        trace=steps,
         strategy_changed=False,
         stop_reason="error",
         status="error",
@@ -692,6 +787,8 @@ async def astream_p3_agentic(
     # Off the event loop: preparing connects to TigerGraph, fetches three
     # vocabularies and builds the client — seconds on Savanna, during which
     # every other request and SSE stream would stall.
+    from ogr.common.llm import LLMRateLimitError
+
     compiled_graph, state_store = await asyncio.to_thread(
         _prepare_run, llm_model, tg_client, entity_linker, config
     )
@@ -716,9 +813,13 @@ async def astream_p3_agentic(
                 continue
             for step in _drain():
                 yield step
+    except LLMRateLimitError:
+        raise  # DP-3: same as run_p3_agentic — the caller stops, it is not an answer
     except Exception as e:  # noqa: BLE001 - fault isolation, never raise to the caller
         logger.error("P3 stream failed: %s", e)
-        yield _error_record(str(e), (time.perf_counter() - total_start) * 1000.0)
+        for step in _drain():
+            yield step
+        yield _error_record(str(e), (time.perf_counter() - total_start) * 1000.0, state_store)
         return
 
     # Anything recorded after the last observed event (e.g. the generate node).
@@ -766,7 +867,7 @@ def run_p3_agentic(
         raise  # DP-3: stop the run; the user switches model
     except Exception as e:
         logger.error("P3 orchestrator failed: %s", e)
-        return _error_record(str(e), (time.perf_counter() - total_start) * 1000.0)
+        return _error_record(str(e), (time.perf_counter() - total_start) * 1000.0, state_store)
 
     record = state_store.get("pipeline_record")
     if record is None:

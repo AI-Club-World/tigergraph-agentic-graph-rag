@@ -37,6 +37,8 @@ import re
 from dataclasses import dataclass
 from typing import Any, Literal
 
+from ogr.common.contracts import format_evidence_item
+
 logger = logging.getLogger(__name__)
 
 FallbackTrigger = Literal[
@@ -179,6 +181,20 @@ def _check_scope_coverage(
     return len(evidence) > 0, f"scope: {len(evidence)} evidence item(s)"
 
 
+# What the groundedness check sees: structured rows (every field, so the
+# value asked about is there — not just the event name) and the newest prose,
+# because a fallback's chunks arrive last and are what the next verdict is about.
+GROUNDEDNESS_ITEMS = 8
+GROUNDEDNESS_CHARS = 400
+
+
+def _evidence_lines(evidence: list[dict[str, Any]]) -> list[str]:
+    structured = [e for e in evidence if e.get("source") in STRUCTURED_SOURCES or not e.get("text")]
+    prose = [e for e in evidence if e not in structured]
+    chosen = (structured[:GROUNDEDNESS_ITEMS // 2] + prose[-GROUNDEDNESS_ITEMS:])[:GROUNDEDNESS_ITEMS]
+    return [format_evidence_item(e)[:GROUNDEDNESS_CHARS] for e in chosen]
+
+
 def _check_groundedness_llm(
     evidence: list[dict[str, Any]],
     question: str,
@@ -196,11 +212,7 @@ def _check_groundedness_llm(
     except ImportError:
         from langchain.schema import HumanMessage, SystemMessage
 
-    # Compact evidence text for the prompt
-    evidence_text = "\n".join(
-        e.get("text", e.get("event_name", str(e.get("value", ""))))[:200]
-        for e in evidence[:5]
-    )
+    evidence_text = "\n".join(_evidence_lines(evidence))
     prompt = (
         f"Evidence:\n{evidence_text}\n\n"
         f"Question: {question}\n\n"
@@ -238,7 +250,7 @@ def _check_groundedness_deterministic(
         return False, "deterministic groundedness: no evidence or question"
     q_tokens = set(re.findall(r"\w+", question.lower()))
     for e in evidence:
-        text = e.get("text", e.get("event_name", str(e.get("value", ""))))
+        text = format_evidence_item(e)
         e_tokens = set(re.findall(r"\w+", text.lower()))
         overlap = q_tokens & e_tokens - {"the", "a", "an", "of", "in", "at", "is", "was", "did"}
         if len(overlap) >= 2:

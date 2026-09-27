@@ -147,7 +147,7 @@ class TraceRecorder:
 
         step = TraceStep(
             step_n=step_n,
-            agent_type="evidence_evaluation",
+            agent_type="answer_generation",
             tool_called="generate",
             tokens=TokenUsage(
                 input=tokens_input,

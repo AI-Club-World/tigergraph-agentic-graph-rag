@@ -34,6 +34,7 @@ CLOSED_STOP_VOCABULARY = {
     "no_further_action_available",
     "disambiguation_required",
     "error",
+    "direct_route",
 }
 
 
@@ -83,16 +84,25 @@ def test_append_reducer_accumulates():
     assert append_reducer(["a"], None) == ["a"]
 
 
-def test_unsatisfiable_loop_stops_on_step_budget():
-    """A question whose evidence never satisfies must stop on a DP-3 budget."""
+def _tool_steps(record):
+    return [s.tool_called for s in record.trace if s.agent_type not in (
+        "orchestrator", "entity_linking", "evidence_evaluation", "answer_generation")]
+
+
+def test_unsatisfiable_loop_stops_without_repeating_itself():
+    """A question whose evidence never satisfies must terminate — and once
+    every applicable tool has run and nothing new comes back, it stops then
+    (no_further_action_available) instead of re-running the same queries
+    until the step budget."""
     record = _run(groundedness="NO")
 
     assert record.status == "done", (
         f"Loop did not terminate cleanly: {record.error_detail}. "
         "Hitting the recursion limit means both budgets are inert."
     )
-    assert record.stop_reason == "step_budget_exhausted"
-    assert record.stop_reason in CLOSED_STOP_VOCABULARY
+    assert record.stop_reason == "no_further_action_available"
+    tools = _tool_steps(record)
+    assert len(tools) == len(set(tools)), f"an action repeated: {tools}"
 
 
 def test_loop_respects_a_lowered_step_budget():
@@ -167,8 +177,13 @@ def test_unchanged_evidence_reuses_the_groundedness_verdict():
         entity_linker=EntityLinker(),
         config=config,
     )
-    reused = [s for s in record.trace if "verdict reused" in s.notes]
+    evaluations = [s for s in record.trace if s.agent_type == "evidence_evaluation"]
+    reused = [s for s in evaluations if "verdict reused" in s.notes]
     assert reused and all(s.tokens.total == 0 for s in reused)
-    assert _groundedness_calls(model) == 2  # new evidence twice, then unchanged
-    assert record.stop_reason == "step_budget_exhausted"
+    # One paid groundedness call per distinct evidence state, none for a repeat.
+    assert _groundedness_calls(model) == len(evaluations) - len(reused)
+    assert record.stop_reason == "no_further_action_available"
+    tools = _tool_steps(record)
+    assert len(tools) == len(set(tools)), f"an action repeated: {tools}"
+    assert len({(c.source_id, c.chunk_id) for c in record.citations}) == len(record.citations)
     assert sum(s.tokens.total for s in record.trace) == record.tokens.total

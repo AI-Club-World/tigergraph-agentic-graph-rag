@@ -83,3 +83,17 @@ def first_loop_tool(intent: IntentSchema, anchors) -> LoopTool:
     if getattr(anchors, "venue", None):
         return "venue"
     return "traversal"
+
+
+def loop_tool_candidates(intent: IntentSchema, anchors) -> list[LoopTool]:
+    """Every loop tool that applies to these anchors, first choice first.
+    The loop runs the first one not yet tried, so a pass that found too
+    little moves on to another retrieval method instead of repeating itself."""
+    first = first_loop_tool(intent, anchors)
+    options: list[LoopTool] = [first]
+    if getattr(anchors, "title", None) or getattr(anchors, "event_id", None):
+        options += ["lookup", "multi_hop"]
+    if getattr(anchors, "venue", None):
+        options.append("venue")
+    options.append("traversal")
+    return list(dict.fromkeys(options))

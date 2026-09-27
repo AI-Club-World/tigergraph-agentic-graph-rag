@@ -18,6 +18,8 @@ DP-3 Option A — closed stop_reason vocabulary:
   no_further_action_available : All tools tried, no additional evidence retrievable
   disambiguation_required  : Anchor unresolvable, candidates returned — surface to user
   error                    : Unrecoverable error in agent execution
+  direct_route             : A one-query route (lookup/aggregation) answered without the
+                             loop, so no evidence evaluation was run
 
 AD-3: A fixed step count is NOT the stopping criterion — sufficiency is.
 The budget exists as a safety valve, not as the primary stop signal.
@@ -40,6 +42,7 @@ StopReason = Literal[
     "no_further_action_available",
     "disambiguation_required",
     "error",
+    "direct_route",
 ]
 
 # Default budgets — sourced from RunConfig at runtime (env: RUN_MAX_STEPS, RUN_MAX_TOKENS_PER_QUERY)

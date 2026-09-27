@@ -49,6 +49,10 @@ def run_aggregation(
         )
 
 
+# The fields q2_count_where.gsql can filter on.
+Q2_FIELDS = frozenset({"competitors", "nations", "date_year"})
+
+
 def _numeric_constraint_value(value: Any) -> float:
     """Q2's constrainable fields (competitors, nations, date_year) are all
     numeric, but `AnchorConstraint.value` is typed `Any` because the intent
@@ -74,11 +78,20 @@ def _run_count_where(
 ) -> AgentResult:
     """Execute Q2: count_where(...)"""
     t0 = time.perf_counter()
-    constraints_json = json.dumps(
-        [{**c.model_dump(), "value": _numeric_constraint_value(c.value)} for c in intent.constraints]
-        if intent.constraints
-        else []
-    )
+    # Q2 filters only on these numeric fields; any other constraint (a date,
+    # a non-numeric value) would fail every row and read as "0 events". It is
+    # left out and named in the trace instead of silently zeroing the count.
+    usable, dropped = [], []
+    for c in intent.constraints or []:
+        try:
+            value = float(c.value)
+        except (TypeError, ValueError):
+            value = None
+        if c.field in Q2_FIELDS and value is not None:
+            usable.append({**c.model_dump(), "value": value})
+        else:
+            dropped.append(f"{c.field} {c.op} {c.value!r}")
+    constraints_json = json.dumps(usable)
     params = {
         "anchor_sport": anchors.sport or "",
         "anchor_games": anchors.games or "",
@@ -96,6 +109,8 @@ def _run_count_where(
     latency_ms = (time.perf_counter() - t0) * 1000.0
     evidence, excluded_count = _normalize_count_results(raw)
     notes = f"Q2 count_where: field={params['field']}"
+    if dropped:
+        notes += f", constraints not supported by Q2 and ignored: {'; '.join(dropped)}"
     if excluded_count > 0:
         notes += f", excluded_low_confidence={excluded_count}"
     return AgentResult(
