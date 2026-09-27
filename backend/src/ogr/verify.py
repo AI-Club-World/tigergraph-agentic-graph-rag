@@ -144,8 +144,11 @@ def check_queries(config: RunConfig) -> tuple[str, str]:
     return OK, "all five installed"
 
 
-def run(config: RunConfig | None = None) -> int:
-    """Print one line per dependency. Returns 0 only if nothing FAILed."""
+def run(config: RunConfig | None = None, pre_build: bool = False) -> int:
+    """Print one line per dependency. Returns 0 only if nothing FAILed.
+
+    `pre_build`: the queries are installed by the build, so on a fresh
+    workspace their absence is reported (WARN) rather than failing."""
     cfg = config or get_default_config()
 
     print("Configuration")
@@ -155,12 +158,17 @@ def run(config: RunConfig | None = None) -> int:
     print(f"  LLM_PROVIDER     {cfg.llm_provider}")
     print(f"  LLM_MODEL        {cfg.llm_model}")
     print(f"  LLM_API_KEY      {_mask(cfg.llm_api_key)}")
+    print(f"  EMBEDDING_MODEL  {cfg.embedding_model}")
     print()
 
+    queries = check_queries(cfg)
+    if pre_build and queries[0] == FAIL and queries[1].startswith("missing"):
+        queries = ("WARN", queries[1].replace("GRAPH-07 not built yet", "installed by the build"))
     results = [
         ("LLM", *check_llm(cfg)),
+        ("Embedding", *check_embedding(cfg)),
         ("TigerGraph", *check_tigergraph(cfg)),
-        ("GSQL queries", *check_queries(cfg)),
+        ("GSQL queries", *queries),
     ]
     print("Checks")
     for name, status, detail in results:

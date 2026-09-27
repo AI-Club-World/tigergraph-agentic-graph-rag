@@ -185,3 +185,30 @@ class TestDeterminism:
             for _ in range(10)
         ]
         assert all(run == runs[0] for run in runs)
+
+
+class TestLenientButExact:
+    """A correct answer is not marked wrong for its form; a wrong one stays wrong."""
+
+    def test_a_listed_set_of_names_matches_the_concatenated_gold(self):
+        gold = ["Dani KingLaura TrottJoanna Rowsell"]
+        assert exact_match("Dani King, Laura Trott, Joanna Rowsell", gold) == 1.0
+        assert exact_match("Dani King, Laura Trott and Joanna Rowsell", gold) == 1.0
+        assert exact_match("Dani King, Laura Trott", gold) == 0.0
+        assert token_f1("Dani KingLaura TrottJoanna Rowsell", gold) == 1.0
+        assert 0.7 < token_f1("Dani King, Laura Trott", gold) < 1.0
+
+    def test_unicode_dashes_quotes_and_accents(self):
+        gold = ["Athletics at the 2008 Summer Olympics – Men's marathon"]
+        assert exact_match("Athletics at the 2008 Summer Olympics - Men’s marathon", gold) == 1.0
+        assert exact_match("Sebastian Crismanich", ["Sebastián Crismanich"]) == 1.0
+
+    def test_counts_in_any_form_but_only_the_right_number(self):
+        for answer in ("5", "five", "05", "5 events"):
+            assert exact_match(answer, ["5"]) == 1.0, answer
+        assert exact_match("5 or 6", ["5"]) == 0.0
+        assert exact_match("6", ["5"]) == 0.0
+
+    def test_names_containing_and_still_match(self):
+        assert exact_match("Trinidad and Tobago", ["Trinidad and Tobago"]) == 1.0
+        assert exact_match("Rosannagh MacLennan", ["Rosannagh MacLennan"]) == 1.0

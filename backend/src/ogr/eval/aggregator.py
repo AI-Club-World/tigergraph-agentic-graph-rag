@@ -36,10 +36,11 @@ _RAG = "rag"
 _GRAPHRAG = "graphrag"
 
 
-def _multiplier(numerator: int, denominator: int) -> float:
-    """Token ratio, rounded to 2dp. A zero denominator yields 0.0, not a crash."""
+def _multiplier(numerator: int, denominator: int) -> float | None:
+    """Token ratio, rounded to 2dp; None when it is undefined (a zero
+    denominator — the baseline spent nothing, e.g. it errored)."""
     if denominator <= 0:
-        return 0.0
+        return None
     return round(numerator / denominator, 2)
 
 
@@ -49,18 +50,19 @@ def _summary(
     rag_correct: float | None,
 ) -> str:
     """One plain sentence a judge can read without the table."""
-    multiplier = verdict.token_multiplier_vs_rag
+    ratio = verdict.token_multiplier_vs_rag
     if verdict.accuracy_delta_vs_rag == "n/a" or agentic_correct is None or rag_correct is None:
-        return (
-            f"No ground truth for this query, so the accuracy delta is N/A. "
-            f"Agentic cost {multiplier}x RAG tokens."
-        )
+        cost = "RAG spent no tokens: no cost ratio."
+        if ratio is not None:
+            cost = f"Agentic cost {ratio}x RAG tokens."
+        return f"No ground truth for this query, so the accuracy delta is N/A. {cost}"
+    at = f" at {ratio}x its tokens" if ratio is not None else " (RAG spent no tokens: no cost ratio)"
     delta = verdict.accuracy_delta_vs_rag
     if delta > 0:
-        return f"Agentic was correct where RAG was not, at {multiplier}x its tokens."
+        return f"Agentic was correct where RAG was not,{at}."
     if delta < 0:
-        return f"Agentic lost to RAG on this query and still cost {multiplier}x its tokens."
-    return f"No accuracy gain over RAG for {multiplier}x the tokens."
+        return f"Agentic lost to RAG on this query{at}."
+    return f"No accuracy gain over RAG{at}."
 
 
 def build_verdict(

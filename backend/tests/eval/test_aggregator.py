@@ -41,7 +41,7 @@ class TestTokenMultipliers:
 
     def test_zero_denominator_does_not_crash(self):
         records = _three(rag_tokens=0)
-        assert build_verdict(records, ["United States"]).token_multiplier_vs_rag == 0.0
+        assert build_verdict(records, ["United States"]).token_multiplier_vs_rag is None  # undefined, not 0
 
 
 class TestAccuracyDeltas:
@@ -116,7 +116,7 @@ class TestAggregateQuery:
         del records["graphrag"]
         record = aggregate_query("q-1", "q", records, ["United States"])
         assert set(record.pipelines) == {"rag", "agentic_graphrag"}
-        assert record.verdict.token_multiplier_vs_graphrag == 0.0
+        assert record.verdict.token_multiplier_vs_graphrag is None
         assert record.verdict.accuracy_delta_vs_rag == 1.0
 
     def test_round_trips_through_json(self):

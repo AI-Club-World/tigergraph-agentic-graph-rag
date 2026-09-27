@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from ogr.eval.scorer import score_answer
-from ogr.eval.store import BatchStore, _assert_no_secret
+from ogr.eval.store import BatchStore, _assert_no_secret, iter_lines
 
 __all__ = ["RUN_ID_RE", "import_run", "is_run_id", "list_runs", "read_run", "summarize_run", "view_record"]
 
@@ -52,27 +52,20 @@ def _is_run_file(path: Path) -> bool:
 
 
 def read_run(path: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-    """(run_config, records) from one run file."""
+    """(run_config, records) from one run file. When a question was run
+    again (a resume retrying an errored question), its last record wins."""
     run_config: dict[str, Any] = {}
-    records: list[dict[str, Any]] = []
-    with path.open(encoding="utf-8") as handle:
-        for i, raw in enumerate(handle):
-            line = raw.strip()
-            if not line:
-                continue
-            try:
-                data = json.loads(line)
-            except ValueError:
-                # A run still executing may have a half-written last line; it
-                # is picked up complete on the next read.
-                if not raw.endswith("\n"):
-                    break
-                raise
-            if i == 0 and "run_config" in data:
-                run_config = data["run_config"]
-            else:
-                records.append(data)
-    return run_config, records
+    by_question: dict[str, dict[str, Any]] = {}
+    unkeyed: list[dict[str, Any]] = []
+    for i, data in enumerate(iter_lines(path)):
+        if i == 0 and "run_config" in data:
+            run_config = data["run_config"]
+        elif data.get("question_id"):
+            by_question.pop(data["question_id"], None)  # keep file order of the latest
+            by_question[data["question_id"]] = data
+        else:
+            unkeyed.append(data)
+    return run_config, [*by_question.values(), *unkeyed]
 
 
 def _score(record: dict[str, Any]) -> dict[str, Any] | None:
@@ -116,7 +109,11 @@ def summarize_run(
     for name in names:
         runs = [v["record"]["pipelines"][name] for v in views if name in v["record"]["pipelines"]]
         scores = [v["scores"][name] for v in views if v["scores"] and name in v["scores"]]
-        tokens = [r["tokens"]["total"] for r in runs]
+        # Cost and latency are over answered questions only: an error record
+        # carries 0 tokens, and averaging it in would make the pipeline that
+        # fails most look cheapest. Errors are counted separately.
+        answered = [r for r in runs if r.get("status") != "error"]
+        tokens = [r["tokens"]["total"] for r in answered]
         mean_tokens = _mean(tokens)
         f1 = _mean([s["f1"] for s in scores])
         pipelines[name] = {
@@ -127,7 +124,10 @@ def summarize_run(
             "mean_tokens": mean_tokens,
             "median_tokens": statistics.median(tokens) if tokens else None,
             "total_tokens": sum(tokens),
-            "mean_latency_ms": _mean([r["latency_ms"] for r in runs]),
+            "mean_latency_ms": _mean([r["latency_ms"] for r in answered]),
+            "mean_input_tokens": _mean([r["tokens"].get("input", 0) for r in answered]),
+            "mean_output_tokens": _mean([r["tokens"].get("output", 0) for r in answered]),
+            "completeness": _mean([s.get("completeness", s["recall"]) for s in scores]),
             "errors": sum(1 for r in runs if r.get("status") == "error"),
             # Accuracy bought per 1k tokens — the cost axis of the thesis.
             "f1_per_1k_tokens": f1 / (mean_tokens / 1000) if f1 is not None and mean_tokens else None,

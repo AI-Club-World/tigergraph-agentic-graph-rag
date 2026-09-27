@@ -66,8 +66,9 @@ class Verdict(BaseModel):
     Accuracy deltas are the literal string "n/a" where no ground truth exists
     (FR-9: the field is displayed as N/A rather than omitted).
     """
-    token_multiplier_vs_rag: float = 0.0
-    token_multiplier_vs_graphrag: float = 0.0
+    # None when undefined (the baseline spent no tokens, e.g. it errored).
+    token_multiplier_vs_rag: float | None = None
+    token_multiplier_vs_graphrag: float | None = None
     accuracy_delta_vs_rag: float | Literal["n/a"] = "n/a"
     accuracy_delta_vs_graphrag: float | Literal["n/a"] = "n/a"
     summary_line: str = ""
@@ -127,7 +128,9 @@ class Question(BaseModel):
 SHARED_SYSTEM_PROMPT = """You are a precise question-answering assistant.
 Answer the user's question using strictly the provided context.
 Output your response as a valid JSON object with exactly two keys:
-  "answer": the shortest possible span answering the question (e.g. "5", "Men's marathon", "26").
+  "answer": the shortest possible span answering the question (e.g. "5", "26", a person's full name).
+    When the answer is an event or a document, give its full title exactly as written in the context.
+    For several people, list their full names separated by commas.
   "explanation": concise prose explaining the answer with citations referencing the source context.
 Do not output any markdown code fences or other text outside the JSON object.
 """

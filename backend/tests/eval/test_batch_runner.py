@@ -231,3 +231,64 @@ class TestRateLimitStopsTheRun:
             )
         assert len(calls) == 1
         assert read_written_qids(tmp_path / "run.jsonl") == set()
+
+
+class TestResumeRobustness:
+    QUESTIONS = [
+        {"qid": "pub-001", "question": "How many?", "answer": ["5"]},
+        {"qid": "pub-002", "question": "Who?", "answer": ["Bolt"]},
+    ]
+
+    def _run(self, tmp_path, pipelines):
+        questions_path = tmp_path / "q.jsonl"
+        _write_questions(questions_path, self.QUESTIONS)
+        out = tmp_path / "run.jsonl"
+        try:
+            run_batch_sync(questions_path, out, pipelines, run_id="r", run_config={})
+        except BatchIncompleteError:
+            pass
+        return out
+
+    def test_a_run_killed_mid_write_resumes(self, tmp_path):
+        out = self._run(tmp_path, _stub_pipelines())
+        with out.open("a", encoding="utf-8") as handle:
+            handle.write('{"question_id": "pub-003", "record": {"pipel')  # killed mid-line
+        assert read_written_qids(out) == {"pub-001", "pub-002"}
+        store_module.BatchStore(out, {})  # reopening for append cuts the partial line
+        assert out.read_text().endswith("\n") and "pub-003" not in out.read_text()
+
+    def test_an_errored_question_is_retried_and_its_new_record_wins(self, tmp_path):
+        from ogr.eval.history import read_run, summarize_run
+
+        failing = _stub_pipelines()
+
+        def boom(_q):
+            raise TimeoutError("provider timeout")
+
+        failing["agentic_graphrag"] = boom
+        out = self._run(tmp_path, failing)
+        assert read_written_qids(out) == set(), "errored questions are not done"
+        self._run(tmp_path, _stub_pipelines())
+        assert read_written_qids(out) == {"pub-001", "pub-002"}
+        _config, records = read_run(out)
+        assert len(records) == 2, "one record per question: the retry supersedes"
+        summary = summarize_run("r", {}, records)
+        assert summary["pipelines"]["agentic_graphrag"]["errors"] == 0
+
+    def test_error_records_are_left_out_of_cost_means(self, tmp_path):
+        from ogr.eval.history import read_run, summarize_run
+
+        pipelines = _stub_pipelines()
+        calls = {"n": 0}
+
+        def sometimes(q):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise TimeoutError("x")
+            return _record("agentic_graphrag", "5", total=400)
+
+        pipelines["agentic_graphrag"] = sometimes
+        out = self._run(tmp_path, pipelines)
+        _config, records = read_run(out)
+        agentic = summarize_run("r", {}, records)["pipelines"]["agentic_graphrag"]
+        assert agentic["errors"] == 1 and agentic["mean_tokens"] == 400  # not (0 + 400) / 2

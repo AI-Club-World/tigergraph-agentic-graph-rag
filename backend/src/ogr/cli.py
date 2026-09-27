@@ -31,7 +31,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print the agentic investigation trace step by step",
     )
 
-    subparsers.add_parser("verify", help="Check the LLM and TigerGraph endpoints are reachable")
+    verify_parser = subparsers.add_parser(
+        "verify", help="Check the LLM, embedding and TigerGraph endpoints are reachable"
+    )
+    verify_parser.add_argument(
+        "--pre-build",
+        action="store_true",
+        help="Before the first build: report missing GSQL queries without failing (build installs them)",
+    )
 
     coverage_parser = subparsers.add_parser(
         "coverage", help="Parse the corpus and write the GRAPH-02 ingest coverage report"
@@ -147,7 +154,7 @@ def main(argv=None) -> int:
     if args.command == "verify":
         from ogr.verify import run as run_verify
 
-        return run_verify()
+        return run_verify(pre_build=args.pre_build)
 
     if args.command == "coverage":
         from pathlib import Path
@@ -227,11 +234,13 @@ def main(argv=None) -> int:
         runners["graph"] = runners["graphrag"]
         runners["agentic"] = runners["agentic_graphrag"]
 
+        unknown = [p for p in requested_pipelines if p not in runners]
+        if unknown:
+            print(f"Unknown pipeline(s): {', '.join(unknown)}; choose from {', '.join(sorted(runners))}",
+                  file=sys.stderr)
+            return 2
         records = {}
         for p in requested_pipelines:
-            if p not in runners:
-                print(f"Pipeline '{p}' is not yet implemented in this milestone.", file=sys.stderr)
-                continue
             name, run = runners[p]
             # Same fault isolation as dispatcher.py / api/main.py: one
             # pipeline's exception must not discard the others' output.

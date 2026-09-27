@@ -23,8 +23,9 @@ check:
 	cd backend && ruff check src tests && $(PYTHON) -m pytest -q
 	cd frontend && npm run lint && npm run build && npm test
 
+# Before the first build the GSQL queries do not exist yet: reported, not fatal.
 verify:
-	$(OGR) verify
+	$(OGR) verify --pre-build
 
 build:
 	$(OGR) build

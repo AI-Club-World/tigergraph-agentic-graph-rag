@@ -40,7 +40,7 @@ from ogr.common.embeddings import embedding_backend
 from ogr.common.llm import LLMRateLimitError
 from ogr.eval.aggregator import aggregate_query
 from ogr.eval.dispatcher import dispatch
-from ogr.eval.store import BatchStore, read_written_qids
+from ogr.eval.store import BatchStore, iter_lines, read_written_qids
 
 logger = logging.getLogger(__name__)
 
@@ -128,8 +128,8 @@ def _written_tokens(path: str | Path) -> int:
     file_path = Path(path)
     if not file_path.exists():
         return 0
-    with file_path.open(encoding="utf-8") as handle:
-        return sum(_record_tokens(json.loads(line)) for line in handle if line.strip())
+    # Every record counts, superseded ones too: those tokens were spent.
+    return sum(_record_tokens(data) for data in iter_lines(file_path))
 
 
 def load_questions(path: str | Path) -> list[Question]:

@@ -20,7 +20,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-__all__ = ["SecretLeakError", "BatchStore", "read_written_qids"]
+__all__ = ["SecretLeakError", "BatchStore", "iter_lines", "read_written_qids", "repair_tail"]
 
 # Two checks. (1) Known credential shapes: OpenAI/Anthropic (sk-), Groq,
 # Google, Hugging Face, GitHub, and JWTs (TigerGraph Savanna TG_JWT_TOKEN).
@@ -69,6 +69,10 @@ class BatchStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         _assert_no_secret(run_config)
         self.run_config = run_config
+        # A run killed mid-write leaves a partial last line; appending after
+        # it would bury a corrupt line mid-file, so it is cut first (that
+        # question was never recorded and runs again).
+        repair_tail(self.path)
         if not self.path.exists():
             with self.path.open("w", encoding="utf-8") as handle:
                 handle.write(json.dumps({"run_config": run_config}) + "\n")
@@ -79,23 +83,60 @@ class BatchStore:
             handle.write(json.dumps(record) + "\n")
 
 
-def read_written_qids(path: str | Path) -> set[str]:
-    """`question_id`s already present in an output file, for resume-by-skip.
+def repair_tail(path: str | Path) -> bool:
+    """Truncate a last line that was never finished (no trailing newline and
+    not valid JSON). Returns whether anything was cut."""
+    file_path = Path(path)
+    if not file_path.exists() or file_path.stat().st_size == 0:
+        return False
+    data = file_path.read_bytes()
+    if data.endswith(b"\n"):
+        return False
+    cut = data.rfind(b"\n") + 1
+    try:
+        json.loads(data[cut:])
+        return False  # complete, just unterminated
+    except ValueError:
+        with file_path.open("r+b") as handle:
+            handle.truncate(cut)
+        return True
 
-    Missing file or a header-only file both yield an empty set rather than an
-    error, so a fresh run and a not-yet-started resume behave identically.
+
+def iter_lines(path: str | Path):
+    """Parsed JSON lines of a run file; an unfinished last line is skipped
+    (a run still writing, or one killed mid-write)."""
+    with Path(path).open(encoding="utf-8") as handle:
+        for raw in handle:
+            line = raw.strip()
+            if not line:
+                continue
+            try:
+                yield json.loads(line)
+            except ValueError:
+                if raw.endswith("\n"):
+                    raise
+                return
+
+
+def _has_error(record: dict[str, Any]) -> bool:
+    pipelines = (record.get("record") or {}).get("pipelines") or {}
+    return any((p or {}).get("status") == "error" for p in pipelines.values())
+
+
+def read_written_qids(path: str | Path) -> set[str]:
+    """`question_id`s already recorded *successfully*, for resume-by-skip.
+
+    A question whose latest record has a pipeline in error is not counted, so
+    a resume retries it (its new record supersedes the old one — readers keep
+    the last record per question). Missing or header-only files yield an
+    empty set, so a fresh run and a not-yet-started resume behave identically.
     """
     file_path = Path(path)
     if not file_path.exists():
         return set()
-    written: set[str] = set()
-    with file_path.open(encoding="utf-8") as handle:
-        for line in handle:
-            line = line.strip()
-            if not line:
-                continue
-            data = json.loads(line)
-            question_id = data.get("question_id")
-            if question_id:
-                written.add(question_id)
-    return written
+    latest: dict[str, bool] = {}
+    for data in iter_lines(file_path):
+        question_id = data.get("question_id")
+        if question_id:
+            latest[question_id] = _has_error(data)
+    return {qid for qid, errored in latest.items() if not errored}

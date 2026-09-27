@@ -25,7 +25,7 @@ class TestNormalization:
 
     def test_drops_articles(self):
         assert normalize_answer("The United States") == "united states"
-        assert normalize_answer("A Coruña") == "coruña"
+        assert normalize_answer("A Coruña") == "coruna"  # accents folded too
 
     def test_collapses_whitespace(self):
         assert normalize_answer("  United   States \n") == "united states"

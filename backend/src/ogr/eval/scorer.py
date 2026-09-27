@@ -25,7 +25,7 @@ from collections.abc import Iterable, Sequence
 from typing import Any
 
 from ogr.common.contracts import PipelineScores
-from ogr.common.names import normalized_name_set, tokenize
+from ogr.common.names import normalize_answer, normalized_name_set, tokenize
 
 __all__ = [
     "exact_match",
@@ -50,7 +50,23 @@ def exact_match(prediction: str, gold_variants: Sequence[str]) -> float:
     predicted = normalized_name_set(prediction)
     if not predicted:
         return 0.0
-    return 1.0 if any(predicted == normalized_name_set(gold) for gold in gold_variants) else 0.0
+    for gold in gold_variants:
+        gold_set = normalized_name_set(gold)
+        if predicted == gold_set:
+            return 1.0
+        if _is_count(gold_set) and _numbers(prediction) == gold_set:
+            # A count answered with its unit ("5 events", "five") — the one
+            # number stated is the answer; two different numbers are not.
+            return 1.0
+    return 0.0
+
+
+def _is_count(names: frozenset[str]) -> bool:
+    return len(names) == 1 and next(iter(names)).isdigit()
+
+
+def _numbers(text: str) -> frozenset[str]:
+    return frozenset(token for token in normalize_answer(text).split() if token.isdigit())
 
 
 def _f1(predicted_tokens: list[str], gold_tokens: list[str]) -> float:
