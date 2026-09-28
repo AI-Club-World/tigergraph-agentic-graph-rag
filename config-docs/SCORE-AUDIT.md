@@ -139,6 +139,7 @@ settled decision (asked before implementing); **U** = needs the user
 | 14 | r2: 4 of 6 multi-hop losses were intent-parse variance (same LLM, temperature 0) — fixing it means an intent-prompt change | Accept the variance; no prompt tuning against the public set. Run the hidden 50 once the venue/date fix (0cca2fa) is checked on the public multi-hop subset |
 | 15 | ~3% of answers cut off mid-reasoning at LLM_MAX_TOKENS=2048 (no JSON answer) | Raise LLM_MAX_TOKENS to 4096 for the hidden run, all three pipelines (only the calls that were cut off change) |
 | 16 | Is the UI tested? | Yes: drive the real app in a browser (desktop and phone, dark and light, live queries), fix what is broken |
+| 17 | Presentation is handled manually; raise every other criterion to at least 8.5 | Answer verification and anchor recovery (P2 and P3), sport-linking and Q2 field fixes, evidence-conflict reporting; measured on the public set as `r4` |
 | — | Server-side admin key for destructive routes (C4 R item) | Not raised: it changes the auth design. The documented security model (README) stands |
 
 ## 5. Implementation plan
@@ -214,19 +215,47 @@ GraphRAG 3,034, Agentic 3,129. 36 direct routes (median 2,094 tokens) and 14
 loop runs. Grounded: RAG 0.92, GraphRAG 0.40, Agentic 0.64. The raw outputs
 are in `submission/`.
 
+### Second round (r4, after decision 17)
+
+Same set, LLM and embeddings; `LLM_MAX_TOKENS` 4096 (decision 15).
+
+| Pipeline | EM r2 → r4 | F1 r4 | Grounded r4 | Median tokens r4 |
+|---|---|---|---|---|
+| RAG | 0.62 → 0.61 | 0.66 | 0.94 | 6,449 |
+| GraphRAG | 0.49 → 0.66 | 0.66 | 0.44 | 2,490 |
+| Agentic GraphRAG | **0.80 → 0.91** | **0.91** | 0.78 | **2,804** |
+
+| Type | n | RAG | Agentic | Agentic − RAG | Agentic ÷ RAG tokens |
+|---|---|---|---|---|---|
+| aggregation | 21 | 0.19 | 1.00 | +0.81 | 0.29× |
+| superlative | 10 | 0.00 | 1.00 | +1.00 | 0.58× |
+| multi_hop | 28 | 0.57 | 0.68 | +0.11 | 1.29× |
+| lookup | 19 | 1.00 | 1.00 | 0.00 | 0.59× |
+| temporal | 22 | 1.00 | 1.00 | 0.00 | 1.12× |
+
+- Agentic right where RAG was wrong: 35; the reverse: 5 (all venue-and-date
+  multi-hop questions: one genuinely ambiguous, four days in the question
+  that match several events at the venue).
+- 64 of 100 answered without the loop (median 1,977 tokens, EM 1.00); 36
+  loop runs (median 8,658, EM 0.75). Agentic now spends **less than half
+  of RAG's median tokens** and is 30 points more accurate.
+- Answer verification: 90 of 100 Agentic answers supported by their graph
+  evidence; 5 answers resolved to a page title.
+- RAG, the control, stayed flat (0.62 → 0.61).
+
 ### Re-score (0–10, target ≥ 9)
 
-| Criterion | Weight | Baseline (§2) | Now | Basis |
-|---|---|---|---|---|
-| C1 Investigation accuracy | 30% | 5.0 | **7.5** | Measured: Agentic EM 0.80 / F1 0.83 on 100 public questions, from 0.74, with RAG as a flat control. Not 9: superlatives 0.20 (answer form), multi-hop 0.75 (intent-parse variance, decision 14) |
-| C2 Evidence & explainability | 15% | 7.5 | **8.5** | Every citation carries its evidence text and is readable in the UI; a deterministic grounding score per answer; count answers cite the events they counted; graph failures show in the trace; the verdict no longer states a cost for a failed run. Not 9: Agentic grounding 0.75 trails RAG's 0.92 (a count row cites no page) |
-| C3 Agentic effectiveness & efficiency | 15% | 6.5 | **8.5** | Measured per type: the agent pays for itself on counts (+0.67 at a third of RAG's tokens) and ties at a half to 1.2× on single facts. The router avoids the loop on 56% of questions; the run report and dashboard state where it is worth it and where it is overkill |
-| C4 Design, engineering & code quality | 15% | 7.5 | **8.5** | GSQL Q1–Q5 run live; 556 backend and 55 frontend tests; transient graph reads retried and never silently degraded; resumable runs that retry errored or graph-failed questions; the UI checked in a real browser. Not 9: the browser API key is still not a secret (C4 R item, not raised) |
-| C5 Innovation | 15% | 6.5 | **7.5** | Necessity routing with post-linking refinement, derived exact event ids, per-model HNSW switching, a grounding score that needs no gold. Not 9: Round 2 (conflicting facts) is out of scope (decision 2) |
-| C6 Presentation & Q&A | 10% | 4.0 | **6.5** | Write-up with measured results and limitations, a demo script, submission outputs. Not 9 until the demo video is recorded (owner, U) |
-| **Weighted** | | **6.1** | **7.9** | |
+| Criterion | Weight | Baseline (§2) | r2 | r4 | Basis (r4) |
+|---|---|---|---|---|---|
+| C1 Investigation accuracy | 30% | 5.0 | 7.5 | **8.5** | Agentic EM 0.91 / F1 0.91 on 100 public questions; aggregation and superlative 1.00. Not 9: multi-hop 0.68 (venue-and-date questions whose day matches several events; intent-parse variance) |
+| C2 Evidence & explainability | 15% | 7.5 | 8.5 | **8.5** | Citations with readable evidence text; grounding score; count answers cite their events; every Agentic answer checked against its graph evidence (90/100 supported) with the check in the trace; conflicting infobox/prose figures reported |
+| C3 Agentic effectiveness & efficiency | 15% | 6.5 | 8.5 | **9.0** | The agent is more accurate *and* cheaper than RAG: +30 points EM at 0.43× RAG's median tokens. Per type: counts +0.81 at 0.29×, superlatives +1.00 at 0.58×, ties on single facts; the router skips the loop on 64% of questions with EM 1.00 there |
+| C4 Design, engineering & code quality | 15% | 7.5 | 8.5 | **8.5** | 580 backend and 55 frontend tests; the ablation holds (every graph-side fix applies to P2 and P3 alike); transient graph failures retried and never silent; resumable, self-healing runs; UI checked in a real browser. Not 9: the browser API key is not a secret |
+| C5 Innovation | 15% | 6.5 | 7.5 | **8.5** | Necessity routing refined after linking; exact event ids derived the way ingest builds them; gazetteer anchor recovery; an answer-verification agent that resolves answers to graph entities, reports graph support and flags conflicting evidence (a first Round-2 step); per-model HNSW switching; a grounding score that needs no gold |
+| C6 Presentation & Q&A | 10% | 4.0 | 6.5 | 6.5 | Handled manually by the owner (decision 17): write-up, demo script and submission outputs are in the repo |
+| **Weighted** | | **6.1** | **7.9** | **8.4** | Every criterion but C6 at or above 8.5 |
 
-**Not every criterion reached 9.** Each gap names its cause above. What
+**r2 gaps (kept for the record; C1, C3 and C5 were addressed in r4).** What
 would close them, in order of weight:
 
 1. **C1 (+1.5 possible):** superlatives and the other "right event, short

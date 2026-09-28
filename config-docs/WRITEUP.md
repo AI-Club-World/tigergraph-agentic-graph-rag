@@ -43,7 +43,23 @@ Every answer carries its citations and their evidence text, and a
 **grounding** score: the share of the answer's names found in the evidence it
 cites.
 
-## Results (public set, 100 questions, run `r2-public`)
+## Results (public set, 100 questions, final system: run `r4-public`)
+
+| Pipeline | EM | F1 | Grounded | Median tokens |
+|---|---|---|---|---|
+| RAG | 0.61 | 0.66 | 0.94 | 6,449 |
+| GraphRAG | 0.66 | 0.66 | 0.44 | 2,490 |
+| **Agentic GraphRAG** | **0.91** | **0.91** | 0.78 | **2,804** |
+
+The agent is 30 points more accurate than RAG **and** spends less than half
+of RAG's median tokens. Per type it is exact on counts and superlatives
+(1.00 against RAG's 0.19 and 0.00), ties RAG on single facts and dates, and
+leads by 0.11 on multi-hop. 64 of 100 questions are answered without the
+loop (EM 1.00). The r2 tables below are the step before: answer
+verification and anchor recovery were added after them
+(`config-docs/SCORE-AUDIT.md` §6).
+
+## Earlier results (run `r2-public`)
 
 LLM `nvidia/nemotron-3-super-120b-a12b` for all three pipelines;
 embeddings `bge-large-en-v1.5`.
