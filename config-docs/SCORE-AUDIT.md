@@ -136,6 +136,7 @@ settled decision (asked before implementing); **U** = needs the user
 | 12 | Hidden set is run once; fixes were still landing | Hold the hidden run until the fixes are in; rerun the public set (`r2`) to measure them first |
 | 13 | r1: a COUNT of one named event's attribute ("how many nations competed in <event>") was answered by counting events | Routing rule `refine_route`: such a COUNT becomes a Q1 lookup, in P2 and P3 alike |
 | — | Other accuracy fixes (chunking, k, prompts) | None proposed: the r1 failures traced to retrieval and routing, not to those |
+| 14 | r2: 4 of 6 multi-hop losses were intent-parse variance (same LLM, temperature 0) — fixing it means an intent-prompt change | Accept the variance; no prompt tuning against the public set. Run the hidden 50 once the venue/date fix (0cca2fa) is checked on the public multi-hop subset |
 | — | Server-side admin key for destructive routes (C4 R item) | Not raised: it changes the auth design. The documented security model (README) stands |
 
 ## 5. Implementation plan
