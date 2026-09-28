@@ -189,6 +189,14 @@ def build_report(path: Path) -> str:
         out("\nTools called: " + ", ".join(f"`{t}` ×{n}" for t, n in tools.most_common()) + "\n")
         stops = Counter(r.get("stop_reason") or "none" for r in agentic)
         changed = sum(1 for r in agentic if r.get("strategy_changed"))
+        verify = [s["notes"] for s in steps if s["agent_type"] == "answer_verification"]
+        if verify:
+            titled = sum("resolved to its page title" in n for n in verify)
+            supported = sum("answer found in the graph evidence" in n or "resolved to" in n for n in verify)
+            conflicts = sum("conflicting evidence" in n for n in verify)
+            out(f"Answer verification: {supported} of {len(verify)} answers supported by the graph "
+                f"evidence, {titled} resolved to a page title, {conflicts} with conflicting "
+                "evidence flagged  ")
         out("Stop reasons: " + ", ".join(f"`{k}` ×{n}" for k, n in stops.most_common()))
         out(f"  \nStrategy changed on **{changed}** of {len(agentic)} questions; "
             f"median {_int(_median([len(r.get('trace') or []) for r in agentic]))} trace steps.\n")

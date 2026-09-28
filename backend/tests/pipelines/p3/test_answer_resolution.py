@@ -54,3 +54,56 @@ def test_other_answers_are_checked_not_changed():
 def test_prose_only_evidence_has_nothing_to_check_against():
     r = resolve_answer("Men's marathon", [{"text": "Men's marathon ...", "source": "similarity_search"}])
     assert r.supported is None and not r.changed
+
+
+class TestEvidenceConflicts:
+    """Round-2 style: the page's infobox and its prose disagree on a figure."""
+
+    ROW = {"event_id": "e1", "doc_id": "Q9", "title": "Judo at the 2016 Summer Olympics – Women's 57 kg",
+           "nations": 23, "competitors": 25, "source": "graph_traversal"}
+
+    def test_a_clean_disagreement_is_reported_with_both_values(self):
+        from ogr.pipelines.p3_agentic.agents.answer_resolution import find_conflicts
+
+        prose = {"doc_id": "Q9", "chunk_id": "Q9_c0", "text": "The event drew 24 nations to Rio.",
+                 "source": "document_retrieval"}
+        assert find_conflicts([self.ROW, prose]) == [
+            "nations on Judo at the 2016 Summer Olympics – Women's 57 kg (Q9): infobox 23, page text 24"
+        ]
+        r = resolve_answer("23", [self.ROW, prose])
+        assert r.answer == "23" and r.conflicts and not r.changed  # reported, never changes the answer
+
+    def test_agreement_other_pages_and_several_figures_are_not_conflicts(self):
+        from ogr.pipelines.p3_agentic.agents.answer_resolution import find_conflicts
+
+        same = {"doc_id": "Q9", "text": "23 nations and 25 competitors took part."}
+        other_page = {"doc_id": "Q10", "text": "40 nations competed."}
+        several = {"doc_id": "Q9", "text": "12 athletes in the final, 25 athletes in the heats"}
+        assert find_conflicts([self.ROW, same]) == []
+        assert find_conflicts([self.ROW, other_page]) == []
+        assert find_conflicts([self.ROW, several]) == []
+
+    def test_p3_puts_the_conflict_on_the_verification_step(self):
+        from ogr.pipelines.p3_agentic.orchestrator import run_p3_agentic
+        from tests.graph.test_client_errors import LOOKUP, _model
+        from tests.pipelines.test_p2 import _linker
+        from ogr.common.config import RunConfig
+        from ogr.graph.client import TigerGraphClient
+
+        class Client(TigerGraphClient):
+            def __init__(self):
+                super().__init__(config=RunConfig(), mock_chunks=[])
+
+            def _run_query(self, name, params):
+                return [dict(TestEvidenceConflicts.ROW)]
+
+            def _expand_has_chunk(self, doc_ids):
+                return [{"chunk_id": "Q9_c0", "doc_id": "Q9", "text": "24 nations took part.", "seq": 0}]
+
+        record = run_p3_agentic("How many nations competed?", llm_model=_model(LOOKUP, "23"),
+                                tg_client=Client(), entity_linker=_linker(),
+                                config=RunConfig(llm_supports_tool_calling="false"))
+        verify = [s for s in record.trace if s.agent_type == "answer_verification"]
+        assert verify, "verification step recorded"
+        # The direct lookup shows no prose, so no conflict is claimed without evidence for one.
+        assert "conflicting evidence" not in verify[0].notes

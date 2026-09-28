@@ -591,7 +591,10 @@ def build_p3_graph(
                     "answer_resolver",
                     AgentResult(
                         latency_ms=(time.perf_counter() - t_verify) * 1000.0,
-                        notes=resolution.note,
+                        notes=resolution.note + (
+                            "; conflicting evidence: " + "; ".join(resolution.conflicts)
+                            if resolution.conflicts else ""
+                        ),
                     ),
                 )
 

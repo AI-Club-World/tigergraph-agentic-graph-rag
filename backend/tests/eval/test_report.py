@@ -108,3 +108,17 @@ def test_token_ratio_is_the_mean_of_per_question_ratios_like_the_dashboard(tmp_p
     lines = [json.dumps({"run_config": {}})] + [json.dumps(r) for r in records]
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     assert "| lookup | 3 | 1.00 | 1.00 | 1.00 | 0.00 | 3.00× | Overkill |" in build_report(path)
+
+
+def test_the_report_summarises_answer_verification(tmp_path):
+    path = _run(tmp_path)
+    lines = path.read_text().splitlines()
+    record = json.loads(lines[2])
+    record["record"]["pipelines"]["agentic_graphrag"]["trace"].append({
+        "agent_type": "answer_verification", "tool_called": "answer_resolver", "tokens": {"total": 0},
+        "latency_ms": 1, "notes": "answer found in the graph evidence; conflicting evidence: nations on X (Q1): infobox 23, page text 24",
+    })
+    lines[2] = json.dumps(record)
+    path.write_text("\n".join(lines) + "\n")
+    assert ("Answer verification: 1 of 1 answers supported by the graph evidence, 0 resolved to a page title, "
+            "1 with conflicting evidence flagged") in build_report(path)
