@@ -53,6 +53,12 @@ def run_aggregation(
 
 # The fields q2_count_where.gsql can filter on.
 Q2_FIELDS = frozenset({"competitors", "nations", "date_year"})
+# What the intent parse calls those fields in practice ("participants > 36").
+Q2_FIELD_SYNONYMS = {
+    "participants": "competitors", "athletes": "competitors", "entrants": "competitors",
+    "competitor": "competitors", "countries": "nations", "nation": "nations", "nocs": "nations",
+    "year": "date_year",
+}
 
 
 def _numeric_constraint_value(value: Any) -> float:
@@ -89,8 +95,9 @@ def _run_count_where(
             value = float(c.value)
         except (TypeError, ValueError):
             value = None
-        if c.field in Q2_FIELDS and value is not None:
-            usable.append({**c.model_dump(), "value": value})
+        name = Q2_FIELD_SYNONYMS.get(c.field.lower(), c.field.lower())
+        if name in Q2_FIELDS and value is not None:
+            usable.append({**c.model_dump(), "field": name, "value": value})
         else:
             dropped.append(f"{c.field} {c.op} {c.value!r}")
     constraints_json = json.dumps(usable)
@@ -99,7 +106,9 @@ def _run_count_where(
         "anchor_games": anchors.games or "",
         "anchor_venue": anchors.venue or "",
         "constraints_json": constraints_json,
-        "field": intent.target_field or "competitors",
+        "field": Q2_FIELD_SYNONYMS.get(
+            (intent.target_field or "").lower(), intent.target_field or "competitors"
+        ),
     }
     try:
         raw = client._run_query("q2_count_where", params)

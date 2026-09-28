@@ -225,12 +225,29 @@ class EntityLinker:
                 result.recovered.append(f"date={nd.year}-{nd.month:02d}-{nd.day_start:02d}")
 
     def _longest_match(self, query: str, vocab: list[str]) -> str | None:
-        """Longest-match lookup (vocab pre-sorted by length descending)."""
-        q_lower = query.lower().strip()
+        """Vocabulary lookup (vocab pre-sorted by length descending).
+
+        An exact (case-insensitive) match wins; then the longest entry the
+        query contains ("Athletics" in "athletics events"); then an entry
+        that contains the query, only when exactly one does. Checking
+        "contains the query" first linked "speed skating" to "Short-track
+        speed skating" and "swimming" to "Synchronized swimming" (r2).
+        """
+        def norm(text: str) -> str:
+            # "Short-track" / "short track", "2016-Summer" / "2016 Summer".
+            return " ".join(re.sub(r"[-–—_]", " ", text.lower()).split())
+
+        q_norm = norm(query)
+        if not q_norm:
+            return None
         for entry in vocab:
-            if entry.lower() in q_lower or q_lower in entry.lower():
+            if norm(entry) == q_norm:
                 return entry
-        return None
+        for entry in vocab:
+            if norm(entry) in q_norm:
+                return entry
+        wider = [entry for entry in vocab if q_norm in norm(entry)]
+        return wider[0] if len(wider) == 1 else None
 
     def _resolve_games(self, query: str) -> str | None:
         """Resolve games string — handles year-only inputs like '2016' → '2016-Summer'."""

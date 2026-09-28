@@ -6,6 +6,8 @@ Verification Plan Group 3:
 
 from __future__ import annotations
 
+import json
+
 import pytest
 from unittest.mock import MagicMock, patch
 
@@ -214,3 +216,20 @@ class TestRowsCarryThePageTitle:
             "title": "Sailing at the 2000 Summer Olympics – Soling", "value": 48,
         }])[0]
         assert row["title"] == "Sailing at the 2000 Summer Olympics – Soling"
+
+
+def test_q2_maps_the_parsers_field_names_to_its_own():
+    """r2 pub-070: "participants > 36" was dropped as unsupported."""
+    from ogr.pipelines.p3_agentic.agents.aggregation import run_aggregation
+
+    client = _make_client(mock_query_results=[{"count_value": 3, "excluded_count": 0}])
+    intent = IntentSchema(
+        operation="COUNT", anchor=Anchor(sport="Speed skating", games="2010-Winter"),
+        target_field="participants",
+        constraints=[AnchorConstraint(field="participants", op=">", value=36)],
+    )
+    result = run_aggregation(client, intent, _make_anchors(sport="Speed skating", games="2010-Winter"))
+    params = client._run_query.call_args.args[1]
+    assert json.loads(params["constraints_json"]) == [{"field": "competitors", "op": ">", "value": 36.0}]
+    assert params["field"] == "competitors"
+    assert "ignored" not in result.notes

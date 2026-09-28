@@ -41,3 +41,22 @@ def test_parsed_anchors_are_never_overridden_or_unresolved_ones_replaced():
 def test_nothing_is_recovered_without_a_question_or_a_vocabulary_match():
     assert LINKER.resolve(IntentSchema(operation="TRAVERSE")).recovered == []
     assert LINKER.resolve(IntentSchema(operation="TRAVERSE"), "Who won the relay?").recovered == []
+
+
+class TestSportLinking:
+    """r2: "speed skating" linked to Short-track, "swimming" to Synchronized swimming."""
+
+    LINKER = EntityLinker(sports_vocab=["Short-track speed skating", "Speed skating", "Synchronized swimming", "Swimming"])
+
+    def test_an_exact_name_beats_a_longer_one_containing_it(self):
+        assert self.LINKER._longest_match("speed skating", self.LINKER.sports_vocab) == "Speed skating"
+        assert self.LINKER._longest_match("Swimming", self.LINKER.sports_vocab) == "Swimming"
+
+    def test_hyphens_and_spaces_are_the_same_name(self):
+        assert self.LINKER._longest_match("short track speed skating", self.LINKER.sports_vocab) == (
+            "Short-track speed skating"
+        )
+
+    def test_a_partial_name_links_only_when_unambiguous(self):
+        assert self.LINKER._longest_match("synchronized", self.LINKER.sports_vocab) == "Synchronized swimming"
+        assert self.LINKER._longest_match("skating", self.LINKER.sports_vocab) is None
