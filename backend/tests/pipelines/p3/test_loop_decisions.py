@@ -87,7 +87,8 @@ def test_an_empty_lookup_escalates_into_the_loop():
 def test_the_trace_names_the_orchestrator_and_the_entity_linker():
     record = _run(_model(LOOKUP), _Graph([{"event_id": "E1", "gold": "Usain Bolt", "doc_id": "Q1"}]))
     kinds = [s.agent_type for s in record.trace]
-    assert kinds[:2] == ["orchestrator", "entity_linking"] and kinds[-1] == "answer_generation"
+    assert kinds[:2] == ["orchestrator", "entity_linking"]
+    assert kinds[-2:] == ["answer_generation", "answer_verification"]
 
 
 def test_a_failed_run_keeps_the_tokens_it_spent():

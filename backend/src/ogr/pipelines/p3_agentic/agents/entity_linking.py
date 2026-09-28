@@ -68,6 +68,9 @@ class ResolvedAnchors:
     date_month: int | None = None
     date_day_start: int | None = None
     unresolved_fields: list[str] = field(default_factory=list)
+    # Anchors the intent parse left out but the question states, linked from
+    # the question text against the graph's own vocabularies ("venue=...").
+    recovered: list[str] = field(default_factory=list)
     disambiguation_candidates: dict[str, list[str]] = field(default_factory=dict)
 
     @property
@@ -115,8 +118,11 @@ class EntityLinker:
             venues_vocab or [], key=len, reverse=True
         )
 
-    def resolve(self, intent: IntentSchema) -> ResolvedAnchors:
-        """Resolve intent anchors to graph entity identifiers."""
+    def resolve(self, intent: IntentSchema, question: str | None = None) -> ResolvedAnchors:
+        """Resolve intent anchors to graph entity identifiers.
+
+        With `question`, anchors the parse omitted are recovered from the
+        question text (`_recover_from_question`)."""
         result = ResolvedAnchors(
             title=intent.anchor.title,
             event_id=intent.anchor.event_id,
@@ -166,7 +172,57 @@ class EntityLinker:
                 if nd.day_start:
                     result.date_day_start = nd.day_start
 
+        if question:
+            self._recover_from_question(result, question)
         return result
+
+    def _recover_from_question(self, result: ResolvedAnchors, question: str) -> None:
+        """Fill anchors the intent parse left out but the question states.
+
+        The same LLM at temperature 0 sometimes parses "the event held at
+        Carioca Arena 3 on 6 August 2016" with no anchor at all (SCORE-AUDIT,
+        decision 14), and the agent then searches text instead of the graph.
+        This is gazetteer linking, not a question template: a venue, sport or
+        Games is recovered only when one of the graph's own vocabulary
+        entries appears verbatim (whole words, case-insensitive) in the
+        question; a date only when the question states a full day. A field
+        the parse did give is never overridden, and one the parse gave but
+        could not resolve is left unresolved.
+        """
+        text = question.lower()
+
+        def verbatim(entry: str) -> bool:
+            return re.search(rf"(?<!\w){re.escape(entry.lower())}(?!\w)", text) is not None
+
+        if not result.venue and "venue" not in result.unresolved_fields:
+            # Longest first (vocab is sorted by length), so "Riocentro – Pavilion 6"
+            # wins over "Riocentro"; very short names are too ambiguous to trust.
+            venue = next((v for v in self.venues_vocab if len(v) >= 6 and verbatim(v)), None)
+            if venue:
+                result.venue = venue
+                result.recovered.append(f"venue={venue}")
+        if not result.sport and "sport" not in result.unresolved_fields:
+            sport = next((sp for sp in self.sports_vocab if verbatim(sp)), None)
+            if sport:
+                result.sport = sport
+                result.recovered.append(f"sport={sport}")
+        if not result.games and "games" not in result.unresolved_fields:
+            games = re.search(r"\b(\d{4})\s+(summer|winter)\b", text)
+            candidate = f"{games.group(1)}-{games.group(2).capitalize()}" if games else None
+            if candidate and candidate in self.games_vocab:
+                result.games = candidate
+                result.recovered.append(f"games={candidate}")
+        if not (result.date_month or result.date_day_start):
+            day = re.search(
+                r"\b(\d{1,2}(?:\s*[–-]\s*\d{1,2})?\s+[a-z]+\s+\d{4}"
+                r"|[a-z]+\s+\d{1,2}(?:\s*[–-]\s*\d{1,2})?,?\s+\d{4})\b",
+                text,
+            )
+            nd = normalize_date(day.group(1)) if day else None
+            if nd and nd.month and nd.day_start:
+                result.date_year = result.date_year or nd.year
+                result.date_month, result.date_day_start = nd.month, nd.day_start
+                result.recovered.append(f"date={nd.year}-{nd.month:02d}-{nd.day_start:02d}")
 
     def _longest_match(self, query: str, vocab: list[str]) -> str | None:
         """Longest-match lookup (vocab pre-sorted by length descending)."""

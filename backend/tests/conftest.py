@@ -28,6 +28,17 @@ def _isolated_out_dir(monkeypatch, tmp_path):
     monkeypatch.setattr(api_main, "OUT_DIR", tmp_path / "out")
 
 
+@pytest.fixture(autouse=True)
+def _no_local_reranker(monkeypatch):
+    """The local cross-encoder fallback would load bge-reranker-base weights
+    (seconds per test, and GBs of memory across the suite). Reranking then
+    keeps retrieval order; tests of the fallback install a stand-in."""
+    from ogr.common import rerank
+
+    monkeypatch.setattr(rerank, "_local_model", None)
+    monkeypatch.setattr(rerank, "_local_failed", True)
+
+
 @pytest.fixture
 def fake_embedder(monkeypatch):
     """A stand-in local model for every catalog model: deterministic vectors

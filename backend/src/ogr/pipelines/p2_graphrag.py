@@ -46,6 +46,7 @@ from ogr.common.llm import (
 from ogr.graph.client import TigerGraphClient, drain_graph_errors, graph_error_detail
 from ogr.pipelines.p3_agentic.agents.agent_result import AgentResult
 from ogr.pipelines.p3_agentic.agents.aggregation import run_aggregation
+from ogr.pipelines.p3_agentic.agents.answer_resolution import resolve_answer
 from ogr.pipelines.p3_agentic.agents.entity_linking import EntityLinker, ResolvedAnchors, lookup_named_event
 from ogr.pipelines.p3_agentic.agents.graph_traversal import run_graph_traversal
 from ogr.pipelines.p3_agentic.intent import IntentParser, IntentSchema
@@ -145,7 +146,7 @@ def run_p2_graphrag(
     )
     intent = parser.parse(query)
     parse_tokens = parser.last_tokens
-    anchors = entity_linker.resolve(intent)
+    anchors = entity_linker.resolve(intent, query)
 
     # Step 2 — exactly ONE query. No evidence check, no fallback, no loop.
     selected = select_single_query(intent, anchors)
@@ -194,6 +195,10 @@ def run_p2_graphrag(
         gen_tokens = TokenUsage()
         token_source = "provider"
         status, error_detail = "error", str(e)
+
+    # Same answer resolution as P3 (the loop stays the only difference).
+    if status == "done":
+        answer = resolve_answer(answer, evidence).answer
 
     citations = _citations_from(evidence)
     tokens = TokenUsage(

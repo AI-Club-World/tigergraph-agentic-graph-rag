@@ -120,7 +120,11 @@ flowchart TD
 | Trace recorder (`trace.py`) | One emitter for the live SSE stream (`astream_p3_agentic`, built on `astream_events`) and the record's `trace` array. Σ `TraceStep.tokens` is reconciled against the record total |
 | Generation (`node_generate`) | Structured rows first, reranked prose after, truncated to 20 items; shared answer contract (same prompt as P1/P2 apart from context). Citations are exactly the items shown to the model, deduplicated |
 
-**Trace `agent_type` values emitted**: `orchestrator` (intent parse / plan), `entity_linking`, `graph_traversal` (Q1, Q4), `multi_hop_reasoning` (Q1→Q4→Q1 chain, Q4 HELD_AT→Q1), `aggregation` (Q2/Q3), `similarity_search` (Q5), `document_retrieval` (`HAS_CHUNK`), `evidence_evaluation`, `answer_generation`.
+**Trace `agent_type` values emitted**: `orchestrator` (intent parse / plan), `entity_linking`, `graph_traversal` (Q1, Q4), `multi_hop_reasoning` (Q1→Q4→Q1 chain, Q4 HELD_AT→Q1), `aggregation` (Q2/Q3), `similarity_search` (Q5), `document_retrieval` (`HAS_CHUNK`), `evidence_evaluation`, `answer_generation`, `answer_verification` (0 tokens, after generation: `agents/answer_resolution.py`).
+
+**Answer verification** (P2 and P3 alike, so the loop stays the only difference): the generated answer is checked against the graph rows the model was shown. When it is exactly one event's short name ("Men's marathon") and a single row carries that event, it becomes the row's page title, the form the graph and the corpus name events by; an ambiguous match (the same name in several editions) is left as given. Otherwise the step reports whether the answer's names occur in the structured evidence, and never changes the answer. RAG has no entity layer to resolve against.
+
+**Anchor recovery** (`EntityLinker.resolve(intent, question)`, P2 and P3): a venue, sport or Games the intent parse omitted is recovered when one of the graph's own vocabulary entries appears verbatim (whole words) in the question, and a date when the question states a full day. Parsed anchors are never overridden, and one parsed but unresolved stays unresolved. Gazetteer linking, not a question template (NFR-7); the linking step's trace note lists what was recovered.
 
 **Closed `stop_reason` vocabulary**: `sufficient_evidence`, `step_budget_exhausted`, `token_budget_exhausted`, `no_further_action_available`, `disambiguation_required`, `error`, `direct_route`.
 

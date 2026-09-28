@@ -131,7 +131,7 @@ const QTYPES = ['lookup', 'multi_hop', 'temporal', 'aggregation', 'superlative']
 type AgentType =
   | 'orchestrator' | 'entity_linking' | 'graph_traversal' | 'similarity_search'
   | 'document_retrieval' | 'aggregation' | 'multi_hop_reasoning'
-  | 'evidence_evaluation' | 'answer_generation'
+  | 'evidence_evaluation' | 'answer_generation' | 'answer_verification'
 
 interface TokenUsage { input: number; output: number; total: number }
 

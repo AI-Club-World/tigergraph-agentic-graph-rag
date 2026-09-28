@@ -35,6 +35,7 @@ export type AgentType =
   | 'multi_hop_reasoning'
   | 'evidence_evaluation'
   | 'answer_generation'
+  | 'answer_verification'
 
 export interface TokenUsage {
   input: number

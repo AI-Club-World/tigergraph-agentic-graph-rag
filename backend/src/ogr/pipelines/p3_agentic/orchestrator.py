@@ -127,6 +127,7 @@ def build_p3_graph(
     from ogr.graph.client import drain_graph_errors, graph_error_detail
     from ogr.pipelines.p3_agentic.agents.agent_result import AgentResult
     from ogr.pipelines.p3_agentic.agents.aggregation import run_aggregation
+    from ogr.pipelines.p3_agentic.agents.answer_resolution import resolve_answer
     from ogr.pipelines.p3_agentic.agents.document_retrieval import run_document_retrieval
     from ogr.pipelines.p3_agentic.agents.entity_linking import (
         ResolvedAnchors,
@@ -208,7 +209,7 @@ def build_p3_graph(
         if intent is None:
             return {}
         t0 = time.perf_counter()
-        anchors = entity_linker.resolve(intent)
+        anchors = entity_linker.resolve(intent, state.get("question", ""))
         recorder: TraceRecorder = _state_store.get("recorder")
         initial = state.get("route_initial") or "loop"
         refined = refine_route(initial, intent, anchors)
@@ -231,6 +232,10 @@ def build_p3_graph(
                 AgentResult(
                     latency_ms=(time.perf_counter() - t0) * 1000.0,
                     notes="resolved " + (", ".join(f"{k}={v}" for k, v in found.items()) or "no anchor")
+                    + (
+                        f"; recovered from the question text: {', '.join(anchors.recovered)}"
+                        if getattr(anchors, "recovered", None) else ""
+                    )
                     + (
                         f"; route {initial} → {refined} (one named event's attribute)"
                         if refined != initial else ""
@@ -572,6 +577,23 @@ def build_p3_graph(
                 tokens_output=tokens.output,
                 latency_ms=latency_ms,
             )
+
+        # Answer verification (agents/answer_resolution.py, shared with P2):
+        # check the answer against the graph rows shown, and name an event by
+        # its page title. Deterministic, 0 tokens.
+        if status == "done":
+            t_verify = time.perf_counter()
+            resolution = resolve_answer(answer, shown)
+            answer = resolution.answer
+            if recorder:
+                recorder.record(
+                    "answer_verification",
+                    "answer_resolver",
+                    AgentResult(
+                        latency_ms=(time.perf_counter() - t_verify) * 1000.0,
+                        notes=resolution.note,
+                    ),
+                )
 
         # Citations are exactly the evidence the model was shown, once each
         # (the same source for P2: doc_id, else event_id).

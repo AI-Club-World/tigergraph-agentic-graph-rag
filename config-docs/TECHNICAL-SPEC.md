@@ -282,7 +282,7 @@ step that ran the query (`TigerGraphClient.drain_errors`, per thread).
 ```json
 {
   "step_n": 1,
-  "agent_type": "orchestrator|entity_linking|graph_traversal|multi_hop_reasoning|aggregation|similarity_search|document_retrieval|evidence_evaluation|answer_generation",
+  "agent_type": "orchestrator|entity_linking|graph_traversal|multi_hop_reasoning|aggregation|similarity_search|document_retrieval|evidence_evaluation|answer_generation|answer_verification",
   "tool_called": "intent_parser|entity_linker|Q1|Q2|Q3|Q4|Q1→Q4→Q1|Q4(HELD_AT)→Q1|Q5|HAS_CHUNK|evidence_evaluator|generate",
   "tokens": { "input": 0, "output": 0, "total": 0 },
   "chunks_returned": 0,
@@ -292,7 +292,7 @@ step that ran the query (`TigerGraphClient.drain_errors`, per thread).
   "notes": "string"
 }
 ```
-`orchestrator` is the intent-parse (planning) step, recorded when it spent tokens; `answer_generation` is the final synthesis call. Every LLM call is a step, and Σ step tokens is asserted equal to the record total (`TraceRecorder.reconcile_assert`).
+`orchestrator` is the intent-parse (planning) step, recorded when it spent tokens; `answer_generation` is the final synthesis call; `answer_verification` follows it (0 tokens: title resolution and graph-support check, ARCHITECTURE-SPEC). Every LLM call is a step, and Σ step tokens is asserted equal to the record total (`TraceRecorder.reconcile_assert`).
 
 **`stop_reason` vocabulary** (`pipelines/p3_agentic/stopping.py`, closed): `sufficient_evidence`, `step_budget_exhausted` (`RUN_MAX_STEPS`), `token_budget_exhausted` (`RUN_MAX_TOKENS_PER_QUERY`), `no_further_action_available` (a loop traversal tool and both fallbacks tried), `disambiguation_required`, `error`, `direct_route` (a one-query lookup/aggregation route answered without the loop, so no evidence evaluation ran).
 
