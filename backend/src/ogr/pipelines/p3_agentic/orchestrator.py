@@ -808,10 +808,15 @@ async def astream_p3_agentic(
     # every other request and SSE stream would stall.
     from ogr.common.llm import LLMRateLimitError
 
-    compiled_graph, state_store = await asyncio.to_thread(
-        _prepare_run, llm_model, tg_client, entity_linker, config
-    )
     total_start = time.perf_counter()
+    try:
+        compiled_graph, state_store = await asyncio.to_thread(
+            _prepare_run, llm_model, tg_client, entity_linker, config
+        )
+    except Exception as e:  # noqa: BLE001 - NFR-2: an error record, never a raise
+        logger.error("P3 could not start: %s", e)
+        yield _error_record(str(e), (time.perf_counter() - total_start) * 1000.0)
+        return
     emitted = 0
 
     def _drain():
@@ -877,8 +882,12 @@ def run_p3_agentic(
     """
     from ogr.common.llm import LLMRateLimitError
 
-    compiled_graph, state_store = _prepare_run(llm_model, tg_client, entity_linker, config)
     total_start = time.perf_counter()
+    try:
+        compiled_graph, state_store = _prepare_run(llm_model, tg_client, entity_linker, config)
+    except Exception as e:  # noqa: BLE001 - NFR-2: an error record, never a raise
+        logger.error("P3 could not start: %s", e)
+        return _error_record(str(e), (time.perf_counter() - total_start) * 1000.0)
 
     try:
         compiled_graph.invoke({"question": query})

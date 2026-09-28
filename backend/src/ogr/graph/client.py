@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import re
 import threading
+import time
 from typing import Any
 
 from ogr.common.config import RunConfig, get_default_config
@@ -19,6 +20,33 @@ def drain_graph_errors(client: Any) -> list[str]:
     drain = getattr(client, "drain_errors", None)
     errors = drain() if callable(drain) else []
     return errors if isinstance(errors, list) else []
+
+
+# Failures worth one more try: Savanna intermittently rejects a request with an
+# empty-token auth error (REST-10016) or a gateway 5xx, e.g. while a workspace
+# is (re)starting. Anything else (a GSQL error, a bad parameter) is not retried.
+_TRANSIENT = ("REST-10016", "500 Server Error", "502 Server Error", "503 Server Error", "504 Server Error")
+READ_ATTEMPTS = 3
+READ_BACKOFF_S = 2.0
+
+
+class GraphUnavailableError(RuntimeError):
+    """A graph read failed after its retries on a live connection."""
+
+
+def _read_with_retry(call, *args, **kwargs):
+    """`call(*args, **kwargs)`, retried with backoff on a transient failure."""
+    for attempt in range(1, READ_ATTEMPTS + 1):
+        try:
+            return call(*args, **kwargs)
+        except Exception as e:  # noqa: BLE001 - classified below, re-raised when not transient
+            if attempt == READ_ATTEMPTS or not any(t in str(e) for t in _TRANSIENT):
+                raise
+            logger.warning(
+                "Transient graph failure (%s); retry %d/%d", str(e)[:80], attempt, READ_ATTEMPTS - 1
+            )
+            time.sleep(READ_BACKOFF_S * 2 ** (attempt - 1))
+    raise AssertionError("unreachable")
 
 
 def graph_error_detail(errors: list[str]) -> str | None:
@@ -199,7 +227,7 @@ class TigerGraphClient:
                 "candidate_set": candidate_set or [],
             }
             # Execute installed query q5_hybrid_search
-            raw_res = self.conn.runInstalledQuery("q5_hybrid_search", params)
+            raw_res = _read_with_retry(self.conn.runInstalledQuery, "q5_hybrid_search", params)
             # Normalize returned records
             return self._normalize_q5_results(raw_res)
         except Exception as e:
@@ -368,7 +396,7 @@ class TigerGraphClient:
             return []
 
         try:
-            raw = self.conn.runInstalledQuery(query_name, params)
+            raw = _read_with_retry(self.conn.runInstalledQuery, query_name, params)
             if not raw:
                 return []
             # Unwrap the first result block if it contains a list key
@@ -436,7 +464,7 @@ class TigerGraphClient:
             return []
 
         try:
-            vertices = self.conn.getVertices(vtype)
+            vertices = _read_with_retry(self.conn.getVertices, vtype)
             attr_map = {"Games": "games_id", "Sport": "sport_name", "Venue": "venue_name"}
             attr = attr_map.get(vtype, "name")
             vocab = [
@@ -445,8 +473,11 @@ class TigerGraphClient:
                 if v.get("attributes", {}).get(attr) or v.get("v_id")
             ]
         except Exception as e:
-            logger.warning("Failed to load vocabulary for %s: %s", vtype, e)
-            return []
+            # Not an empty vocabulary: without it the linker resolves nothing
+            # and every answer silently degrades. Raise, so the pipeline run
+            # is an error (and a batch question is retried on resume).
+            logger.error("Failed to load vocabulary for %s: %s", vtype, e)
+            raise GraphUnavailableError(f"Failed to load vocabulary for {vtype}: {e}") from e
         # An empty result is not cached, so a graph loaded later is picked up.
         if vocab:
             self._vocab_cache[vtype] = vocab

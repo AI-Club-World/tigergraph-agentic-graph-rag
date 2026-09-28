@@ -92,7 +92,9 @@ Q5 is called only through `TigerGraphClient.hybrid_search`, which derives `emb_t
 - `get_chunk_texts(chunk_ids)` — `to_vertex_set(ids, "Chunk")`, returns `{chunk_id: text}`; what a re-embed job embeds. Falls back to per-id `getVerticesById`.
 - `delete_by_ids(vertex_type, ids)` — `DELETE v FROM Start:v`; vertex type checked against an identifier regex. Falls back to `delVerticesById`. Used by rebuild (`remove_previous`) and embedding eviction (`delete_embeddings`, which additionally refuses any type outside the embedding catalog).
 
-Other client reads: `_expand_has_chunk` (per-document `getEdges(..., "HAS_CHUNK")` + `getVerticesById`), `get_vocabulary` (Games/Sport/Venue ids, cached per client; empty results not cached).
+Other client reads: `_expand_has_chunk` (per-document `getEdges(..., "HAS_CHUNK")` + `getVerticesById`), `get_vocabulary` (Games/Sport/Venue ids, cached per client; empty results not cached; a read that fails on a live connection raises `GraphUnavailableError` rather than returning an empty vocabulary, which would silently disable entity linking).
+
+**Transient read failures.** Installed-query calls (Q1–Q5) and vocabulary reads are retried up to 3 times with backoff (2 s, 4 s) when the error is transient: Savanna's empty-token auth rejection (`REST-10016`) or a gateway 5xx. Other errors are not retried. A query that still fails returns `[]` and is reported (`drain_errors`, §6.2).
 
 Vector-index build is asynchronous: `graph/vector_status.wait_until_ready` polls `getVectorIndexStatus()` (REST `/restpp/vector/status`; ready when `NeedRebuildServers` is empty, or `Ready_for_query` on older builds) and raises `VectorNotReadyError` on timeout (600 s in build and re-embed jobs).
 
