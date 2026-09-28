@@ -8,6 +8,7 @@ import threading
 from typing import Any
 
 from ogr.common.config import RunConfig, get_default_config
+from ogr.common.contracts import GRAPH_ERROR_PREFIX
 from ogr.common.embedding_models import EMBEDDING_MODELS, EmbeddingModel, resolve_model
 
 logger = logging.getLogger(__name__)
@@ -21,7 +22,7 @@ def drain_graph_errors(client: Any) -> list[str]:
 
 
 def graph_error_detail(errors: list[str]) -> str | None:
-    return "graph query error: " + "; ".join(errors) if errors else None
+    return GRAPH_ERROR_PREFIX + "; ".join(errors) if errors else None
 
 
 class TigerGraphClient:

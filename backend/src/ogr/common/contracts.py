@@ -9,6 +9,8 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 SNIPPET_CHARS = 600
+# error_detail prefix for a graph query that failed during an answered run.
+GRAPH_ERROR_PREFIX = "graph query error: "
 
 
 class Citation(BaseModel):

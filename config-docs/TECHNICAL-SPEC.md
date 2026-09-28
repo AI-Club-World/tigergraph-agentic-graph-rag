@@ -392,7 +392,7 @@ Source: `eval/scorer.py`, `common/names.py`. No LLM and no network in this path 
 
 Append-only JSONL, `{"run_config"}` header on line 1, one `BatchRecord` per line after it. Semantics:
 - **Partial tail repair**: opening the store truncates an unfinished last line (no trailing newline and not valid JSON), so a killed run never buries a corrupt line mid-file; readers also skip an unfinished last line.
-- **Resume**: questions whose latest record has no pipeline in `error` are skipped; **errored questions are retried**, and their new record is appended.
+- **Resume**: questions whose latest record has no pipeline in `error` and no graph query error (`error_detail` starting `graph query error: `) are skipped; **errored questions are retried**, and their new record is appended. A graph query that failed while a pipeline answered (e.g. the workspace mid-restart) left that answer on missing evidence, so it is retried too.
 - **Last record per question wins** when reading (`read_run`), in file order of the latest.
 - **Secret check** on every write (§14.3).
 

@@ -77,3 +77,20 @@ class TestReadWrittenQids:
         store.append({"question_id": "pub-001"})
         store.append({"question_id": "pub-002"})
         assert read_written_qids(path) == {"pub-001", "pub-002"}
+
+    def test_a_graph_query_error_means_the_question_is_retried(self, tmp_path):
+        """A graph query that failed while the pipeline answered (a workspace
+        mid-restart) leaves an answer built on missing evidence: not done."""
+        path = tmp_path / "run.jsonl"
+        store = BatchStore(path, {})
+
+        def record(qid, detail):
+            return {"question_id": qid, "record": {"pipelines": {
+                "rag": {"status": "done", "error_detail": detail},
+            }}}
+
+        store.append(record("pub-001", "graph query error: q5_hybrid_search: Access Denied"))
+        store.append(record("pub-002", None))
+        assert read_written_qids(path) == {"pub-002"}
+        store.append(record("pub-001", None))  # the retry supersedes
+        assert read_written_qids(path) == {"pub-001", "pub-002"}

@@ -20,6 +20,8 @@ import re
 from pathlib import Path
 from typing import Any
 
+from ogr.common.contracts import GRAPH_ERROR_PREFIX
+
 __all__ = ["SecretLeakError", "BatchStore", "iter_lines", "read_written_qids", "repair_tail"]
 
 # Two checks. (1) Known credential shapes: OpenAI/Anthropic (sk-), Groq,
@@ -119,8 +121,15 @@ def iter_lines(path: str | Path):
 
 
 def _has_error(record: dict[str, Any]) -> bool:
+    """A pipeline errored, or a graph query failed while it answered (the
+    answer then stood on missing evidence, e.g. a workspace mid-restart):
+    either way the question is retried on resume."""
     pipelines = (record.get("record") or {}).get("pipelines") or {}
-    return any((p or {}).get("status") == "error" for p in pipelines.values())
+    return any(
+        (p or {}).get("status") == "error"
+        or str((p or {}).get("error_detail") or "").startswith(GRAPH_ERROR_PREFIX)
+        for p in pipelines.values()
+    )
 
 
 def read_written_qids(path: str | Path) -> set[str]:
