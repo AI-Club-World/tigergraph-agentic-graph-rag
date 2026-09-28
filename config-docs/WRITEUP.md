@@ -87,10 +87,20 @@ is the mean of per-question Agentic ÷ RAG ratios, as on the dashboard):
 decision where one changed routing or retrieved context, is in
 `config-docs/SCORE-AUDIT.md`.
 
-**Hidden set (50 questions):** answers, tokens, citations and every agentic
-trace are exported with `python -m ogr.cli export` (`make results`). The
-hidden set has no gold answers, so it reports cost, latency and grounding
-only.
+**Hidden set (50 questions, run once on the final system):** 0 pipeline
+errors in 150 answers.
+
+| Pipeline | Grounded | Median tokens |
+|---|---|---|
+| RAG | 0.92 | 6,732 |
+| GraphRAG | 0.40 | 3,034 |
+| Agentic GraphRAG | 0.64 | 3,129 |
+
+The router answered 36 of the 50 without the loop, at a median of 2,094
+tokens; the 14 loop runs cost a median of 12,026. The hidden set has no gold
+answers, so there is no EM or F1. The raw outputs (answer, tokens, citations
+and every agentic trace) are in `submission/hidden-set-export.json`
+(`python -m ogr.cli export`, `make results`).
 
 ## Limitations
 

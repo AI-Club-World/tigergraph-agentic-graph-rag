@@ -1,8 +1,8 @@
 # Score audit against the hackathon rubric
 
-Status: **Phase 4 in progress.** Safe fixes are implemented; the measured
-baseline run is waiting on the graph rebuild (§5). Committed at the owner's
-request (§4).
+Status: **Phase 4 complete.** Measured baseline (`r1`), fixes, measured
+re-run (`r2`, `r3-multihop`), the hidden set run once (`final-holdout`), and
+re-scores (§6). Committed at the owner's request (§4).
 
 ## 1. Rubric as the guidebook defines it
 
@@ -137,6 +137,8 @@ settled decision (asked before implementing); **U** = needs the user
 | 13 | r1: a COUNT of one named event's attribute ("how many nations competed in <event>") was answered by counting events | Routing rule `refine_route`: such a COUNT becomes a Q1 lookup, in P2 and P3 alike |
 | — | Other accuracy fixes (chunking, k, prompts) | None proposed: the r1 failures traced to retrieval and routing, not to those |
 | 14 | r2: 4 of 6 multi-hop losses were intent-parse variance (same LLM, temperature 0) — fixing it means an intent-prompt change | Accept the variance; no prompt tuning against the public set. Run the hidden 50 once the venue/date fix (0cca2fa) is checked on the public multi-hop subset |
+| 15 | ~3% of answers cut off mid-reasoning at LLM_MAX_TOKENS=2048 (no JSON answer) | Raise LLM_MAX_TOKENS to 4096 for the hidden run, all three pipelines (only the calls that were cut off change) |
+| 16 | Is the UI tested? | Yes: drive the real app in a browser (desktop and phone, dark and light, live queries), fix what is broken |
 | — | Server-side admin key for destructive routes (C4 R item) | Not raised: it changes the auth design. The documented security model (README) stands |
 
 ## 5. Implementation plan
@@ -187,4 +189,54 @@ remain open.
 
 ## 6. Post-implementation scores
 
-(Appended after re-scoring.)
+### What was measured
+
+Public set (100 questions), one LLM for all three pipelines
+(`nvidia/nemotron-3-super-120b-a12b`), embeddings bge-large-en-v1.5:
+
+| Pipeline | EM r1 → r2 | F1 r2 | Grounded r2 | Median tokens r2 |
+|---|---|---|---|---|
+| RAG | 0.62 → 0.62 | 0.67 | 0.92 | 6,404 |
+| GraphRAG | 0.37 → 0.49 | 0.53 | 0.38 | 2,335 |
+| Agentic GraphRAG | **0.74 → 0.80** | 0.83 | 0.75 | 4,516 |
+
+- Agentic − RAG gap by type (r2): aggregation +0.67 at 0.33× RAG's tokens;
+  superlative +0.20; multi-hop +0.07, and +0.14 after the venue/date fix
+  (`r3-multihop`, Agentic 0.68 → 0.75); lookup and temporal tie at 1.00.
+- Agentic right where RAG was wrong: 19; the reverse: 1 (r1: 20 and 8).
+- The necessity router answered 56 of 100 questions without the loop, at a
+  median of 1,945 tokens.
+- RAG did not move (0.62 → 0.62). It is the control: no fix touched its path.
+
+Hidden set (50 questions, `final-holdout`, run once on the final system, no
+gold answers): 0 pipeline errors in 150 answers. Median tokens: RAG 6,732,
+GraphRAG 3,034, Agentic 3,129. 36 direct routes (median 2,094 tokens) and 14
+loop runs. Grounded: RAG 0.92, GraphRAG 0.40, Agentic 0.64. The raw outputs
+are in `submission/`.
+
+### Re-score (0–10, target ≥ 9)
+
+| Criterion | Weight | Baseline (§2) | Now | Basis |
+|---|---|---|---|---|
+| C1 Investigation accuracy | 30% | 5.0 | **7.5** | Measured: Agentic EM 0.80 / F1 0.83 on 100 public questions, from 0.74, with RAG as a flat control. Not 9: superlatives 0.20 (answer form), multi-hop 0.75 (intent-parse variance, decision 14) |
+| C2 Evidence & explainability | 15% | 7.5 | **8.5** | Every citation carries its evidence text and is readable in the UI; a deterministic grounding score per answer; count answers cite the events they counted; graph failures show in the trace; the verdict no longer states a cost for a failed run. Not 9: Agentic grounding 0.75 trails RAG's 0.92 (a count row cites no page) |
+| C3 Agentic effectiveness & efficiency | 15% | 6.5 | **8.5** | Measured per type: the agent pays for itself on counts (+0.67 at a third of RAG's tokens) and ties at a half to 1.2× on single facts. The router avoids the loop on 56% of questions; the run report and dashboard state where it is worth it and where it is overkill |
+| C4 Design, engineering & code quality | 15% | 7.5 | **8.5** | GSQL Q1–Q5 run live; 556 backend and 55 frontend tests; transient graph reads retried and never silently degraded; resumable runs that retry errored or graph-failed questions; the UI checked in a real browser. Not 9: the browser API key is still not a secret (C4 R item, not raised) |
+| C5 Innovation | 15% | 6.5 | **7.5** | Necessity routing with post-linking refinement, derived exact event ids, per-model HNSW switching, a grounding score that needs no gold. Not 9: Round 2 (conflicting facts) is out of scope (decision 2) |
+| C6 Presentation & Q&A | 10% | 4.0 | **6.5** | Write-up with measured results and limitations, a demo script, submission outputs. Not 9 until the demo video is recorded (owner, U) |
+| **Weighted** | | **6.1** | **7.9** | |
+
+**Not every criterion reached 9.** Each gap names its cause above. What
+would close them, in order of weight:
+
+1. **C1 (+1.5 possible):** superlatives and the other "right event, short
+   name" answers. When the evidence row an answer comes from carries a page
+   title, return that title as the answer span, in every pipeline alike.
+   This changes the answer path (R, needs the owner). Then make intent
+   parsing robust for venue questions, e.g. a deterministic venue/date
+   extractor over the graph's own vocabularies (R).
+2. **C6 (+2.5 possible):** record the demo video from the script in
+   `WRITEUP.md` (owner).
+3. **C5:** Round 2 conflict reasoning (new scope).
+4. **C2/C4:** a count row citing its members' pages; a server-side admin key
+   for destructive routes (R).

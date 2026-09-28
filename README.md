@@ -24,6 +24,7 @@ The repo holds two modules:
 | [`config-docs/EMBEDDING-SWITCHING.md`](config-docs/EMBEDDING-SWITCHING.md) | Selectable embedding models, per-model storage, the switch/re-embed jobs |
 | [`config-docs/WRITEUP.md`](config-docs/WRITEUP.md) | Submission write-up: what was built, measured results, limitations, next steps, demo script |
 | [`config-docs/SCORE-AUDIT.md`](config-docs/SCORE-AUDIT.md) | Rubric audit: baseline, root causes, owner decisions, before/after scores |
+| [`submission/`](submission/README.md) | Hidden-set raw outputs (answers, tokens, citations, agentic traces) and the public and hidden run reports |
 | [`config-docs/DEPLOY.md`](config-docs/DEPLOY.md) | Hosting the frontend on Netlify |
 | [`data/README.md`](data/README.md) | The corpus and question sets, and how dataset names are resolved |
 | [`ATTRIBUTION.md`](ATTRIBUTION.md) | Licences for the corpus, embedding models and software |
