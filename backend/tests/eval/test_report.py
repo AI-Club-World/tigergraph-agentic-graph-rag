@@ -97,3 +97,14 @@ def test_cli_report_and_export(tmp_path, capsys):
     out = tmp_path / "sub" / "export.json"
     assert main(["export", str(run), "--out", str(out)]) == 0
     assert len(json.loads(out.read_text())["questions"]) == 3
+
+
+def test_token_ratio_is_the_mean_of_per_question_ratios_like_the_dashboard(tmp_path):
+    """UI-SPEC: a mean of ratios, not a median (ratios 1, 2 and 6 give 3.00, not 2.00)."""
+    path = tmp_path / "ratios.jsonl"
+    records = [_record(f"q{i}", "lookup", ["Paris"], "Paris", "Paris", "direct_route") for i in range(3)]
+    for record, agentic in zip(records, (1000, 2000, 6000), strict=True):
+        record["record"]["pipelines"]["agentic_graphrag"]["tokens"]["total"] = agentic
+    lines = [json.dumps({"run_config": {}})] + [json.dumps(r) for r in records]
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    assert "| lookup | 3 | 1.00 | 1.00 | 1.00 | 0.00 | 3.00× | Overkill |" in build_report(path)

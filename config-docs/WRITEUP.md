@@ -57,20 +57,21 @@ embeddings `bge-large-en-v1.5`.
 Latency is inflated by provider rate limiting (HTTP 429 retries) during the
 run; token counts are provider-reported and unaffected.
 
-**Where the agent pays for itself** (EM by question type):
+**Where the agent pays for itself** (EM by question type; the token column
+is the mean of per-question Agentic ÷ RAG ratios, as on the dashboard):
 
 | Type | n | RAG | GraphRAG | Agentic | Agentic − RAG | Agentic ÷ RAG tokens |
 |---|---|---|---|---|---|---|
-| aggregation | 21 | 0.19 | 0.86 | 0.86 | **+0.67** | 0.29× |
-| superlative | 10 | 0.00 | 0.20 | 0.20 | +0.20 | 0.58× |
-| multi_hop | 28 | 0.61 | 0.07 | 0.68 (0.75 after the venue fix, `r3-multihop`) | +0.07 (+0.14) | 1.81× |
-| lookup | 19 | 1.00 | 0.89 | 1.00 | 0.00 | 0.26× |
+| aggregation | 21 | 0.19 | 0.86 | 0.86 | **+0.67** | 0.33× |
+| superlative | 10 | 0.00 | 0.20 | 0.20 | +0.20 | 0.94× |
+| multi_hop | 28 | 0.61 | 0.07 | 0.68 (0.75 after the venue fix, `r3-multihop`) | +0.07 (+0.14) | 1.75× |
+| lookup | 19 | 1.00 | 0.89 | 1.00 | 0.00 | 0.53× |
 | temporal | 22 | 1.00 | 0.45 | 1.00 | 0.00 | 1.16× |
 
 - Agentic was right on **19** questions RAG got wrong, and wrong on **1** that
   RAG got right.
-- On counting it is both more accurate and **3.4× cheaper** than RAG. On
-  lookups and temporal questions it ties RAG at a quarter to 1.2× the
+- On counting it is both more accurate and **3× cheaper** than RAG. On
+  lookups and temporal questions it ties RAG at about half to 1.2× the
   tokens.
 - **The router is the efficiency story.** 56 of 100 questions were answered
   on a direct route: median 1,945 tokens, EM 0.84. The 44 loop questions

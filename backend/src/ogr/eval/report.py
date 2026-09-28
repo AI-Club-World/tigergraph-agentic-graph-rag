@@ -114,7 +114,8 @@ def build_report(path: Path) -> str:
     # ── Is the agent worth it, per question type ──
     if scored:
         out("## Where the agent pays for itself\n")
-        out("Agentic − RAG accuracy gap and the token cost of it, per question type. "
+        out("Agentic − RAG accuracy gap and its token cost per question type (the mean of "
+            "per-question Agentic ÷ RAG token ratios, as on the dashboard). "
             f"Verdict: gap ≥ {WORTH_IT} worth it, ≤ {OVERKILL} overkill, else marginal.\n")
         out("| Type | n | RAG EM | GraphRAG EM | Agentic EM | Agentic − RAG "
             "| Agentic ÷ RAG tokens | Verdict |")
@@ -134,7 +135,7 @@ def build_report(path: Path) -> str:
             ]
             out(
                 f"| {qtype} | {len(rows)} | {_fmt(rag_em)} | {_fmt(em['graphrag'])} "
-                f"| {_fmt(agentic_em)} | {_fmt(gap)} | {_fmt(_median(ratios))}× "
+                f"| {_fmt(agentic_em)} | {_fmt(gap)} | {_fmt(_mean(ratios))}× "
                 f"| {_verdict(gap, len(rows))} |"
             )
         wins = [v["qid"] for v in scored if _em(v, "agentic_graphrag") > _em(v, "rag")]
