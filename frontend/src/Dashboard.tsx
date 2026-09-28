@@ -29,6 +29,11 @@ function scoresBy(records: BatchRecord[], pipeline: PipelineId, key: keyof Pipel
   })
 }
 
+/** Time per call: milliseconds below a second, else seconds (as Mean latency). */
+function perCall(ms: number) {
+  return ms < 1000 ? `${num(Math.round(ms))} ms` : `${(ms / 1000).toFixed(1)} s`
+}
+
 /** A pipeline's record on one question, or undefined (an imported run may lack one). */
 function recordOf(r: BatchRecord, pipeline: PipelineId) {
   return r.record.pipelines[pipeline]
@@ -189,69 +194,73 @@ export function Dashboard() {
           {scored.length > 0 && (
             <section className="panel">
               <h3>Headline</h3>
-              <table className="matrix">
-                <thead>
-                  <tr>
-                    <th>Pipeline</th>
-                    <th>EM</th>
-                    <th>F1</th>
-                    <th title="Alias of retrieval recall against the gold documents">Completeness</th>
-                    <th>Median tokens</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {headline.map((row) => (
-                    <tr key={row.pipeline}>
-                      <th scope="row">
-                        <i className="swatch" style={{ background: PIPELINE_COLORS[row.pipeline] }} />
-                        {PIPELINE_LABELS[row.pipeline]}
-                      </th>
-                      <td>{dec(row.em)}</td>
-                      <td>{dec(row.f1)}</td>
-                      <td>{dec(row.completeness)}</td>
-                      <td>{num(Math.round(row.medianTokens))}</td>
+              <div className="matrix-scroll">
+                <table className="matrix">
+                  <thead>
+                    <tr>
+                      <th>Pipeline</th>
+                      <th>EM</th>
+                      <th>F1</th>
+                      <th title="Alias of retrieval recall against the gold documents">Completeness</th>
+                      <th>Median tokens</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {headline.map((row) => (
+                      <tr key={row.pipeline}>
+                        <th scope="row">
+                          <i className="swatch" style={{ background: PIPELINE_COLORS[row.pipeline] }} />
+                          {PIPELINE_LABELS[row.pipeline]}
+                        </th>
+                        <td>{dec(row.em)}</td>
+                        <td>{dec(row.f1)}</td>
+                        <td>{dec(row.completeness)}</td>
+                        <td>{num(Math.round(row.medianTokens))}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
 
               <h4>Is the agent worth it, per question type?</h4>
-              <table className="matrix">
-                <thead>
-                  <tr>
-                    <th>Question type</th>
-                    <th>n</th>
-                    <th>Agentic &minus; RAG EM</th>
-                    <th>Agentic &divide; RAG tokens</th>
-                    <th>Verdict</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {perQtype.map((row) => row.n === 0 ? (
-                    <tr key={row.qtype}>
-                      <th scope="row">{titleCase(row.qtype)}</th>
-                      <td>0</td>
-                      <td className="muted" colSpan={3}>No questions of this type in the run</td>
+              <div className="matrix-scroll">
+                <table className="matrix">
+                  <thead>
+                    <tr>
+                      <th>Question type</th>
+                      <th>n</th>
+                      <th>Agentic &minus; RAG EM</th>
+                      <th>Agentic &divide; RAG tokens</th>
+                      <th>Verdict</th>
                     </tr>
-                  ) : (
-                    <tr key={row.qtype}>
-                      <th scope="row">{titleCase(row.qtype)}</th>
-                      <td>{row.n}</td>
-                      <td className={row.emGap > 0 ? 'gain' : row.emGap < 0 ? 'loss' : 'flat'}>
-                        {signed(row.emGap)}
-                      </td>
-                      <td>{dec(row.multiplier)}&times;</td>
-                      <td>
-                        {row.emGap >= 0.5
-                          ? 'Worth it'
-                          : row.emGap <= 0.05
-                            ? 'Overkill'
-                            : 'Marginal'}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {perQtype.map((row) => row.n === 0 ? (
+                      <tr key={row.qtype}>
+                        <th scope="row">{titleCase(row.qtype)}</th>
+                        <td>0</td>
+                        <td className="muted" colSpan={3}>No questions of this type in the run</td>
+                      </tr>
+                    ) : (
+                      <tr key={row.qtype}>
+                        <th scope="row">{titleCase(row.qtype)}</th>
+                        <td>{row.n}</td>
+                        <td className={row.emGap > 0 ? 'gain' : row.emGap < 0 ? 'loss' : 'flat'}>
+                          {signed(row.emGap)}
+                        </td>
+                        <td>{dec(row.multiplier)}&times;</td>
+                        <td>
+                          {row.emGap >= 0.5
+                            ? 'Worth it'
+                            : row.emGap <= 0.05
+                              ? 'Overkill'
+                              : 'Marginal'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </section>
           )}
 
@@ -317,39 +326,41 @@ export function Dashboard() {
 
           <section className="panel">
             <h3>Cost, latency and reliability</h3>
-            <table className="matrix">
-              <thead>
-                <tr>
-                  <th>Pipeline</th>
-                  <th>Answered</th>
-                  <th>Errors</th>
-                  <th>Median tokens</th>
-                  <th>Mean input</th>
-                  <th>Mean output</th>
-                  <th>Mean latency</th>
-                  <th>Mean citations</th>
-                  <th title="Share of the answer's names found in the evidence it cites">Grounded</th>
-                </tr>
-              </thead>
-              <tbody>
-                {costs.map((row) => (
-                  <tr key={row.pipeline}>
-                    <th scope="row">
-                      <i className="swatch" style={{ background: PIPELINE_COLORS[row.pipeline] }} />
-                      {PIPELINE_LABELS[row.pipeline]}
-                    </th>
-                    <td>{num(row.n - row.errors)}</td>
-                    <td className={row.errors ? 'loss' : undefined}>{num(row.errors)}</td>
-                    <td>{num(Math.round(row.medianTokens))}</td>
-                    <td>{num(Math.round(row.meanInput))}</td>
-                    <td>{num(Math.round(row.meanOutput))}</td>
-                    <td>{`${(row.meanLatency / 1000).toFixed(1)} s`}</td>
-                    <td>{dec(row.meanCitations)}</td>
-                    <td>{row.grounded === null ? '—' : dec(row.grounded)}</td>
+            <div className="matrix-scroll">
+              <table className="matrix">
+                <thead>
+                  <tr>
+                    <th>Pipeline</th>
+                    <th>Answered</th>
+                    <th>Errors</th>
+                    <th>Median tokens</th>
+                    <th>Mean input</th>
+                    <th>Mean output</th>
+                    <th>Mean latency</th>
+                    <th>Mean citations</th>
+                    <th title="Share of the answer's names found in the evidence it cites">Grounded</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {costs.map((row) => (
+                    <tr key={row.pipeline}>
+                      <th scope="row">
+                        <i className="swatch" style={{ background: PIPELINE_COLORS[row.pipeline] }} />
+                        {PIPELINE_LABELS[row.pipeline]}
+                      </th>
+                      <td>{num(row.n - row.errors)}</td>
+                      <td className={row.errors ? 'loss' : undefined}>{num(row.errors)}</td>
+                      <td>{num(Math.round(row.medianTokens))}</td>
+                      <td>{num(Math.round(row.meanInput))}</td>
+                      <td>{num(Math.round(row.meanOutput))}</td>
+                      <td>{`${(row.meanLatency / 1000).toFixed(1)} s`}</td>
+                      <td>{dec(row.meanCitations)}</td>
+                      <td>{row.grounded === null ? '—' : dec(row.grounded)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
             <p className="muted small">
               Over answered questions; errored answers are counted, not averaged in. Grounded checks the answer
               against the text of its own citations — it needs no ground truth.
@@ -359,28 +370,30 @@ export function Dashboard() {
           {agentUsage.length > 0 && (
             <section className="panel">
               <h3>Agentic trace: agents invoked</h3>
-              <table className="matrix">
-                <thead>
-                  <tr>
-                    <th>Agent</th>
-                    <th>Invocations</th>
-                    <th>Tokens</th>
-                    <th>Tokens / call</th>
-                    <th>Time / call</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {agentUsage.map(([agent, row]) => (
-                    <tr key={agent}>
-                      <th scope="row">{titleCase(agent)}</th>
-                      <td>{num(row.calls)}</td>
-                      <td>{num(row.tokens)}</td>
-                      <td>{num(Math.round(row.tokens / row.calls))}</td>
-                      <td>{`${Math.round(row.latency / row.calls)} ms`}</td>
+              <div className="matrix-scroll">
+                <table className="matrix">
+                  <thead>
+                    <tr>
+                      <th>Agent</th>
+                      <th>Invocations</th>
+                      <th>Tokens</th>
+                      <th>Tokens / call</th>
+                      <th>Time / call</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {agentUsage.map(([agent, row]) => (
+                      <tr key={agent}>
+                        <th scope="row">{titleCase(agent)}</th>
+                        <td>{num(row.calls)}</td>
+                        <td>{num(row.tokens)}</td>
+                        <td>{num(Math.round(row.tokens / row.calls))}</td>
+                        <td>{perCall(row.latency / row.calls)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </section>
           )}
 

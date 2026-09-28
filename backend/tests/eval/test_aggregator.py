@@ -127,3 +127,29 @@ class TestAggregateQuery:
         record = aggregate_query("q-1", "q", _three(), None)
         restored = QueryLevelRecord.model_validate_json(record.model_dump_json())
         assert restored.verdict.accuracy_delta_vs_rag == "n/a"
+
+
+class TestNoCostRatioForAFailedRun:
+    """UI check: an errored Agentic run showed "Agentic cost 0.2x RAG tokens"."""
+
+    def test_errored_agentic_has_no_ratio_and_says_why(self):
+        records = {
+            "rag": _record("rag", "Usain Bolt", 6357),
+            "graphrag": _record("graphrag", "Not enough information", 9788),
+            "agentic_graphrag": _record("agentic_graphrag", "", 1298).model_copy(update={"status": "error"}),
+        }
+        verdict = build_verdict(records, gold_variants=None)
+        assert verdict.token_multiplier_vs_rag is None
+        assert verdict.token_multiplier_vs_graphrag is None
+        assert "Agentic GraphRAG errored: no cost ratio" in verdict.summary_line
+
+    def test_errored_baseline_has_no_ratio_against_it_only(self):
+        records = {
+            "rag": _record("rag", "", 0).model_copy(update={"status": "error"}),
+            "graphrag": _record("graphrag", "x", 2000),
+            "agentic_graphrag": _record("agentic_graphrag", "x", 1000),
+        }
+        verdict = build_verdict(records, gold_variants=["x"])
+        assert verdict.token_multiplier_vs_rag is None
+        assert verdict.token_multiplier_vs_graphrag == 0.5
+        assert "RAG errored: no cost ratio" in verdict.summary_line

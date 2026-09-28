@@ -84,7 +84,7 @@ export interface PipelineRecord {
 }
 
 export interface Verdict {
-  /** null when undefined: the baseline spent no tokens. */
+  /** null when undefined: a pipeline errored, or the baseline spent no tokens. */
   token_multiplier_vs_rag: number | null
   token_multiplier_vs_graphrag: number | null
   accuracy_delta_vs_rag: number | 'n/a'

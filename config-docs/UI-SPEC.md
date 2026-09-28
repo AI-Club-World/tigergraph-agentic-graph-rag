@@ -171,7 +171,7 @@ interface PipelineRecord {
 }
 
 interface Verdict {
-  token_multiplier_vs_rag: number | null      // null: the baseline spent no tokens
+  token_multiplier_vs_rag: number | null      // null: a pipeline errored, or the baseline spent no tokens
   token_multiplier_vs_graphrag: number | null
   accuracy_delta_vs_rag: number | 'n/a'
   accuracy_delta_vs_graphrag: number | 'n/a'
@@ -249,7 +249,10 @@ Two nullability rules drive whole screens and are easy to lose in a rewrite:
    the note.
 2. **`accuracy_delta_* === 'n/a'`** → the verdict strip shows `N/A` in a warning
    tone **and keeps the field** (FR-9). Do not omit the tile. A `null` token
-   multiplier likewise renders `N/A` with the unit `no baseline tokens`.
+   multiplier likewise renders `N/A` with the unit `no cost ratio`. The server
+   returns `null` when either pipeline errored (a failed run's partial tokens are
+   not the cost of an answer) or the baseline spent no tokens; the summary line
+   names which.
 
 ---
 
@@ -469,7 +472,7 @@ Four metric tiles plus a summary sentence:
 
 | Tile | Value | Label |
 |---|---|---|
-| 1 | `token_multiplier_vs_rag`, 2 dp, followed by `×` (`N/A` · `no baseline tokens` when null) | `Agentic tokens ÷ RAG` |
+| 1 | `token_multiplier_vs_rag`, 2 dp, followed by `×` (`N/A` · `no cost ratio` when null) | `Agentic tokens ÷ RAG` |
 | 2 | `token_multiplier_vs_graphrag`, 2 dp, `×` | `Agentic tokens ÷ GraphRAG` |
 | 3 | `accuracy_delta_vs_rag` — signed, 2 dp | `Accuracy delta vs RAG` |
 | 4 | `accuracy_delta_vs_graphrag` — signed, 2 dp | `Accuracy delta vs GraphRAG` |
@@ -523,8 +526,11 @@ badge.
    tag (`chunk` / `entity` / `relationship`, colour-coded), the `source_id` in
    monospace with tooltip
    `Parent doc_id (wikidata QID) — this is the field scored against gold_doc_ids`,
-   and the `chunk_id` in muted text when non-null. Empty list →
-   `No citations returned.`
+   and the `chunk_id` in muted text when non-null. An entry with a `snippet` is
+   a toggle button (`aria-pressed`; the snippet's first 200 characters as its
+   tooltip): selecting it shows that citation's source and full snippet in a
+   preview under the list, selecting it again hides it, so what was cited is
+   readable on touch screens too. Empty list → `No citations returned.`
    The citation block sits at the **bottom** of the card (pushed down so the
    three columns' citation blocks align).
 
@@ -1007,7 +1013,9 @@ kept with its model, dataset and embedding metadata, and that selecting two
 or more runs compares them against the first one selected.
 
 - **Actions**:
-  - a `Dataset` select, filled from `GET /datasets`;
+  - a `Dataset` select, filled from `GET /datasets`. It defaults to
+    `eval_public`, else the first set not named `hidden`/`holdout`: the hidden
+    set is run once, deliberately, and sorts first;
   - `Run benchmark`, which calls `POST /batch {dataset}` and is gated on all
     three services (§2.1);
   - `Import JSON`, which accepts a `.json` export, a bare record list, or the

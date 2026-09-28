@@ -14,6 +14,7 @@ import {
 } from './services/benchmarkService'
 import { RequiresServices } from './ServiceStatus'
 import { PIPELINE_IDS, PIPELINE_LABELS, type PipelineSummary, type RunSummary } from './types'
+import { defaultDataset } from './benchmarkDefaults'
 
 type Metric = {
   key: keyof PipelineSummary
@@ -93,7 +94,7 @@ export function BenchmarksView() {
     listDatasets()
       .then((names) => {
         setDatasets(names)
-        setDataset((current) => current || names[0] || '')
+        setDataset((current) => current || defaultDataset(names))
       })
       .catch(() => setDatasets([]))
   }, [refresh])

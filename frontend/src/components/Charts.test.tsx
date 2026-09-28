@@ -5,12 +5,23 @@ import { ScatterPlot } from './Charts'
 afterEach(() => vi.restoreAllMocks())
 
 function xTickLabels(container: HTMLElement): string[] {
-  return Array.from(container.querySelectorAll('text.tick'))
-    .filter((t) => t.getAttribute('text-anchor') === 'middle')
-    .map((t) => t.textContent ?? '')
+  return Array.from(container.querySelectorAll('text.x-tick')).map((t) => t.textContent ?? '')
 }
 
 describe('ScatterPlot x ticks', () => {
+  it('anchor the last label at its end so the right edge does not clip it', () => {
+    const { container } = render(
+      <ScatterPlot
+        series={[{ name: 'rag', color: 'red', points: [{ x: 4000, y: 0.5, label: 'q1' }] }]}
+        xLabel="tokens"
+        yLabel="F1"
+      />,
+    )
+    const anchors = Array.from(container.querySelectorAll('text.x-tick')).map((t) => t.getAttribute('text-anchor'))
+    expect(anchors.at(-1)).toBe('end')
+    expect(anchors.slice(0, -1).every((a) => a === 'middle')).toBe(true)
+  })
+
   it('stay distinct for small maxima, with no duplicate-key warning', () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {})
     const { container } = render(

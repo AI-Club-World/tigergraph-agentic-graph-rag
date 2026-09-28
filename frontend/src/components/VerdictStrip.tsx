@@ -18,9 +18,9 @@ function Bar({ fraction, tone }: { fraction: number; tone: string }) {
 function RatioCard({ label, value, tone }: { label: string; value: number | null; tone: 'rag' | 'graphrag' }) {
   if (value === null || value === undefined) {
     return (
-      <div className="vcard" title="The baseline spent no tokens (it errored or did not run)">
+      <div className="vcard" title="No cost ratio: a pipeline errored, or the baseline spent no tokens">
         <span className="vcard-label">{label}</span>
-        <span className="vcard-value">N/A<span className="vcard-unit">no baseline tokens</span></span>
+        <span className="vcard-value">N/A<span className="vcard-unit">no cost ratio</span></span>
       </div>
     )
   }

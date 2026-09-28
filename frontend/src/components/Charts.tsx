@@ -71,8 +71,16 @@ export function ScatterPlot({
             </text>
           </g>
         ))}
-        {xTicks.map((t) => (
-          <text key={`x${t}`} x={sx(t)} y={h - pad.bottom + 18} className="tick" textAnchor="middle">
+        {xTicks.map((t, i) => (
+          // The last tick sits on the plot's right edge: anchor it at its end so
+          // the label is not cut off by the viewBox.
+          <text
+            key={`x${t}`}
+            x={sx(t)}
+            y={h - pad.bottom + 18}
+            className="tick x-tick"
+            textAnchor={i === xTicks.length - 1 && i > 0 ? 'end' : 'middle'}
+          >
             {t.toLocaleString('en-US')}
           </text>
         ))}
@@ -112,28 +120,30 @@ export function ScatterPlot({
       </figcaption>
       <details className="chart-data">
         <summary>Show data table</summary>
-        <table className="matrix">
-          <thead>
-            <tr>
-              <th scope="col">Series</th>
-              <th scope="col">Point</th>
-              <th scope="col">{xLabel}</th>
-              <th scope="col">{yLabel}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {series.flatMap((s) =>
-              s.points.map((p, i) => (
-                <tr key={`${s.name}-${i}`}>
-                  <th scope="row">{s.name}</th>
-                  <td>{p.label}</td>
-                  <td>{p.x.toLocaleString('en-US')}</td>
-                  <td>{p.y.toFixed(2)}</td>
-                </tr>
-              )),
-            )}
-          </tbody>
-        </table>
+        <div className="matrix-scroll">
+          <table className="matrix">
+            <thead>
+              <tr>
+                <th scope="col">Series</th>
+                <th scope="col">Point</th>
+                <th scope="col">{xLabel}</th>
+                <th scope="col">{yLabel}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {series.flatMap((s) =>
+                s.points.map((p, i) => (
+                  <tr key={`${s.name}-${i}`}>
+                    <th scope="row">{s.name}</th>
+                    <td>{p.label}</td>
+                    <td>{p.x.toLocaleString('en-US')}</td>
+                    <td>{p.y.toFixed(2)}</td>
+                  </tr>
+                )),
+              )}
+            </tbody>
+          </table>
+        </div>
       </details>
     </figure>
   )

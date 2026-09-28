@@ -369,7 +369,9 @@ input[type='text'], input[type='search'], input:not([type]), select {
 /* LLM model radio cards */
 .settings-model-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  /* minmax(0, …): a long model id wraps inside its card instead of widening
+     the column past the drawer; one column on a phone. */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.5rem;
   /* Live catalogs run to dozens of models; the filter box narrows them. */
   max-height: 18rem;
@@ -388,6 +390,8 @@ input[type='text'], input[type='search'], input:not([type]), select {
   font-size: 0.82rem;
 }
 .settings-model-card input[type='radio'] { accent-color: var(--accent); flex-shrink: 0; }
+.settings-model-card { min-width: 0; overflow-wrap: anywhere; }
+@media (max-width: 480px) { .settings-model-grid { grid-template-columns: minmax(0, 1fr); } }
 .settings-model-card:hover { border-color: var(--accent); background: var(--accent-bg); }
 .settings-model-card.selected {
   border-color: var(--accent);
@@ -882,6 +886,20 @@ button.preset.active::before { content: '● '; }
   font-size: 0.76rem;
 }
 .cite code { font-size: 1em; color: var(--accent); }
+.cite-toggle {
+  display: inline-flex; align-items: center; gap: 0.35rem;
+  background: none; border: 0; padding: 0; margin: 0;
+  font: inherit; color: inherit; text-align: left;
+}
+button.cite-toggle { cursor: pointer; }
+button.cite-toggle:hover code, button.cite-toggle[aria-pressed='true'] code { text-decoration: underline; }
+.cite:has(button[aria-pressed='true']) { outline: 1px solid var(--accent); }
+.cite-preview {
+  margin: 0.6rem 0 0; padding: 0.6rem 0.75rem;
+  border-left: 3px solid var(--accent); background: var(--bg-overlay);
+  font-size: 0.82rem; line-height: 1.5; color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.cite-preview-source { display: block; font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-muted); margin-bottom: 0.25rem; }
 .chunk-id { color: var(--text-muted); }
 .ref-type {
   font-family: var(--font-mono);
@@ -1005,7 +1023,7 @@ button.preset.active::before { content: '● '; }
 }
 .build-meta .tag { letter-spacing: 0.1em; }
 .build-lede { max-width: 80ch; color: var(--text-muted); font-size: 0.95rem; line-height: 1.65; margin: 0; }
-.build-actions { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+.build-actions { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; min-width: 0; max-width: 100%; }
 
 .flow-head { display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.9rem; }
 .flow-state {
@@ -1191,7 +1209,9 @@ table.matrix th.sub { font-size: 0.72rem; font-weight: 500; color: var(--text-mu
 .bar-value { text-align: right; font-variant-numeric: tabular-nums; }
 
 .scatter { margin: 0.6rem 0 0; }
-.scatter svg { width: 100%; height: auto; }
+/* The SVG scales with its box; capping the width keeps ticks and points near
+   their design size on wide screens instead of blowing them up ~2x. */
+.scatter svg { display: block; width: 100%; max-width: 960px; height: auto; margin: 0 auto; }
 .scatter .grid { stroke: var(--border); stroke-width: 1; }
 .scatter .tick { fill: var(--text-muted); font-size: 10px; }
 .scatter .axis-label { fill: var(--text-muted); font-size: 11px; }
@@ -1336,8 +1356,9 @@ table.matrix .section-row th { background: var(--bg-sunken); text-align: left; f
   opacity: 0.7;
 }
 .notice-close:hover { opacity: 1; }
-.dataset-picker { display: flex; gap: 0.5rem; align-items: center; }
-.dataset-picker select { min-width: 14rem; }
+.dataset-picker { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; min-width: 0; max-width: 100%; }
+/* A long dataset name must not widen the page: the select shrinks to the screen. */
+.dataset-picker select { min-width: min(14rem, 100%); max-width: 100%; }
 .bcard-status { display: inline-flex; align-items: center; gap: 0.5rem; }
 .bcard-pct { font-weight: 600; font-variant-numeric: tabular-nums; }
 .dataset-rename { padding: 0.45rem 0.75rem; font-size: 0.9rem; }

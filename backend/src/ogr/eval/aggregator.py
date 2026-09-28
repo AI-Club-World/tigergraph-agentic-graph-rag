@@ -47,15 +47,16 @@ def _summary(
     verdict: Verdict,
     agentic_correct: float | None,
     rag_correct: float | None,
+    no_ratio: str = "RAG spent no tokens",
 ) -> str:
     """One plain sentence a judge can read without the table."""
     ratio = verdict.token_multiplier_vs_rag
     if verdict.accuracy_delta_vs_rag == "n/a" or agentic_correct is None or rag_correct is None:
-        cost = "RAG spent no tokens: no cost ratio."
+        cost = f"{no_ratio}: no cost ratio."
         if ratio is not None:
             cost = f"Agentic cost {ratio}x RAG tokens."
         return f"No ground truth for this query, so the accuracy delta is N/A. {cost}"
-    at = f" at {ratio}x its tokens" if ratio is not None else " (RAG spent no tokens: no cost ratio)"
+    at = f" at {ratio}x its tokens" if ratio is not None else f" ({no_ratio}: no cost ratio)"
     delta = verdict.accuracy_delta_vs_rag
     if delta > 0:
         return f"Agentic was correct where RAG was not,{at}."
@@ -80,9 +81,26 @@ def build_verdict(
         record = records.get(pipeline)
         return record.tokens.total if record else 0
 
+    def errored(pipeline: str) -> bool:
+        record = records.get(pipeline)
+        return record is not None and record.status == "error"
+
+    def ratio(baseline: str) -> float | None:
+        # A failed run's tokens are what it spent before failing, not the cost
+        # of an answer: comparing them with a finished answer reads as "the
+        # agent is cheap" when it simply stopped. No answer, no cost ratio.
+        if errored(_AGENTIC) or errored(baseline):
+            return None
+        return _multiplier(tokens(_AGENTIC), tokens(baseline))
+
     verdict = Verdict(
-        token_multiplier_vs_rag=_multiplier(tokens(_AGENTIC), tokens(_RAG)),
-        token_multiplier_vs_graphrag=_multiplier(tokens(_AGENTIC), tokens(_GRAPHRAG)),
+        token_multiplier_vs_rag=ratio(_RAG),
+        token_multiplier_vs_graphrag=ratio(_GRAPHRAG),
+    )
+    no_ratio = (
+        "Agentic GraphRAG errored" if errored(_AGENTIC)
+        else "RAG errored" if errored(_RAG)
+        else "RAG spent no tokens"
     )
 
     agentic_em = rag_em = None
@@ -95,7 +113,7 @@ def build_verdict(
         verdict.accuracy_delta_vs_rag = round(agentic_em - rag_em, 2)
         verdict.accuracy_delta_vs_graphrag = round(agentic_em - em(_GRAPHRAG), 2)
 
-    verdict.summary_line = _summary(verdict, agentic_em, rag_em)
+    verdict.summary_line = _summary(verdict, agentic_em, rag_em, no_ratio)
     return verdict
 
 
