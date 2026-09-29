@@ -135,6 +135,35 @@ class TestImportRun:
         assert run_config["llm_model"] == "m" and "imported_at" in run_config
         assert records[0]["run_id"] == "past-1"
 
+    def test_imports_the_cli_submission_export(self, tmp_path):
+        """`ogr.cli export` output (e.g. submission/hidden-set-export.json)."""
+        rag, pipeline = _pipeline("rag", "26", 1000), _pipeline("agentic_graphrag", "26", 4000)
+        for p in (rag, pipeline):
+            del p["pipeline"]
+            p["explanation"] = "e"
+        payload = {
+            "run_id": "final-holdout",
+            "run_config": {"dataset": "eval_hidden", "started_at": "2026-09-28T06:32:36+00:00"},
+            "questions": [{"qid": "eval-1", "question": "q?", "qtype": "lookup",
+                           "pipelines": {"rag": rag, "agentic_graphrag": pipeline}}],
+        }
+        assert import_run(tmp_path, payload) == "final-holdout"
+        [summary] = list_runs(tmp_path)
+        assert summary["n_questions"] == 1 and not summary["scored"]
+        assert summary["pipelines"]["agentic_graphrag"]["mean_tokens"] == 4000
+        _config, [record] = read_run(tmp_path / "final-holdout.jsonl")
+        view = view_record(record)
+        assert view["qid"] == "eval-1" and view["scores"] is None
+        agentic = view["record"]["pipelines"]["agentic_graphrag"]
+        assert agentic["pipeline"] == "agentic_graphrag" and agentic["citations_count"] == 1
+        assert view["record"]["verdict"]["token_multiplier_vs_rag"] == 4.0
+        assert view["record"]["verdict"]["accuracy_delta_vs_rag"] == "n/a"
+
+    def test_malformed_submission_export_is_refused(self, tmp_path):
+        with pytest.raises(ValueError):
+            import_run(tmp_path, {"run_id": "x", "questions": [{"qid": "a"}]})
+        assert list(tmp_path.iterdir()) == []
+
     def test_bare_record_list_takes_the_records_run_id(self, tmp_path):
         assert import_run(tmp_path, [_record("pub-1", ["26"], "12", "26")]) == "r"
 

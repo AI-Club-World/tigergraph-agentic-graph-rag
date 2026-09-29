@@ -136,7 +136,7 @@ Source: `backend/src/ogr/api/main.py`, `api/security.py`. Single-process, in-mem
 | `GET /datasets` | — | question files in `data/questions/` (stems) |
 | `POST /batch` (202) | `BatchRequest {dataset, run_id?, latency_mode?: throughput\|timing, resume = false}` | `{run_id, status: "running"}` |
 | `GET /runs` | — | one summary per stored run, newest first (§9.2), status `running\|complete\|failed`, `error` on failure |
-| `POST /runs/import` (201) | `{run_id?, run_config?, records}` or a bare record list | run summary; 409 id taken, 400 malformed |
+| `POST /runs/import` (201) | `{run_id?, run_config?, records}`, a bare record list, or the `ogr.cli export` shape `{run_id, run_config, questions}` (unscored) | run summary; 409 id taken, 400 malformed |
 | `GET /batch/{run_id}/records` | — | scored view records (§9.2); 404 unknown |
 | `GET /history?kind=query\|build\|benchmark&limit=500` | — | trial log, newest first (§4.8), limit clamped to 1–5000 |
 

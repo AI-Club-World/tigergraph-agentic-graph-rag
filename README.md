@@ -191,7 +191,7 @@ frontend.
 |---|---|
 | `verify [--pre-build]` | Checks the LLM, the embedding backend and TigerGraph, and whether Q1–Q5 are installed. Exit code 0 only when nothing fails |
 | `build [--corpus PATH] [--vector-timeout S]` | Full reset and load of one corpus, as described above |
-| `batch QUESTIONS.jsonl --out OUT.jsonl [--run-id ID] [--mode throughput\|timing] [--embedding-model KEY]` | Runs a question set through all three pipelines and appends one scored record per question (details below) |
+| `batch QUESTIONS.jsonl --out OUT.jsonl [--run-id ID] [--mode throughput\|timing] [--embedding-model KEY]` | Runs a question set through all three pipelines and appends one scored record per question (details below). Logs a `benchmark` entry to the History screen |
 | `ask "<question>" [--pipelines rag,graphrag,agentic_graphrag] [--embedding-model KEY] [--json] [--show-trace]` | Answers one question from the terminal. Default pipeline: `rag`. Aliases: `graph`, `agentic` |
 | `coverage [--corpus PATH] [--out out/ingest-coverage.md]` | Parses the corpus infoboxes and writes the ingest coverage report |
 | `report RUN.jsonl [--out REPORT.md]` | Markdown run report: EM/F1/completeness/grounding and token cost per pipeline; per question type the Agentic − RAG gap, token ratio and a worth-it verdict; necessity routing (direct vs loop, with a labelled token-savings estimate); agents, tools and stop reasons |
@@ -200,6 +200,7 @@ frontend.
 How `batch` behaves:
 
 - **Run id.** Defaults to a UTC timestamp. The mode defaults to `RUN_LATENCY_MODE`. `timing` runs with a pool size of 1, so its latencies are comparable.
+- **Where the app finds it.** The Dashboard and Eval table read `out/<run_id>.jsonl` on the machine running the API. Any other `--out` path prints a note and the run does not show there. `out/` is git-ignored: a run made on another machine or in a cloud session reaches the app only by copying that file into `out/` or through **Import** (the JSONL, or the `export` JSON).
 - **Resume.** Rerunning the same command against an existing `--out` file skips every question already recorded successfully. A question whose latest record has a pipeline error is retried, and the new record supersedes the old one.
 - **Stops and exit codes.** A rate-limit error stops the run: no new question starts. If any question was not recorded, or the `RUN_MAX_TOTAL_TOKENS` ceiling was reached, the command exits 1 with the reason. The ceiling counts tokens across resumes. Rerun to continue.
 
@@ -241,7 +242,7 @@ browser `EventSource` cannot send headers.
 | `GET /datasets` | key | Question sets in `data/questions/` |
 | `POST /batch` | key | `{dataset, run_id?, latency_mode?, resume?}` → `202 {run_id, status}`. Records go to `out/{run_id}.jsonl` |
 | `GET /runs` | key | One summary per stored run, newest first |
-| `POST /runs/import` | key | Import a run export, a record list or a native JSONL file. Returns `409` if the run id already exists |
+| `POST /runs/import` | key | Import a run export, a record list, a native JSONL file or an `ogr.cli export` file (imported unscored: it carries no gold). Returns `409` if the run id already exists |
 | `GET /batch/{run_id}/records` | key | A run's scored records |
 | `GET /history?kind=&limit=` | key | Every query, build, benchmark and embedding-job attempt (`out/history.jsonl`), newest first |
 

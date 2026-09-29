@@ -249,9 +249,11 @@ def main(argv=None) -> int:
         return 0
 
     if args.command == "batch":
+        import time
         from datetime import UTC, datetime
 
         from ogr.common.llm import LLMRateLimitError
+        from ogr.common.trials import TrialLog
         from ogr.eval.batch_runner import (
             BatchIncompleteError,
             default_pipelines,
@@ -268,6 +270,22 @@ def main(argv=None) -> int:
         client = TigerGraphClient(config)
         started = datetime.now(UTC)
         run_id = args.run_id or started.strftime("%Y%m%dT%H%M%SZ")
+        dataset = Path(args.questions).stem
+        # The app lists a run from out/<run_id>.jsonl only.
+        app_path = OUT_DIR / f"{run_id}.jsonl"
+        if Path(args.out).resolve() != app_path.resolve():
+            print(f"Note: the app's Dashboard and Eval table read {app_path}; this run is written to "
+                  f"{args.out} and will not show there.", file=sys.stderr)
+        started_clock = time.monotonic()
+
+        def record_trial(status: str, questions: int | None = None, error: Exception | None = None) -> None:
+            # The entry POST /batch writes, so a CLI run shows on the History screen too.
+            TrialLog(OUT_DIR / "history.jsonl").append(
+                "benchmark", status, subject=f"{dataset} · {run_id}", run_id=run_id, dataset=dataset,
+                questions=questions, duration_ms=round((time.monotonic() - started_clock) * 1000),
+                error=str(error)[:500] if error else None, llm_provider=config.llm_provider,
+                llm_model=config.llm_model, embedding_model=config.embedding_model,
+            )
 
         try:
             count = run_batch_sync(
@@ -277,18 +295,21 @@ def main(argv=None) -> int:
                 run_id=run_id,
                 run_config={
                     **run_config_header(config),
-                    "dataset": Path(args.questions).stem,
+                    "dataset": dataset,
                     "started_at": started.isoformat(),
                 },
                 pool_size=effective_pool_size(config),
                 max_total_tokens=config.max_total_tokens,
             )
         except BatchIncompleteError as e:
+            record_trial("error", error=e)
             print(f"Batch {run_id} incomplete: {e}", file=sys.stderr)
             return 1
         except LLMRateLimitError as e:
+            record_trial("error", error=e)
             print(f"Batch {run_id} stopped: {e}", file=sys.stderr)
             return 1
+        record_trial("complete", questions=count)
         print(f"Batch {run_id}: ran {count} question(s), wrote to {args.out}")
         return 0
 

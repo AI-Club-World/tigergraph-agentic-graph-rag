@@ -56,6 +56,35 @@ def test_batch_timing_mode_runs_with_pool_one(monkeypatch, tmp_path):
     assert seen["max_total_tokens"] > 0
 
 
+def test_batch_run_shows_in_the_app_history(monkeypatch, capsys):
+    from ogr.common.trials import TrialLog
+    from ogr.eval import batch_runner
+
+    monkeypatch.setattr(batch_runner, "run_batch_sync", lambda **_kwargs: 3)
+    monkeypatch.setattr(batch_runner, "embedding_backend", lambda _m: "sentence-transformers")
+    out = cli.OUT_DIR / "r1.jsonl"
+    assert cli.main(["batch", "data/questions/eval_public.jsonl", "--out", str(out), "--run-id", "r1"]) == 0
+    assert "will not show there" not in capsys.readouterr().err
+    [trial] = TrialLog(cli.OUT_DIR / "history.jsonl").read()
+    assert trial["kind"] == "benchmark" and trial["status"] == "complete"
+    assert trial["run_id"] == "r1" and trial["dataset"] == "eval_public" and trial["questions"] == 3
+
+
+def test_failed_batch_is_logged_and_a_hidden_out_path_is_named(monkeypatch, tmp_path, capsys):
+    from ogr.common.trials import TrialLog
+    from ogr.eval import batch_runner
+
+    def incomplete(**_kwargs):
+        raise batch_runner.BatchIncompleteError("pub-7 not recorded")
+
+    monkeypatch.setattr(batch_runner, "run_batch_sync", incomplete)
+    monkeypatch.setattr(batch_runner, "embedding_backend", lambda _m: "sentence-transformers")
+    assert cli.main(["batch", "q.jsonl", "--out", str(tmp_path / "elsewhere.jsonl"), "--run-id", "r2"]) == 1
+    assert "will not show there" in capsys.readouterr().err
+    [trial] = TrialLog(cli.OUT_DIR / "history.jsonl").read()
+    assert trial["status"] == "error" and "pub-7" in trial["error"]
+
+
 def test_build_refuses_without_tigergraph(monkeypatch, capsys):
     monkeypatch.setattr(cli.TigerGraphClient, "_ensure_connection", lambda self: None)
     assert cli.main(["build"]) == 1

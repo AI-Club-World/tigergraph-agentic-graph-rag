@@ -18,6 +18,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from ogr.common.contracts import PipelineRecord, QueryLevelRecord
+from ogr.eval.aggregator import build_verdict
 from ogr.eval.scorer import grounding, score_answer
 from ogr.eval.store import BatchStore, _assert_no_secret, iter_lines
 
@@ -184,9 +186,41 @@ def list_runs(out_dir: Path, statuses: dict[str, str] | None = None) -> list[dic
     return sorted(summaries, key=lambda s: s["started_at"], reverse=True)
 
 
+def _records_from_submission(questions: list[Any], run_config: dict[str, Any]) -> list[dict[str, Any]]:
+    """Run records from the `ogr.cli export` submission shape (one entry per
+    question with its pipelines). That shape carries no gold answers, so the
+    imported run is unscored; the verdict is rebuilt by the one aggregator."""
+    records = []
+    for q in questions:
+        pipelines = {
+            name: PipelineRecord.model_validate(
+                {"citations_count": len(p.get("citations") or []), **p, "pipeline": name}
+            )
+            for name, p in q["pipelines"].items()
+        }
+        query = QueryLevelRecord(
+            query_id=q["qid"],
+            query_text=q["question"],
+            qtype=q.get("qtype"),
+            timestamp=run_config.get("started_at") or "",
+            pipelines=pipelines,
+            verdict=build_verdict(pipelines),
+        )
+        records.append({
+            "question_id": q["qid"],
+            "question_text": q["question"],
+            "qtype": q.get("qtype"),
+            "ground_truth": [],
+            "gold_doc_ids": [],
+            "record": query.model_dump(),
+        })
+    return records
+
+
 def import_run(out_dir: Path, payload: Any) -> str:
     """Store a previously executed run. Accepts the export shape
-    `{run_id?, run_config?, records: [...]}` or a bare list of records.
+    `{run_id?, run_config?, records: [...]}`, a bare list of records, or the
+    `ogr.cli export` submission shape `{run_id, run_config, questions: [...]}`.
 
     Raises ValueError on a malformed payload or unsafe run id, FileExistsError
     if the run id is taken — history is append-only, never overwritten.
@@ -197,6 +231,11 @@ def import_run(out_dir: Path, payload: Any) -> str:
         records = payload.get("records")
         run_config = payload.get("run_config") or {}
         run_id = payload.get("run_id")
+        if records is None and isinstance(payload.get("questions"), list):
+            try:
+                records = _records_from_submission(payload["questions"], run_config)
+            except (KeyError, TypeError, AttributeError) as e:
+                raise ValueError(f"Questions are not in the export shape: {type(e).__name__} {e}") from e
     else:
         raise ValueError("Expected a list of records or an object with a 'records' list")
 
