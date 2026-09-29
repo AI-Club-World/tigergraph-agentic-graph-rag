@@ -76,6 +76,7 @@ default. The main variables:
 | `EMBEDDING_HOST_URL` | Optional self-hosted embedding service serving the catalog models: `POST {url}/embed` with `{"model": "<key>", "texts": [...]}` returns `{"embeddings": [...]}`. Tried first; on failure the next tier runs |
 | `EMBEDDING_CLOUDFLARE`, `EMBEDDING_REMOTE` | `false` skips the Cloudflare embedding tier (e.g. quota spent), or every remote tier. Both default to `true` |
 | `OGR_API_KEY` | Required. Every authenticated route returns `503` until it is set. Generate one with `python -c "import secrets; print(secrets.token_urlsafe(24))"` |
+| `OGR_ADMIN_KEY`, `OGR_SESSION_TTL_S` | Optional admin key: set, `OGR_API_KEY` becomes a viewer key and only this key can build, upload, switch embeddings, change settings or start benchmarks. Session lifetime after sign-in (8 h) |
 | `OGR_CORS_ORIGINS` | Browser origins allowed to call the API. Defaults to `http://localhost:5173,http://127.0.0.1:5173`, the Vite dev server |
 | `RUN_K`, `RUN_CHUNK_TOKENS`, `RUN_CHUNK_OVERLAP` | Retrieval and chunking (10 / 300 / 50). They are fixed before the first run and never tuned against results |
 | `RUN_MAX_STEPS`, `RUN_MAX_TOKENS_PER_QUERY`, `RUN_MAX_TOTAL_TOKENS` | Agentic loop limit (6), per-query token budget (20,000) and whole-run token ceiling (5,000,000; `0` turns it off) |
@@ -131,7 +132,7 @@ Check it: `curl http://127.0.0.1:8000/health` → `{"status":"ok"}`.
 ```bash
 cd frontend
 npm install
-cp .env.example .env    # set VITE_API_KEY to the backend's OGR_API_KEY
+cp .env.example .env    # no key here: the UI asks for it at sign-in
 npm run dev
 ```
 
@@ -159,23 +160,26 @@ Every step shares one `RUN_ID`. Outputs go to `out/<RUN_ID>-public.jsonl`,
 
 ## Security model
 
-The API key is a speed bump, not authentication. The frontend sends
-`VITE_API_KEY` as `X-API-Key`. Because it is a `VITE_` variable, it is
-**compiled into the public JavaScript bundle**, and anyone who can load the UI
-can read it. It protects only against casual access.
+No secret ships in the browser bundle. The UI asks for an access key at
+**sign-in** and exchanges it (`POST /auth/session`) for a random session
+token. The token is held server-side with an expiry (`OGR_SESSION_TTL_S`,
+8 h), is revocable (Sign out), and lives in the browser tab's
+`sessionStorage` only. The frontend build refuses to run with a
+`VITE_API_KEY` set, so an old `.env` cannot leak a key into the JavaScript.
 
-Anyone holding the key can:
+Two keys, two roles:
 
-- reset or rebuild the graph,
-- upload datasets,
-- switch or evict embedding models,
-- change the LLM provider and model,
-- start benchmarks that spend your LLM quota.
+| Key | Role | Can |
+|---|---|---|
+| `OGR_API_KEY` | viewer (admin when no admin key is set) | ask questions, read runs, history and settings |
+| `OGR_ADMIN_KEY` (optional) | admin | also build or reset the graph, upload datasets, switch or evict embedding models, change the LLM, start benchmarks, import runs |
 
-Run the backend on localhost or a private network, or put it behind real
-authentication (a VPN, or a reverse proxy with SSO or basic auth). Do not
-expose it to the internet with only `OGR_API_KEY`. Never reuse a key that
-protects anything else. Backend secrets (`TG_*`, `LLM_API_KEY`, provider keys,
+Give judges or reviewers the viewer key; keep the admin key to yourself. Ten
+wrong keys from one client in ten minutes lock it out for the rest of the
+window. Scripts and the CLI may send a key directly as `X-API-Key`.
+
+Still run the backend behind HTTPS in any public deployment (the key is sent
+once, at sign-in), and never reuse a key that protects anything else. Backend secrets (`TG_*`, `LLM_API_KEY`, provider keys,
 `CLOUDFLARE_API_TOKEN`) stay in the backend `.env`. They never go in the
 frontend.
 
@@ -203,8 +207,11 @@ Tests and lint: `cd backend && pytest -q` and `cd backend && ruff check src test
 
 ## HTTP API
 
-Routes from `backend/src/ogr/api/main.py`. **Auth** is `X-API-Key` unless
-stated otherwise. An unset `OGR_API_KEY` returns `503` on every key-protected
+Routes from `backend/src/ogr/api/main.py`. **Auth** is a session
+(`Authorization: Bearer <token>` from `POST /auth/session {key}`) or the key
+itself as `X-API-Key`, unless stated otherwise; routes that change state need
+the admin role (`OGR_ADMIN_KEY`, or `OGR_API_KEY` when no admin key is set)
+and answer `403` to a viewer. An unset `OGR_API_KEY` returns `503` on every key-protected
 route. A wrong or missing key returns `401`. The two SSE streams take the
 single-use `stream_token` from the start response as `?token=`, because
 browser `EventSource` cannot send headers.
@@ -331,7 +338,8 @@ frontend/
                           RunPicker, Charts, colors, Icon, Notice, ErrorBoundary,
                           EmbeddingSettings, EmbeddingMismatchDialog, useDialogFocus
     services/
-      http.ts             fetch wrapper (X-API-Key, ApiError) + EventSource helper
+      http.ts             fetch wrapper (session Bearer token, ApiError) + EventSource helper
+      session.ts          sign-in / sign-out, the session token (sessionStorage)
       queryService.ts  buildService.ts  batchService.ts  benchmarkService.ts
       datasetService.ts  historyService.ts  settingsService.ts
       mock/               transport.ts (fixture replay), runs.ts (mock run history)
@@ -355,7 +363,9 @@ set them through `style`, because `var()` does not resolve in SVG attributes.
 |---|---|
 | Header shows a `mock data` chip | `VITE_USE_MOCK_API=true` in `frontend/.env`. Restart `npm run dev` after changing it: Vite reads `.env` only at startup |
 | Every request gets `503 OGR_API_KEY is not configured` | `OGR_API_KEY` is unset on the backend |
-| Every request gets `401` | `VITE_API_KEY` does not match `OGR_API_KEY`. Rebuild or restart the frontend after changing it |
+| Every request gets `401` | Not signed in, or the session expired or the backend restarted (sessions are held in memory). Sign in again |
+| An action says it needs the admin key | You signed in with the viewer key while `OGR_ADMIN_KEY` is set. Sign out and sign in with the admin key |
+| The frontend build stops on `VITE_API_KEY is set` | Remove `VITE_API_KEY` from `frontend/.env*`: the key is typed at sign-in now |
 | CORS error in the browser console | The frontend origin is not in `OGR_CORS_ORIGINS`. Add it and restart the backend |
 | `verify` fails on TigerGraph | `TG_HOST` must be the full `https://…` URL, the credentials must be valid, and `TG_CLOUD=true` is needed for Savanna |
 | `verify` fails on the LLM with `429`/quota | The key has no quota left. Pick another provider/model in Settings, or use a local server (`LLM_BASE_URL=http://localhost:11434/v1`, no key needed) |

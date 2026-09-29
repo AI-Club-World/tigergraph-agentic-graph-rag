@@ -116,16 +116,15 @@ Cache headers are split deliberately: fingerprinted files under `/assets/*`
 are immutable and cached for a year, while `index.html` must revalidate every
 time or a deploy would keep serving the previous bundle's asset references.
 
-## `VITE_API_KEY` is public
+## No key in the site
 
-It is compiled into the bundle and shipped to every visitor, so it is **not a
-secret**. It deters casual access and nothing more. Anyone who has it can
-reset the graph, upload datasets, switch embedding models, change the LLM
-provider and spend your LLM quota. On a mock-mode site leave it unset. For a
-live site:
+The site carries no API key: the UI asks for one at sign-in and keeps only a
+session token for the tab (README, Security model). The build refuses to run
+with `VITE_API_KEY` set. For a live site:
 
-- keep the backend on localhost or a private network, or put it behind real
-  authentication (a VPN, or a reverse proxy with SSO/basic auth);
+- serve the backend over HTTPS (the key is sent once, at sign-in);
+- give visitors the viewer key (`OGR_API_KEY`) and keep `OGR_ADMIN_KEY` for
+  whoever may build, upload, switch embeddings or start benchmarks;
 - never reuse a value that protects anything real.
 
 `TG_PASSWORD`, `TG_SECRET`, `TG_TOKEN`, `LLM_API_KEY`, the provider keys and
@@ -141,7 +140,6 @@ folder deploy) and rebuild:
 ```
 VITE_USE_MOCK_API = false
 VITE_API_BASE_URL = https://<your-api-host>
-VITE_API_KEY      = <the backend's OGR_API_KEY>
 ```
 
 Delete the `VITE_USE_MOCK_API = "true"` line from `netlify.toml`, or override
@@ -150,7 +148,8 @@ each `services/*Service.ts` branches on `config.useMockApi`. Two more things:
 
 - Add the Netlify origin to the backend's `OGR_CORS_ORIGINS`.
 - The two SSE endpoints authenticate with a short-lived single-use `?token=`,
-  not the `X-API-Key` header, because `EventSource` cannot send custom headers.
+  not the session header, because `EventSource` cannot send custom headers.
+- Sessions live in the backend's memory: a backend restart signs everyone out.
 
 ## Troubleshooting
 

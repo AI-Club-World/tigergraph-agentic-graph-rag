@@ -265,7 +265,6 @@ Every value is compiled into the public bundle.
 | Variable | Default | Effect |
 |---|---|---|
 | `VITE_API_BASE_URL` | `http://127.0.0.1:8000` | Base for every request and SSE URL |
-| `VITE_API_KEY` | `''` | Sent as `X-API-Key` when non-empty. **Not a secret**: it ships in the bundle |
 | `VITE_USE_MOCK_API` | `false` | **Master switch.** Only the value `true` (trimmed, case-insensitive) means mock. Anything else, including empty or a typo, means the live backend |
 | `VITE_MOCK_LATENCY_SCALE` | `1` | Multiplier on every mock delay. `0` = instant (tests, screenshots) |
 | `VITE_DEFAULT_RUN_ID` | `latest` | Run used when the URL has no `?run=`. `latest` or unset, on a live backend, means the newest run (§2) |
@@ -290,7 +289,8 @@ Every other view behaves the same against fixtures and against the real API.
 ### 5.1 HTTP
 
 - JSON request and response bodies. `Content-Type: application/json`, plus
-  `X-API-Key` when a key is configured. A dataset upload sends the raw file
+  `Authorization: Bearer <session token>` when signed in (`services/session.ts`).
+  There is no build-time key: `VITE_API_KEY` makes the build fail. A dataset upload sends the raw file
   instead, as `application/x-ndjson`.
 - A non-2xx response becomes an `ApiError` carrying `status`, a message, and,
   when the server sends a structured `detail` (`{code, message, …}`), its
@@ -299,8 +299,17 @@ Every other view behaves the same against fixtures and against the real API.
   `loc: msg` entries of a 422 validation list. Otherwise it falls back to the
   HTTP status text. A non-JSON error body must not throw; keep the status text.
 - Unauthenticated routes: `GET /health`, `/health/db|llm|embedding` and
-  `GET /settings`. The SSE streams use a token instead (§5.2). Everything else
-  needs `X-API-Key`. When the server has no key configured, it answers `503`.
+  `GET /settings`, and `POST /auth/session`. The SSE streams use a token
+  instead (§5.2). Everything else needs a session. When the server has no key
+  configured, it answers `503`.
+- **Sign-in.** With no session (live mode), the header shows a `Sign in` button
+  and the sign-in dialog opens: one password field, `Access key`, and the note
+  on viewer vs admin keys. The key goes once to `POST /auth/session`; only the
+  returned token and role are kept, in `sessionStorage`. Signed in, the header
+  shows the role and `Sign out` (revokes the session). A `401` from any call
+  clears the session and reopens the dialog with `Your session has ended. Sign
+  in again to continue.` A viewer's admin-only action shows the server's `403`
+  message. Mock mode has no sign-in.
 
 | Call | Method / path | Returns |
 |---|---|---|

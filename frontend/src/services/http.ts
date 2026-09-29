@@ -1,5 +1,6 @@
 import { config } from '../config'
 import { triggerRecheckOnFailure } from '../useServiceStatus'
+import { authHeaders, sessionRejected } from './session'
 
 export class ApiError extends Error {
   constructor(
@@ -16,15 +17,15 @@ export class ApiError extends Error {
 }
 
 function headers(): HeadersInit {
-  const h: Record<string, string> = { 'Content-Type': 'application/json' }
-  if (config.apiKey) h['X-API-Key'] = config.apiKey
-  return h
+  return { 'Content-Type': 'application/json', ...authHeaders() }
 }
 
 async function parse<T>(res: Response): Promise<T> {
   if (!res.ok) {
     // Server errors (5xx) suggest the backend is degraded — re-check health.
     if (res.status >= 500) triggerRecheckOnFailure()
+    // The session expired or was signed out: ask to sign in again.
+    if (res.status === 401) sessionRejected()
     let detail = res.statusText
     let code: string | undefined
     let structured: Record<string, unknown> | undefined

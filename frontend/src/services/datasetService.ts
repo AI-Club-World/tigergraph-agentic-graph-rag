@@ -1,6 +1,7 @@
 import { config } from '../config'
 import { ApiError, get, patch } from './http'
 import { delay } from './mock/transport'
+import { authHeaders, sessionRejected } from './session'
 
 export interface BuiltInfo {
   built_at: string
@@ -75,10 +76,11 @@ export async function uploadCorpus(name: string, file: File, title?: string): Pr
   if (title?.trim()) query.set('title', title.trim())
   const res = await fetch(`${config.apiBaseUrl}/corpora/${encodeURIComponent(name)}?${query}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/x-ndjson', ...(config.apiKey ? { 'X-API-Key': config.apiKey } : {}) },
+    headers: { 'Content-Type': 'application/x-ndjson', ...authHeaders() },
     body: file,
   })
   if (!res.ok) {
+    if (res.status === 401) sessionRejected()
     let detail = res.statusText
     try {
       const body = (await res.json()) as { detail?: string }

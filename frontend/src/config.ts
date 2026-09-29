@@ -2,7 +2,6 @@ const env = import.meta.env
 
 export const config = {
   apiBaseUrl: env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000',
-  apiKey: env.VITE_API_KEY ?? '',
   // Set VITE_USE_MOCK_API=true only for local fixture-backed development.
   // Default is false (live backend).
   // Only an explicit "true" turns mocks on: an empty or mistyped value must

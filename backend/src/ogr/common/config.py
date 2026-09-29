@@ -220,6 +220,13 @@ class RunConfig(BaseModel):
     # Empty means "no key configured" — the API refuses every request rather
     # than silently running unauthenticated.
     ogr_api_key: str = Field(default_factory=lambda: _env("OGR_API_KEY", ""))
+    # Optional second key for destructive routes (build/reset, uploads,
+    # embedding jobs, settings, benchmarks, imports). Set, it splits access:
+    # OGR_API_KEY becomes a viewer key (ask, read). Unset, OGR_API_KEY keeps
+    # every right, as before.
+    ogr_admin_key: str = Field(default_factory=lambda: _env("OGR_ADMIN_KEY", ""))
+    # Lifetime of a browser session (POST /auth/session); 8 h by default.
+    ogr_session_ttl_s: int = Field(default_factory=lambda: int(_env("OGR_SESSION_TTL_S", "28800")))
     # /health/llm waits this long for its one-token completion; a cold
     # free-tier model can take well over 20 s.
     health_llm_timeout_s: float = Field(

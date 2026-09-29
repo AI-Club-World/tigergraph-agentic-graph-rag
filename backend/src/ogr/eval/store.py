@@ -38,7 +38,9 @@ _SECRET_LIKE = re.compile(
     r"|gh[pousr]_[A-Za-z0-9]{36,}"
     r"|eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]+"
 )
-_SECRET_ENV_VARS = ("LLM_API_KEY", "TG_PASSWORD", "TG_SECRET", "TG_TOKEN", "TG_JWT_TOKEN", "OGR_API_KEY")
+_SECRET_ENV_VARS = (
+    "LLM_API_KEY", "TG_PASSWORD", "TG_SECRET", "TG_TOKEN", "TG_JWT_TOKEN", "OGR_API_KEY", "OGR_ADMIN_KEY",
+)
 # Shorter configured values are too likely to occur in ordinary answer text.
 _MIN_SECRET_LEN = 8
 

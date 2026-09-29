@@ -29,6 +29,18 @@ def _isolated_out_dir(monkeypatch, tmp_path):
 
 
 @pytest.fixture(autouse=True)
+def _fresh_auth_state():
+    """Sessions and the sign-in limiter are process-wide; each test starts clean."""
+    from ogr.api.security import sessions, sign_in_limiter
+
+    sessions.clear()
+    sign_in_limiter.clear()
+    yield
+    sessions.clear()
+    sign_in_limiter.clear()
+
+
+@pytest.fixture(autouse=True)
 def _no_local_reranker(monkeypatch):
     """The local cross-encoder fallback would load bge-reranker-base weights
     (seconds per test, and GBs of memory across the suite). Reranking then

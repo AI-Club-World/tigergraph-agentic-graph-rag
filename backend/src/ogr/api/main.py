@@ -36,12 +36,20 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 
-from fastapi import APIRouter, Body, Depends, FastAPI, HTTPException, Request
+from fastapi import APIRouter, Body, Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
-from ogr.api.security import StreamTokenStore, get_config, require_api_key
+from ogr.api.security import (
+    StreamTokenStore,
+    get_config,
+    require_admin,
+    require_api_key,
+    role_for_key,
+    sessions,
+    sign_in_limiter,
+)
 from ogr.common.config import RunConfig, get_default_config
 from ogr.common.contracts import PipelineRecord, QueryLevelRecord
 from ogr.common.embedding_models import (
@@ -182,6 +190,34 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+# ── Sign-in (TECHNICAL-SPEC §4.5): no secret in the browser bundle ──
+@app.post("/auth/session")
+def sign_in(request: Request, body: dict = Body(...), config: RunConfig = Depends(get_config)) -> dict:
+    """Exchange a key the operator types for a session token (Bearer)."""
+    if not config.ogr_api_key:
+        raise HTTPException(status_code=503, detail="OGR_API_KEY is not configured")
+    client = request.client.host if request.client else "unknown"
+    if sign_in_limiter.blocked(client):
+        raise HTTPException(status_code=429, detail="Too many wrong keys; try again in a few minutes")
+    role = role_for_key(str(body.get("key") or ""), config)
+    if role is None:
+        sign_in_limiter.fail(client)
+        raise HTTPException(status_code=401, detail="Wrong key")
+    token = sessions.issue(role, config.ogr_session_ttl_s)
+    return {"token": token, "role": role, "expires_in_s": config.ogr_session_ttl_s}
+
+
+@app.get("/auth/session")
+def session_role(role: str = Depends(require_api_key)) -> dict:
+    return {"role": role}
+
+
+@app.delete("/auth/session", status_code=204)
+def sign_out(authorization: str | None = Header(default=None)) -> None:
+    if authorization and authorization.lower().startswith("bearer "):
+        sessions.revoke(authorization[7:].strip())
+
+
 # ─────────────────────────────────────────── /settings ──────────────────────
 
 
@@ -269,7 +305,7 @@ async def get_provider_models(provider: Literal["gemini", "nvidia_nim", "groq"])
     return {"provider": provider, "models": models, "note": note}
 
 
-@router.patch("/settings")
+@router.patch("/settings", dependencies=[Depends(require_admin)])
 async def patch_settings(body: SettingsPatch) -> dict[str, Any]:
     """Update runtime model/embedding without a server restart. The selected
     LLM applies to all three pipelines: each run snapshots config once.
@@ -473,7 +509,7 @@ def _start_embedding_job(config: RunConfig) -> None:
     _embedding_job["task"] = asyncio.create_task(asyncio.to_thread(job))
 
 
-@router.post("/embeddings/switch", status_code=202)
+@router.post("/embeddings/switch", status_code=202, dependencies=[Depends(require_admin)])
 async def post_embedding_switch(
     body: EmbeddingSwitch, config: RunConfig = Depends(get_config)
 ) -> dict[str, Any]:
@@ -495,7 +531,7 @@ async def post_embedding_switch(
     return result
 
 
-@router.post("/embeddings/resume", status_code=202)
+@router.post("/embeddings/resume", status_code=202, dependencies=[Depends(require_admin)])
 async def post_embedding_resume(config: RunConfig = Depends(get_config)) -> dict[str, Any]:
     """Continue a failed job from its last checkpointed batch."""
     _refuse_while_busy()
@@ -505,7 +541,7 @@ async def post_embedding_resume(config: RunConfig = Depends(get_config)) -> dict
     return {"job": job}
 
 
-@router.post("/embeddings/{model}/complete", status_code=202)
+@router.post("/embeddings/{model}/complete", status_code=202, dependencies=[Depends(require_admin)])
 async def post_embedding_complete(model: str, config: RunConfig = Depends(get_config)) -> dict[str, Any]:
     """Embed the chunks a stored model is missing (a dataset built while it
     was not the active model)."""
@@ -793,7 +829,7 @@ class CorpusPatch(BaseModel):
     description: str | None = None
 
 
-@router.patch("/corpora/{name}")
+@router.patch("/corpora/{name}", dependencies=[Depends(require_admin)])
 async def patch_corpus(name: str, body: CorpusPatch) -> dict[str, Any]:
     """Rename a dataset (its display title); its id and file stay as they are."""
     path = _corpus_file(name)
@@ -808,7 +844,7 @@ async def patch_corpus(name: str, body: CorpusPatch) -> dict[str, Any]:
     return {"name": name, **await asyncio.to_thread(dataset_meta.describe, path)}
 
 
-@router.post("/corpora/{name}", status_code=201)
+@router.post("/corpora/{name}", status_code=201, dependencies=[Depends(require_admin)])
 async def upload_corpus(
     name: str,
     request: Request,
@@ -922,7 +958,7 @@ def _graph_has_documents(client: TigerGraphClient) -> bool:
         return False
 
 
-@router.post("/build", status_code=202)
+@router.post("/build", status_code=202, dependencies=[Depends(require_admin)])
 async def post_build(
     body: BuildRequest | None = None, config: RunConfig = Depends(get_config)
 ) -> dict[str, str]:
@@ -1264,7 +1300,7 @@ async def get_datasets() -> list[str]:
     return _datasets()
 
 
-@router.post("/batch", status_code=202)
+@router.post("/batch", status_code=202, dependencies=[Depends(require_admin)])
 async def post_batch(body: BatchRequest, config: RunConfig = Depends(get_config)) -> dict[str, str]:
     try:
         return await _start_batch(body, config)
@@ -1372,7 +1408,7 @@ async def get_runs() -> list[dict[str, Any]]:
     return runs
 
 
-@router.post("/runs/import", status_code=201)
+@router.post("/runs/import", status_code=201, dependencies=[Depends(require_admin)])
 async def post_run_import(payload: Any = Body(...)) -> dict[str, Any]:
     """Store a previously executed run from its JSON export."""
     try:
