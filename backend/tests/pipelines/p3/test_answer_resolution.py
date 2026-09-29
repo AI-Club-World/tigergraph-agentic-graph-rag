@@ -107,3 +107,20 @@ class TestEvidenceConflicts:
         assert verify, "verification step recorded"
         # The direct lookup shows no prose, so no conflict is claimed without evidence for one.
         assert "conflicting evidence" not in verify[0].notes
+
+
+def test_infobox_keys_and_years_in_a_chunk_are_not_prose_figures():
+    """r5: "competitors: 28 nations: 13" (the infobox serialised in a chunk)
+    read as "28 nations"; "2008 competitors:" as a count of 2008."""
+    from ogr.pipelines.p3_agentic.agents.answer_resolution import find_conflicts
+
+    row = {"doc_id": "Q1", "title": "T", "nations": 13, "competitors": 28}
+    for text in (
+        "[Infobox Olympic event] event: x competitors: 28 nations: 13 gold: A",
+        "date: 12 August 2008 competitors: 28 nations: 13",
+        "28 athletes from 13 nations competed.",
+    ):
+        assert find_conflicts([row, {"doc_id": "Q1", "text": text}]) == [], text
+    assert find_conflicts([row, {"doc_id": "Q1", "text": "The event drew 30 skaters from 14 nations."}]) == [
+        "nations on T (Q1): infobox 13, page text 14"
+    ]

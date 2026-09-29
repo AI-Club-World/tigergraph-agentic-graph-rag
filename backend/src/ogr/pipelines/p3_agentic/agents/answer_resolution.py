@@ -39,8 +39,12 @@ __all__ = ["AnswerResolution", "find_conflicts", "resolve_answer"]
 _PROSE = ("similarity_search", "document_retrieval")
 # A figure in page prose and the graph field it states: "24 nations",
 # "a field of 311 athletes". Corpus text, not the question (NFR-7).
+# A word followed by ":" is an infobox key ("competitors: 28 nations: 13"
+# serialises the infobox at the top of a chunk), not a figure in prose; and
+# a four-digit year is not a count ("… 2008 competitors: 25").
 _PROSE_FIGURE = re.compile(
-    r"\b(\d[\d,]*)\s+(nations|countries|NOCs|competitors|athletes|participants)\b", re.IGNORECASE
+    r"\b(?!(?:1[89]|20)\d\d\b)(\d[\d,]*)\s+(nations|countries|NOCs|competitors|athletes|participants)\b(?!\s*:)",
+    re.IGNORECASE,
 )
 _FIELD_OF = {
     "nations": "nations", "countries": "nations", "nocs": "nations",
