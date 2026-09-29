@@ -29,7 +29,7 @@ class _Client:
 
     def __init__(self):
         self.q1 = []
-        self.events = [{"event_id": f"athletics-1996-Summer-e{i}"} for i in range(40)] + [
+        self.events = [{"event_id": f"athletics-1996-Summer-e{i}"} for i in range(MAX_VENUE_EVENTS + 10)] + [
             {"event_id": "athletics-2008-Summer-women-s-shot-put"},
             {"event_id": "athletics-2008-Summer-men-s-100-m"},
         ]

@@ -71,6 +71,9 @@ class ResolvedAnchors:
     # Anchors the intent parse left out but the question states, linked from
     # the question text against the graph's own vocabularies ("venue=...").
     recovered: list[str] = field(default_factory=list)
+    # The question as asked, for narrowing by a date written the way the
+    # graph records it (narrow_to_date). Never used for routing.
+    question: str | None = None
     disambiguation_candidates: dict[str, list[str]] = field(default_factory=dict)
 
     @property
@@ -173,6 +176,7 @@ class EntityLinker:
                     result.date_day_start = nd.day_start
 
         if question:
+            result.question = question
             self._recover_from_question(result, question)
         return result
 
@@ -193,6 +197,28 @@ class EntityLinker:
 
         def verbatim(entry: str) -> bool:
             return re.search(rf"(?<!\w){re.escape(entry.lower())}(?!\w)", text) is not None
+
+        # A Games id parsed into the event-title slot ("2016-Summer") is the
+        # Games anchor, not an event name.
+        if result.title and not result.event_id:
+            as_games = self._resolve_games(result.title) if re.fullmatch(
+                r"\s*\d{4}[\s-]*(summer|winter)?(\s+olympics)?\s*", result.title, re.IGNORECASE
+            ) else None
+            if as_games:
+                result.recovered.append(f"games={as_games} (parsed as an event title)")
+                result.games = result.games or as_games
+                result.title = None
+        # A parsed venue that the question names more fully ("Kvitfjell" in
+        # "held at Kvitfjell and Hafjell") becomes the fuller graph venue.
+        if result.venue:
+            fuller = next(
+                (v for v in self.venues_vocab
+                 if len(v) > len(result.venue) and result.venue.lower() in v.lower() and verbatim(v)),
+                None,
+            )
+            if fuller:
+                result.recovered.append(f"venue={fuller} (question names it in full)")
+                result.venue = fuller
 
         if not result.venue and "venue" not in result.unresolved_fields:
             # Longest first (vocab is sorted by length), so "Riocentro – Pavilion 6"
@@ -291,12 +317,31 @@ class EntityLinker:
         return None, candidates
 
 
+def _date_words(text: str) -> str:
+    return " ".join(re.sub(r"[^\w]+", " ", (text or "").lower()).split())
+
+
 def narrow_to_date(rows: list[dict], anchors: ResolvedAnchors) -> list[dict]:
-    """Keep the rows whose event date covers the anchored day ("held at X on
-    16 August 2008"): same month, day within [date_day_start, date_day_end].
-    Year-only or month-only anchors narrow by what they give. Falls back to
-    all rows when none match, like narrow_to_games."""
-    if not rows or not (anchors.date_year or anchors.date_month):
+    """Keep the rows whose event date matches the question's.
+
+    First, rows whose recorded date text appears in the question as written
+    ("3 to 4 August", "13, 14 February 2022"): the question states the date
+    the way the graph records it, which also separates events that merely
+    overlap a day. Otherwise, rows whose date covers the anchored day: same
+    month, day within [date_day_start, date_day_end]; year-only or month-only
+    anchors narrow by what they give. Falls back to all rows when none match,
+    like narrow_to_games."""
+    if not rows:
+        return rows
+    question = f" {_date_words(anchors.question or '')} "
+    stated = [
+        r for r in rows
+        if len(_date_words(str(r.get("date_text") or ""))) >= 5
+        and f" {_date_words(str(r.get('date_text')))} " in question
+    ]
+    if stated:
+        return stated
+    if not (anchors.date_year or anchors.date_month):
         return rows
 
     def covers(r: dict) -> bool:

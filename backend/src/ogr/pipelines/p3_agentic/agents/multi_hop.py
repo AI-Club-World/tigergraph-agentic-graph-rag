@@ -21,6 +21,7 @@ import time
 from typing import Any
 
 from ogr.graph.client import TigerGraphClient
+from ogr.ingest.infobox import event_id_from_parts
 from ogr.pipelines.p3_agentic.agents.agent_result import AgentResult
 from ogr.pipelines.p3_agentic.agents.entity_linking import (
     ResolvedAnchors,
@@ -36,7 +37,7 @@ logger = logging.getLogger(__name__)
 
 # Q1 calls per venue expansion: a venue can host 100+ events across Games;
 # the Games anchor narrows them, the cap bounds the round trips.
-MAX_VENUE_EVENTS = 30
+MAX_VENUE_EVENTS = 80
 
 
 def _lookup_rows(client: TigerGraphClient, event_id: str, target_field: str) -> list[dict[str, Any]]:
@@ -94,6 +95,13 @@ def run_venue_events(
             or (not anchors.games and year and edition_of(ev.get("event_id", "")).startswith(f"{year}-"))
         ]
         events = in_edition or events
+        # A sport anchor narrows too: one venue hosts several sports (a ski
+        # complex holds biathlon and cross-country). event_id starts with the
+        # sport's slug, the way ingest builds it.
+        if anchors.sport:
+            prefix = event_id_from_parts(anchors.sport, "x", "x").split("-x-")[0] + "-"
+            in_sport = [ev for ev in events if str(ev.get("event_id", "")).startswith(prefix)]
+            events = in_sport or events
         rows: list[dict[str, Any]] = []
         for event in events[:MAX_VENUE_EVENTS]:
             event_id = event.get("event_id", "")
