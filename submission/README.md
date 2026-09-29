@@ -8,9 +8,13 @@ run files in `out/` (git-ignored). One LLM for all three pipelines:
 |---|---|
 | `hidden-set-export.json` | The 50 hidden questions, raw outputs: per question and pipeline the answer, explanation, tokens, latency, citations (with evidence snippets) and, for Agentic GraphRAG, the full trace, strategy change and stop reason. Run `final-holdout`, run once on the final system |
 | `hidden-set-report.md` | Cost, grounding and routing for that run (the hidden set has no gold answers, so no EM/F1) |
-| `public-set-report.md` | The 100 public questions on the final system (`r2-public`): accuracy per pipeline and question type, token cost, routing |
+| `public-set-report.md` | The 100 public questions on the final system (`r4-public`): accuracy per pipeline and question type, token cost, routing, answer verification |
 | `public-set-baseline-report.md` | The same set before the fixes in `config-docs/SCORE-AUDIT.md` (`r1-public`) |
 
-The multi-hop venue/date fix (`0cca2fa`) landed after `r2-public`; its effect
-is measured on the 28 public multi-hop questions (`r3-multihop`, Agentic EM
-0.68 → 0.75) and is included in the hidden run.
+**The hidden-set outputs predate the final round.** They were produced once,
+by the system measured as `r2-public` plus the venue/date fix (`0cca2fa`),
+public-set Agentic EM 0.80. Answer verification, anchor recovery, the
+sport-linking and Q2 field fixes and conflict reporting came after
+(`dc59b7d`..`310f4cf`, public-set Agentic EM 0.91 as `r4-public`). The owner
+chose to keep the run-once hidden outputs rather than rerun them
+(`config-docs/SCORE-AUDIT.md`, decision 18).

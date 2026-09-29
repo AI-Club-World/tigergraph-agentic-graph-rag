@@ -140,6 +140,7 @@ settled decision (asked before implementing); **U** = needs the user
 | 15 | ~3% of answers cut off mid-reasoning at LLM_MAX_TOKENS=2048 (no JSON answer) | Raise LLM_MAX_TOKENS to 4096 for the hidden run, all three pipelines (only the calls that were cut off change) |
 | 16 | Is the UI tested? | Yes: drive the real app in a browser (desktop and phone, dark and light, live queries), fix what is broken |
 | 17 | Presentation is handled manually; raise every other criterion to at least 8.5 | Answer verification and anchor recovery (P2 and P3), sport-linking and Q2 field fixes, evidence-conflict reporting; measured on the public set as `r4` |
+| 18 | Rerun the hidden 50 on the final (r4) system? | No: keep the run-once hidden outputs; `submission/README.md` and `WRITEUP.md` state that they predate the final round |
 | — | Server-side admin key for destructive routes (C4 R item) | Not raised: it changes the auth design. The documented security model (README) stands |
 
 ## 5. Implementation plan

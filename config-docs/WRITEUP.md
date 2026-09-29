@@ -103,7 +103,7 @@ is the mean of per-question Agentic ÷ RAG ratios, as on the dashboard):
 decision where one changed routing or retrieved context, is in
 `config-docs/SCORE-AUDIT.md`.
 
-**Hidden set (50 questions, run once on the final system):** 0 pipeline
+**Hidden set (50 questions, run once, on the system before answer verification and anchor recovery — the `r2` system plus the venue/date fix; kept rather than rerun, by the owner's decision):** 0 pipeline
 errors in 150 answers.
 
 | Pipeline | Grounded | Median tokens |
