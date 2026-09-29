@@ -104,6 +104,23 @@ def _event_part(title: str) -> str:
     return match.group(1) if match else ""
 
 
+def _strip_echoed_fields(answer: str, rows: list[dict[str, Any]]) -> str:
+    """Cut an evidence field the model copied after the answer.
+
+    Rows reach the model as "event_name: Men's giant slalom; games: 1992
+    Winter; …" and it sometimes answers with the value plus the next field
+    ("Men's giant slalom games: 1992 Winter", r5 pub-088). A row key followed
+    by ":" is the evidence serialisation, never part of a name.
+    """
+    keys = {k for row in rows for k in row if isinstance(k, str) and len(k) > 2}
+    if not keys:
+        return answer
+    alternation = "|".join(re.escape(k) for k in sorted(keys, key=len, reverse=True))
+    m = re.search(rf"[\s;,]+(?:{alternation})\s*:", answer)
+    cut = answer[: m.start()].strip() if m else answer
+    return cut or answer
+
+
 def resolve_answer(answer: str, evidence: list[dict[str, Any]]) -> AnswerResolution:
     rows = [e for e in evidence if e.get("source") not in _PROSE and not e.get("text")]
     conflicts = find_conflicts(evidence)
@@ -111,6 +128,8 @@ def resolve_answer(answer: str, evidence: list[dict[str, Any]]) -> AnswerResolut
         note = "no structured evidence to check the answer against"
         return AnswerResolution(answer, False, None, note, conflicts)
 
+    given = answer
+    answer = _strip_echoed_fields(answer, rows)
     target = _norm(answer)
     titles = {
         row["title"]
@@ -134,4 +153,6 @@ def resolve_answer(answer: str, evidence: list[dict[str, Any]]) -> AnswerResolut
         note = f"answer matches {len(titles)} events among the rows; left as given"
     else:
         note = "answer found in the graph evidence" if supported else "answer not found in the graph evidence"
-    return AnswerResolution(answer, False, supported, note, conflicts)
+    if answer != given:
+        note = f"evidence field copied after the answer removed ({given!r}); {note}"
+    return AnswerResolution(answer, answer != given, supported, note, conflicts)

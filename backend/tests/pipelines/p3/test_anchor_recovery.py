@@ -76,6 +76,19 @@ class TestParsedAnchorRepair:
         )
         assert a.title is None and a.games == "2016-Summer"
 
+    def test_a_venue_parsed_as_an_event_title_becomes_the_venue(self):
+        # r5 pub-067: the parse put the venue in the title slot and dropped the day.
+        a = self.LINKER.resolve(
+            IntentSchema(operation="TRAVERSE", anchor=Anchor(title="Carioca Arena 3")),
+            "Who won the gold medal in the event held at Carioca Arena 3 on 6 August at the 2016 Summer Olympics?",
+        )
+        assert a.title is None and a.venue == "Carioca Arena 3" and a.games == "2016-Summer"
+        assert (a.date_year, a.date_month, a.date_day_start) == (2016, 8, 6)
+
+    def test_a_day_without_a_year_needs_the_games(self):
+        a = self.LINKER.resolve(IntentSchema(operation="TRAVERSE"), "Who won at Carioca Arena 3 on 6 August?")
+        assert a.date_month is None
+
     def test_a_real_event_title_is_left_alone(self):
         a = self.LINKER.resolve(IntentSchema(operation="LOOKUP", anchor=Anchor(title="Women's relay")), "x")
         assert a.title == "Women's relay"

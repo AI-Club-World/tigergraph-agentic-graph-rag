@@ -208,6 +208,16 @@ class EntityLinker:
                 result.recovered.append(f"games={as_games} (parsed as an event title)")
                 result.games = result.games or as_games
                 result.title = None
+        # A venue parsed into the event-title slot ("the event held at North
+        # Greenwich Arena", r5 pub-067) is the venue anchor, not an event name.
+        if result.title and not result.event_id:
+            as_venue = next(
+                (v for v in self.venues_vocab if v.lower() == result.title.strip().lower()), None
+            )
+            if as_venue:
+                result.recovered.append(f"venue={as_venue} (parsed as an event title)")
+                result.venue = result.venue or as_venue
+                result.title = None
         # A parsed venue that the question names more fully ("Kvitfjell" in
         # "held at Kvitfjell and Hafjell") becomes the fuller graph venue.
         if result.venue:
@@ -245,6 +255,15 @@ class EntityLinker:
                 text,
             )
             nd = normalize_date(day.group(1)) if day else None
+            if not day and result.games:
+                # "on 4 August at the 2012 Summer Olympics": the year is the Games'.
+                bare = re.search(
+                    r"\b(\d{1,2})\s+(january|february|march|april|may|june|july|august"
+                    r"|september|october|november|december)\b",
+                    text,
+                )
+                if bare:
+                    nd = normalize_date(f"{bare.group(1)} {bare.group(2)} {result.games[:4]}")
             if nd and nd.month and nd.day_start:
                 result.date_year = result.date_year or nd.year
                 result.date_month, result.date_day_start = nd.month, nd.day_start

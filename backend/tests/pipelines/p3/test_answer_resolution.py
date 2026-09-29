@@ -31,6 +31,20 @@ def test_the_event_part_of_a_title_matches_when_the_name_differs():
     assert resolve_answer("Men's 50 kilometres walk", rows).changed
 
 
+def test_an_evidence_field_copied_after_the_name_is_cut_before_resolving():
+    # r5 pub-088: rows are serialised "event_name: …; games: …" and the model
+    # answered with the name plus the next field.
+    rows = [dict(ROWS[0], games="2008 Summer"), ROWS[1]]
+    r = resolve_answer("Men's marathon games: 2008 Summer", rows)
+    assert r.answer == MARATHON and r.changed
+    other = resolve_answer("98; value: 98", ROWS)
+    assert other.answer == "98" and other.changed and "copied" in other.note
+
+
+def test_a_colon_that_is_not_a_row_key_is_kept():
+    assert resolve_answer("Team: Kenya", ROWS).answer == "Team: Kenya"
+
+
 def test_an_answer_already_the_title_is_unchanged():
     r = resolve_answer(MARATHON, ROWS)
     assert r.answer == MARATHON and not r.changed
