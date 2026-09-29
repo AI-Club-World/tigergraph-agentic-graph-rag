@@ -151,6 +151,10 @@ and every agentic trace) are in `submission/hidden-set-export.json`
 
 ## Demo script (3 minutes)
 
+Slides: the "Agentic GraphRAG — final presentation" deck (13 slides, speaker
+notes on each). Before recording, sign in with the **viewer** key so the demo
+shows that a viewer can ask and read but not rebuild.
+
 1. **Build screen** (20 s): the graph loads from the corpus. The counts
    match the numbers above, and the embedding model and its index state are
    shown.
@@ -169,3 +173,31 @@ and every agentic trace) are in `submission/hidden-set-export.json`
 5. **Close** (20 s): the agent is not always better. It pays where
    structure matters (counts, chains), costs less where the router skips
    the loop, and ties RAG on single facts.
+
+## Judges' Q&A: likely questions, short answers
+
+- **Is the comparison fair?** One LLM for all three pipelines, a byte-identical
+  answer prompt, one deterministic scorer. Every graph-side fix runs in
+  GraphRAG too, so Agentic − GraphRAG is the loop and GraphRAG − RAG the graph.
+- **Did you tune on the public set?** No prompt was tuned. Each gain is a named
+  root cause found in the traces (`SCORE-AUDIT.md` §3–§6), and RAG, which no
+  fix touched, stayed at 0.61–0.62 in every run.
+- **Why is the agent's grounding lower than RAG's?** RAG cites long text
+  chunks, so its answer's names are almost always in them. A count answer
+  cites a count row with no prose. The verification step reports graph
+  support separately: 90 of 100 agentic answers.
+- **When is the agent not worth it?** Single-fact lookups and dates: RAG is
+  already exact there. The router keeps those cheap (direct route, one query).
+- **Why is it cheaper than RAG?** 64% of questions take the direct route
+  (median under 2,000 tokens); RAG always sends ten chunks.
+- **What fails?** Venue-and-date questions where several events share the
+  day and no sport is named; the right behaviour is to ask back.
+- **Hidden set?** Run once, raw outputs in `submission/`. No gold, so cost,
+  routing and grounding only.
+- **How is it secured?** No key in the browser bundle: sign-in exchanges a
+  typed key for a server-side session; a viewer key cannot build, upload,
+  switch embeddings or start benchmarks (`OGR_ADMIN_KEY`).
+- **What is novel?** Necessity routing refined after entity linking, exact
+  event ids derived the way ingest builds them, gazetteer anchor recovery, a
+  zero-token answer-verification step with conflict reporting, per-model
+  HNSW indices, and a grounding score that needs no gold.
