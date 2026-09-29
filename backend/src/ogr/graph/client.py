@@ -26,6 +26,7 @@ def drain_graph_errors(client: Any) -> list[str]:
 # empty-token auth error (REST-10016) or a gateway 5xx, e.g. while a workspace
 # is (re)starting. Anything else (a GSQL error, a bad parameter) is not retried.
 _TRANSIENT = ("REST-10016", "500 Server Error", "502 Server Error", "503 Server Error", "504 Server Error")
+_IMPORT_LOCK = threading.Lock()
 READ_ATTEMPTS = 3
 READ_BACKOFF_S = 2.0
 
@@ -123,7 +124,12 @@ class TigerGraphClient:
 
     def _connect(self) -> None:
         try:
-            import pyTigerGraph as tg
+            # One process-wide lock for the first import: each pipeline builds
+            # its own client (its own _conn_lock), and three threads importing
+            # pyTigerGraph at once raced on httpx ("partially initialized
+            # module 'httpx'") for the first question after a restart.
+            with _IMPORT_LOCK:
+                import pyTigerGraph as tg
 
             kwargs: dict[str, Any] = {
                 "host": self.config.tg_host,
