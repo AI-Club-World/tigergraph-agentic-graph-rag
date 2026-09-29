@@ -43,21 +43,47 @@ Every answer carries its citations and their evidence text, and a
 **grounding** score: the share of the answer's names found in the evidence it
 cites.
 
-## Results (public set, 100 questions, final system: run `r4-public`)
+## Results (public set, 100 questions, final system: run `r5-public`)
 
 | Pipeline | EM | F1 | Grounded | Median tokens |
 |---|---|---|---|---|
-| RAG | 0.61 | 0.66 | 0.94 | 6,449 |
-| GraphRAG | 0.66 | 0.66 | 0.44 | 2,490 |
-| **Agentic GraphRAG** | **0.91** | **0.91** | 0.78 | **2,804** |
+| RAG | 0.59 | 0.65 | 0.93 | 6,453 |
+| GraphRAG | 0.63 | 0.63 | 0.41 | 2,522 |
+| **Agentic GraphRAG** | **0.98** | **0.99** | 0.79 | **2,550** |
 
-The agent is 30 points more accurate than RAG **and** spends less than half
-of RAG's median tokens. Per type it is exact on counts and superlatives
-(1.00 against RAG's 0.19 and 0.00), ties RAG on single facts and dates, and
-leads by 0.11 on multi-hop. 64 of 100 questions are answered without the
-loop (EM 1.00). The r2 tables below are the step before: answer
-verification and anchor recovery were added after them
-(`config-docs/SCORE-AUDIT.md` §6).
+The agent is 39 points more accurate than RAG **and** spends 40% of RAG's
+median tokens. It is right on 39 questions RAG gets wrong, and wrong on none
+that RAG gets right.
+
+| Type | n | RAG | GraphRAG | Agentic | Agentic − RAG | Agentic ÷ RAG tokens |
+|---|---|---|---|---|---|---|
+| aggregation | 21 | 0.14 | 1.00 | 1.00 | **+0.86** | 0.30× |
+| superlative | 10 | 0.00 | 0.90 | 0.90 | **+0.90** | 0.94× |
+| multi_hop | 28 | 0.57 | 0.07 | 0.96 | **+0.39** | 1.02× |
+| lookup | 19 | 1.00 | 0.95 | 1.00 | 0.00 | 0.30× |
+| temporal | 22 | 0.95 | 0.59 | 1.00 | +0.05 | 1.05× |
+
+- **Multi-hop is where the loop earns its cost.** GraphRAG, the same graph
+  without the loop, scores 0.07; the agent scores 0.96 at about RAG's cost.
+- **The router is the efficiency story.** 62 of 100 questions take the
+  direct route: median 1,924 tokens, EM 1.00. The 38 loop runs cost a median
+  of 7,416 (EM 0.95). *Estimate:* sending the direct questions through the
+  loop would have spent about 277k more tokens.
+- **Answer verification:** 90 of 100 Agentic answers are supported by their
+  graph evidence, and 7 were resolved to a page title. The 11 conflict flags
+  in this run came from a detector bug (it read infobox keys and years as
+  prose figures). That bug was fixed after r5 (`535565a`); the flags are
+  annotations only and changed no answer.
+- **The two misses.** pub-067: the parse put the venue in the event slot and
+  dropped the day. It is fixed after r5 (`61b8927`) and verified live
+  (`r6-two`: Rosannagh MacLennan). pub-088: the model answered with a field
+  copied from the evidence row ("Men's giant slalom games: 1992 Winter"). That
+  answer form is now cut before title resolution, but on the live re-run the
+  intent parse routed the question differently. This is the accepted
+  intent-parse variance (Limitations).
+
+Progression on the same set and LLM: Agentic EM 0.74 (r1) → 0.80 (r2) → 0.91
+(r4) → 0.98 (r5). RAG, the control, stayed at 0.59–0.62 throughout.
 
 ## Earlier results (run `r2-public`)
 
@@ -121,33 +147,31 @@ and every agentic trace) are in `submission/hidden-set-export.json`
 ## Limitations
 
 - **Intent-parse variance.** The same LLM at temperature 0 sometimes parses
-  a venue question with no anchor, and the agent then falls back to text
-  search. Four of the multi-hop misses in `r2` were this. We chose not to
-  tune the intent prompt against the public set.
-- **Superlatives score low (0.20) mostly on answer form.** In 8 of 10 the
-  agent finds the right event, but the model answers with its short name
-  ("Men's épée") where the gold is the page title ("Fencing at the 2008
-  Summer Olympics – Men's épée"). That happens even though the title is in
-  the evidence and the shared prompt asks for full titles. Exact match
-  counts these as wrong.
+  a question into a different operation or anchor slot. Gazetteer recovery
+  repairs the anchors (venue, sport, Games, date) from the question's own
+  words, but not the operation. We chose not to tune the intent prompt
+  against the public set.
+- **Ambiguous venue days.** When a venue held several events on the named
+  day and the question names no sport, there is no single right answer. The
+  agent picks by quoted date text and then by day coverage; it should ask
+  back instead.
 - **Infobox parsing.** Numbers come from infobox fields, and a few pages
   carry typos (a "competitors: 41000000"). Rows below parse confidence 0.9
   are excluded from counts and reported as excluded.
 - **Provider limits.** The free NVIDIA endpoint rate-limits hard. Runs
   resume question by question (`batch` is resumable), but wall-clock
   latency is not representative.
-- **Round 2** (conflicting, superseded and uncertain facts) is not
-  implemented.
+- **Round 2** (conflicting, superseded and uncertain facts): only the first
+  step exists. Conflicting infobox and prose figures are reported; facts
+  are not versioned.
+- **Sessions are in memory,** so the deployment is one API process.
 
 ## Next steps
 
-1. Intent-parse robustness: a second parse on disagreement, or a
-   deterministic venue/date extractor over the graph's own vocabularies.
-2. Superlatives: when the evidence row the answer comes from carries a page
-   title, return that title as the answer span (deterministic, all pipelines
-   alike).
-3. Round 2: facts carry source and date, and the evidence check reports
-   conflicts instead of choosing silently.
+1. Ask back when the evidence names several events that fit the question.
+2. A second intent parse when the operation and the linked anchors disagree.
+3. Round 2: facts carry source and date; supersession and source authority.
+4. A shared session store for several API replicas.
 
 ## Demo script (3 minutes)
 
@@ -181,17 +205,19 @@ shows that a viewer can ask and read but not rebuild.
   GraphRAG too, so Agentic − GraphRAG is the loop and GraphRAG − RAG the graph.
 - **Did you tune on the public set?** No prompt was tuned. Each gain is a named
   root cause found in the traces (`SCORE-AUDIT.md` §3–§6), and RAG, which no
-  fix touched, stayed at 0.61–0.62 in every run.
+  fix touched, stayed at 0.59–0.62 in every run.
 - **Why is the agent's grounding lower than RAG's?** RAG cites long text
   chunks, so its answer's names are almost always in them. A count answer
   cites a count row with no prose. The verification step reports graph
   support separately: 90 of 100 agentic answers.
 - **When is the agent not worth it?** Single-fact lookups and dates: RAG is
   already exact there. The router keeps those cheap (direct route, one query).
-- **Why is it cheaper than RAG?** 64% of questions take the direct route
+- **Why is it cheaper than RAG?** 62% of questions take the direct route
   (median under 2,000 tokens); RAG always sends ten chunks.
-- **What fails?** Venue-and-date questions where several events share the
-  day and no sport is named; the right behaviour is to ask back.
+- **What fails?** Two of 100 in r5: an intent parse that put the venue in
+  the event slot (fixed after r5) and a copied evidence field in the answer.
+  The open cases are intent-parse variance and venue days that several
+  events share; the right behaviour there is to ask back.
 - **Hidden set?** Run once, raw outputs in `submission/`. No gold, so cost,
   routing and grounding only.
 - **How is it secured?** No key in the browser bundle: sign-in exchanges a

@@ -141,7 +141,8 @@ settled decision (asked before implementing); **U** = needs the user
 | 16 | Is the UI tested? | Yes: drive the real app in a browser (desktop and phone, dark and light, live queries), fix what is broken |
 | 17 | Presentation is handled manually; raise every other criterion to at least 8.5 | Answer verification and anchor recovery (P2 and P3), sport-linking and Q2 field fixes, evidence-conflict reporting; measured on the public set as `r4` |
 | 18 | Rerun the hidden 50 on the final (r4) system? | No: keep the run-once hidden outputs; `submission/README.md` and `WRITEUP.md` state that they predate the final round |
-| — | Server-side admin key for destructive routes (C4 R item) | Not raised: it changes the auth design. The documented security model (README) stands |
+| — | Server-side admin key for destructive routes (C4 R item) | Not raised at r4 |
+| 19 | Fix the remaining items: multi-hop, and the browser API key not being secret | Multi-hop narrowing by quoted date, sport and edition (`c4e58a3`); no key in the browser: sign-in sessions, viewer and admin roles, lockout (`2095330`); measured as `r5` |
 
 ## 5. Implementation plan
 
@@ -166,6 +167,9 @@ Largest gap first. Done items name their commit on `application-integration`.
 | 10d | C1 | COUNT of one named event's attribute → Q1 lookup | R, approved (13) | Done, cf0b80e |
 | 11 | C6 | `WRITEUP.md` with measured results; demo video script | S | After 9 (needs real numbers) |
 | 12 | C6 | Record the demo video | U | Owner |
+| 13 | C1 | Multi-hop venue questions: narrow by quoted date text, sport and edition before the cap | S (decision 19) | Done, c4e58a3 |
+| 14 | C4 | Sign-in sessions; viewer and admin keys; no key in the browser bundle | S (decision 19) | Done, 2095330 |
+| 15 | C1/C4 | r5 misses: venue parsed as an event title; bare day takes the Games' year; copied evidence field cut from the answer | S | Done, 61b8927 |
 
 **Resolved blockers on 9 (2026-09-27):** the first embedding tunnel died
 mid-build (the CPU fallback would have taken ~4 h); the owner restarted it
@@ -244,17 +248,54 @@ Same set, LLM and embeddings; `LLM_MAX_TOKENS` 4096 (decision 15).
   evidence; 5 answers resolved to a page title.
 - RAG, the control, stayed flat (0.62 → 0.61).
 
+### Third round (r5, after decision 19)
+
+Same set, LLM, embeddings and `LLM_MAX_TOKENS` as r4.
+
+| Pipeline | EM r4 → r5 | F1 r5 | Grounded r5 | Median tokens r5 |
+|---|---|---|---|---|
+| RAG | 0.61 → 0.59 | 0.65 | 0.93 | 6,453 |
+| GraphRAG | 0.66 → 0.63 | 0.63 | 0.41 | 2,522 |
+| Agentic GraphRAG | **0.91 → 0.98** | **0.99** | 0.79 | **2,550** |
+
+| Type | n | RAG | GraphRAG | Agentic | Agentic − RAG | Agentic ÷ RAG tokens |
+|---|---|---|---|---|---|---|
+| aggregation | 21 | 0.14 | 1.00 | 1.00 | +0.86 | 0.30× |
+| superlative | 10 | 0.00 | 0.90 | 0.90 | +0.90 | 0.94× |
+| multi_hop | 28 | 0.57 | 0.07 | 0.96 | +0.39 | 1.02× |
+| lookup | 19 | 1.00 | 0.95 | 1.00 | 0.00 | 0.30× |
+| temporal | 22 | 0.95 | 0.59 | 1.00 | +0.05 | 1.05× |
+
+- Multi-hop went from 0.68 to 0.96. The loop's value shows directly: GraphRAG,
+  the same graph without the loop, scores 0.07.
+- Agentic was right where RAG was wrong on 39 questions; the reverse
+  happened on none.
+- 62 questions took the direct route (median 1,924 tokens, EM 1.00); 38 took
+  the loop (median 7,416, EM 0.95).
+- Answer verification: 90 of 100 answers supported and 7 resolved to a page
+  title. The 11 conflict flags came from the detector before `535565a`,
+  which read infobox keys and years as prose figures. They are annotations
+  and changed no answer.
+- Misses:
+  - pub-067: the venue was parsed as an event title. Fixed in `61b8927` and
+    verified live (`r6-two`).
+  - pub-088: an evidence field was copied into the answer. The answer is cut
+    since `61b8927`, but the live re-run parsed the question differently,
+    which is intent-parse variance (decision 14).
+- pub-059 failed three times on a `pyTigerGraph` import race. The race was
+  fixed in `b74e439` and the resumed attempt succeeded. The run has 0 errors.
+
 ### Re-score (0–10, target ≥ 9)
 
-| Criterion | Weight | Baseline (§2) | r2 | r4 | Basis (r4) |
-|---|---|---|---|---|---|
-| C1 Investigation accuracy | 30% | 5.0 | 7.5 | **8.5** | Agentic EM 0.91 / F1 0.91 on 100 public questions; aggregation and superlative 1.00. Not 9: multi-hop 0.68 (venue-and-date questions whose day matches several events; intent-parse variance) |
-| C2 Evidence & explainability | 15% | 7.5 | 8.5 | **8.5** | Citations with readable evidence text; grounding score; count answers cite their events; every Agentic answer checked against its graph evidence (90/100 supported) with the check in the trace; conflicting infobox/prose figures reported |
-| C3 Agentic effectiveness & efficiency | 15% | 6.5 | 8.5 | **9.0** | The agent is more accurate *and* cheaper than RAG: +30 points EM at 0.43× RAG's median tokens. Per type: counts +0.81 at 0.29×, superlatives +1.00 at 0.58×, ties on single facts; the router skips the loop on 64% of questions with EM 1.00 there |
-| C4 Design, engineering & code quality | 15% | 7.5 | 8.5 | **8.5** | 580 backend and 55 frontend tests; the ablation holds (every graph-side fix applies to P2 and P3 alike); transient graph failures retried and never silent; resumable, self-healing runs; UI checked in a real browser. Not 9: the browser API key is not a secret |
-| C5 Innovation | 15% | 6.5 | 7.5 | **8.5** | Necessity routing refined after linking; exact event ids derived the way ingest builds them; gazetteer anchor recovery; an answer-verification agent that resolves answers to graph entities, reports graph support and flags conflicting evidence (a first Round-2 step); per-model HNSW switching; a grounding score that needs no gold |
-| C6 Presentation & Q&A | 10% | 4.0 | 6.5 | 6.5 | Handled manually by the owner (decision 17): write-up, demo script and submission outputs are in the repo |
-| **Weighted** | | **6.1** | **7.9** | **8.4** | Every criterion but C6 at or above 8.5 |
+| Criterion | Weight | Baseline (§2) | r2 | r4 | r5 | Basis (r5) |
+|---|---|---|---|---|---|---|
+| C1 Investigation accuracy | 30% | 5.0 | 7.5 | 8.5 | **9.5** | Agentic EM 0.98 / F1 0.99 on 100 public questions. Aggregation, lookup and temporal 1.00, multi-hop 0.96, superlative 0.90; 39 wins over RAG, 0 losses. The one open miss is intent-parse variance |
+| C2 Evidence & explainability | 15% | 7.5 | 8.5 | 8.5 | **9.0** | Every citation carries readable evidence text, and there is a grounding score. Count answers cite their events. Every answer is checked against its graph evidence (90/100 supported), and the check is a trace step. Conflict reporting is accurate since `535565a` |
+| C3 Agentic effectiveness & efficiency | 15% | 6.5 | 8.5 | 9.0 | **9.5** | +39 points EM over RAG at 0.40× RAG's median tokens. Multi-hop +0.89 over GraphRAG shows the loop's value; the router skips the loop on 62% of questions with EM 1.00 there |
+| C4 Design, engineering & code quality | 15% | 7.5 | 8.5 | 8.5 | **9.0** | No key in the browser: server-side sessions, viewer/admin roles, sign-in lockout, and a build that refuses `VITE_API_KEY`. 598 backend and 58 frontend tests. The ablation holds; transient graph failures are retried and never silent; runs are resumable. The import race was found and fixed |
+| C5 Innovation | 15% | 6.5 | 7.5 | 8.5 | **8.5** | Necessity routing refined after linking; gazetteer anchor recovery and repair; answer verification with title resolution, graph support and conflict flags (a first Round-2 step); per-model HNSW switching; a grounding score that needs no gold. Not 9: Round 2 has only its first step |
+| C6 Presentation & Q&A | 10% | 4.0 | 6.5 | 6.5 | 7.5 | Owner-handled (decision 17). The repo has the write-up with Judges' Q&A, the demo script, submission outputs and a 13-slide deck with speaker notes; the demo video is still to record |
+| **Weighted** | | **6.1** | **7.9** | **8.4** | **9.0** | Every criterion but C6 at or above 8.5; C1–C4 at or above 9 |
 
 **r2 gaps (kept for the record; C1, C3 and C5 were addressed in r4).** What
 would close them, in order of weight:
