@@ -143,6 +143,7 @@ settled decision (asked before implementing); **U** = needs the user
 | 18 | Rerun the hidden 50 on the final (r4) system? | No: keep the run-once hidden outputs; `submission/README.md` and `WRITEUP.md` state that they predate the final round |
 | — | Server-side admin key for destructive routes (C4 R item) | Not raised at r4 |
 | 19 | Fix the remaining items: multi-hop, and the browser API key not being secret | Multi-hop narrowing by quoted date, sport and edition (`c4e58a3`); no key in the browser: sign-in sessions, viewer and admin roles, lockout (`2095330`); measured as `r5` |
+| 20 | Remove every login: the application is open | Sign-in, sessions, viewer/admin roles and SSE stream tokens removed (backend and UI). This reverses the C4 security item of decision 19: anyone who reaches the backend can build, reset and run benchmarks, so C4 drops back to about 8.5 (re-score below kept as measured at r5). The Build screen also shows TigerGraph's own counts when this install recorded no dataset, and keeps following a running build after navigating away (StrictMode remount bug) |
 
 ## 5. Implementation plan
 

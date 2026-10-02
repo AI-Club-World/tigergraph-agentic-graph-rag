@@ -1,7 +1,6 @@
 import { config } from '../config'
 import { ApiError, get, patch } from './http'
 import { delay } from './mock/transport'
-import { authHeaders, sessionRejected } from './session'
 
 export interface BuiltInfo {
   built_at: string
@@ -44,7 +43,19 @@ export interface CorporaResponse {
     tracked: boolean
     schema: { embedding_model: string; embedding_dim: number } | null
     datasets: Record<string, BuiltInfo>
+    /** TigerGraph's own vertex counts, sent when no dataset is recorded by
+     *  this install (a fresh checkout, or a graph built from elsewhere). */
+    live?: LiveGraphCounts | null
   }
+}
+
+export interface LiveGraphCounts {
+  documents: number
+  events: number
+  chunks: number
+  games: number
+  sports: number
+  venues: number
 }
 
 /** GET /corpora — datasets in data/corpus/ and which are loaded. */
@@ -56,7 +67,7 @@ export async function listCorpora(): Promise<CorporaResponse> {
       name: 'corpus', title: 'Wikipedia · Olympics · 1900–2022', title_source: 'inferred',
       size_bytes: 23_097_758, documents: 2951, built: null,
     }],
-    graph: { tracked: false, schema: null, datasets: {} },
+    graph: { tracked: false, schema: null, datasets: {}, live: null },
   }
 }
 
@@ -76,11 +87,10 @@ export async function uploadCorpus(name: string, file: File, title?: string): Pr
   if (title?.trim()) query.set('title', title.trim())
   const res = await fetch(`${config.apiBaseUrl}/corpora/${encodeURIComponent(name)}?${query}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/x-ndjson', ...authHeaders() },
+    headers: { 'Content-Type': 'application/x-ndjson' },
     body: file,
   })
   if (!res.ok) {
-    if (res.status === 401) sessionRejected()
     let detail = res.statusText
     try {
       const body = (await res.json()) as { detail?: string }

@@ -116,16 +116,14 @@ Cache headers are split deliberately: fingerprinted files under `/assets/*`
 are immutable and cached for a year, while `index.html` must revalidate every
 time or a deploy would keep serving the previous bundle's asset references.
 
-## No key in the site
+## Open access
 
-The site carries no API key: the UI asks for one at sign-in and keeps only a
-session token for the tab (README, Security model). The build refuses to run
-with `VITE_API_KEY` set. For a live site:
-
-- serve the backend over HTTPS (the key is sent once, at sign-in);
-- give visitors the viewer key (`OGR_API_KEY`) and keep `OGR_ADMIN_KEY` for
-  whoever may build, upload, switch embeddings or start benchmarks;
-- never reuse a value that protects anything real.
+The application has no sign-in and no API key (README, Access): every route,
+including build, reset, uploads and benchmarks, is open to anyone who can
+reach the backend. For a live site, serve the backend over HTTPS and, if it
+must not be public, put it behind a reverse proxy or network boundary with
+its own authentication. The frontend build refuses to run with
+`VITE_API_KEY` set.
 
 `TG_PASSWORD`, `TG_SECRET`, `TG_TOKEN`, `LLM_API_KEY`, the provider keys and
 `CLOUDFLARE_API_TOKEN` are backend-only. They must never appear in a

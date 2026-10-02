@@ -16,16 +16,14 @@ from ogr.graph.client import TigerGraphClient
 from tests.conftest import make_embeddings_ready
 from tests.graph.fake_tigergraph import seeded
 
-HEADERS = {"X-API-Key": "k"}
+HEADERS: dict[str, str] = {}  # the API is open: no key
 QWEN, GTE, BGE = "qwen3-embedding-0.6b", "gte-large-en-v1.5", "bge-large-en-v1.5"
 
 
 @pytest.fixture
 def client(monkeypatch):
-    # The real override chain (store's active model applies), plus an API key.
-    api_main.app.dependency_overrides[get_config] = lambda: api_main._get_config_with_overrides().model_copy(
-        update={"ogr_api_key": "k"}
-    )
+    # The real override chain (store's active model applies).
+    api_main.app.dependency_overrides[get_config] = api_main._get_config_with_overrides
     api_main._builds.clear()
     api_main._queries.clear()
     api_main._embedding_job["task"] = None

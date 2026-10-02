@@ -13,6 +13,7 @@ import {
   uploadCorpus,
   type BuiltInfo,
   type CorporaResponse,
+  type LiveGraphCounts,
 } from './services/datasetService'
 import { ApiError } from './services/http'
 import { PIPELINE_IDS, PIPELINE_LABELS, type BuildEvent, type PipelineId } from './types'
@@ -130,6 +131,19 @@ function apply(column: BuildColumn, event: BuildEvent): BuildColumn {
     counters,
     embedding: event.stage === 'embed_chunks' && event.note && event.status === 'done' ? event.note : column.embedding,
     log: [...column.log, event],
+  }
+}
+
+/** TigerGraph's own counts in the shape of a recorded dataset. */
+function liveAsBuilt(live: LiveGraphCounts): BuiltInfo {
+  return {
+    built_at: '',
+    documents: live.documents,
+    events: live.events,
+    chunks: live.chunks,
+    vectors: live.chunks,
+    file_bytes: 0,
+    entities: live.documents + live.events + live.games + live.sports + live.venues,
   }
 }
 
@@ -252,11 +266,17 @@ export function BuildView() {
     listCorpora()
       .then((data) => {
         setCorpora(data)
-        // After a reload there is no live build: show what the graph holds.
-        if (Object.keys(data.graph.datasets).length) {
+        // After a reload there is no live build: show what the graph holds —
+        // the datasets recorded here, else TigerGraph's own counts.
+        const held = Object.keys(data.graph.datasets).length
+          ? data.graph.datasets
+          : data.graph.live?.documents
+            ? { graph: liveAsBuilt(data.graph.live) }
+            : null
+        if (held) {
           setColumns((current) =>
             PIPELINE_IDS.every((p) => current[p].status === 'idle' && current[p].log.length === 0)
-              ? restoredColumns(data.graph.datasets)
+              ? restoredColumns(held)
               : current,
           )
         }
@@ -302,6 +322,10 @@ export function BuildView() {
     void follow(first)
   }
   useEffect(() => {
+    // Reset on every mount: React StrictMode (dev) mounts, unmounts and mounts
+    // again, and a flag left true from the first cleanup made the page ignore
+    // the running build after navigating back to it.
+    unmounted.current = false
     followServer(true)
     return () => {
       unmounted.current = true
@@ -412,6 +436,7 @@ export function BuildView() {
   const overall = percents.agentic_graphrag
   const restored = !running && PIPELINE_IDS.every((p) => columns[p].status === 'ready' && columns[p].log.length === 0)
   const loadedDatasets = corpora ? Object.entries(corpora.graph.datasets) : []
+  const live = !loadedDatasets.length && corpora?.graph.live?.documents ? corpora.graph.live : null
 
   // A stage that ended in error fails the build even though the stream closed cleanly.
   const failedColumn = PIPELINE_IDS.map((p) => columns[p]).find((c) => c.status === 'error')
@@ -435,7 +460,11 @@ export function BuildView() {
   const syncLabel = {
     failed: 'Build failed',
     running: `Building · ${overall}% · ${secs(elapsed)}`,
-    complete: restored ? `Ready · ${loadedDatasets.length} dataset(s) loaded` : `Build complete: ${secs(elapsed)}`,
+    complete: restored
+      ? live
+        ? `Ready · graph in TigerGraph`
+        : `Ready · ${loadedDatasets.length} dataset(s) loaded`
+      : `Build complete: ${secs(elapsed)}`,
     idle: 'Idle',
   }[syncState]
 
@@ -537,6 +566,12 @@ export function BuildView() {
           {loadedDatasets.length > 0 && (
             <span className="muted small">
               In graph: {loadedDatasets.map(([name, info]) => `${labelOf(name)} (${num(info.documents)} docs)`).join(', ')}
+            </span>
+          )}
+          {live && (
+            <span className="muted small">
+              In TigerGraph: {num(live.documents)} documents, {num(live.events)} events, {num(live.chunks)} chunks
+              (not built from this install)
             </span>
           )}
         </div>

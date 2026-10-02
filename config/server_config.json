@@ -30,9 +30,6 @@
       "catalog_query": "{\"query\": \"\", \"page\": 0, \"pageSize\": 1000, \"filters\": [{\"field\": \"nimType\", \"value\": \"nim_type_preview\"}]}"
     }
   },
-  "api_config": {
-    "stream_token_ttl_s": 300
-  },
   "run_defaults": {
     "k": 10,
     "chunk_tokens": 300,

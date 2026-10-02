@@ -75,8 +75,6 @@ default. The main variables:
 | `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN` | Workers AI. They serve `bge-large-en-v1.5` embeddings and the Agentic pipeline's reranker (`@cf/baai/bge-reranker-base`). Without them, or when a call fails, both run the same models locally (`sentence-transformers`) |
 | `EMBEDDING_HOST_URL` | Optional self-hosted embedding service serving the catalog models: `POST {url}/embed` with `{"model": "<key>", "texts": [...]}` returns `{"embeddings": [...]}`. Tried first; on failure the next tier runs |
 | `EMBEDDING_CLOUDFLARE`, `EMBEDDING_REMOTE` | `false` skips the Cloudflare embedding tier (e.g. quota spent), or every remote tier. Both default to `true` |
-| `OGR_API_KEY` | Required. Every authenticated route returns `503` until it is set. Generate one with `python -c "import secrets; print(secrets.token_urlsafe(24))"` |
-| `OGR_ADMIN_KEY`, `OGR_SESSION_TTL_S` | Optional admin key: set, `OGR_API_KEY` becomes a viewer key and only this key can build, upload, switch embeddings, change settings or start benchmarks. Session lifetime after sign-in (8 h) |
 | `OGR_CORS_ORIGINS` | Browser origins allowed to call the API. Defaults to `http://localhost:5173,http://127.0.0.1:5173`, the Vite dev server |
 | `RUN_K`, `RUN_CHUNK_TOKENS`, `RUN_CHUNK_OVERLAP` | Retrieval and chunking (10 / 300 / 50). They are fixed before the first run and never tuned against results |
 | `RUN_MAX_STEPS`, `RUN_MAX_TOKENS_PER_QUERY`, `RUN_MAX_TOTAL_TOKENS` | Agentic loop limit (6), per-query token budget (20,000) and whole-run token ceiling (5,000,000; `0` turns it off) |
@@ -132,7 +130,7 @@ Check it: `curl http://127.0.0.1:8000/health` → `{"status":"ok"}`.
 ```bash
 cd frontend
 npm install
-cp .env.example .env    # no key here: the UI asks for it at sign-in
+cp .env.example .env    # no key here: the application is open
 npm run dev
 ```
 
@@ -158,30 +156,18 @@ graph. It is the quickest check that the GSQL queries and the LLM work end to en
 Every step shares one `RUN_ID`. Outputs go to `out/<RUN_ID>-public.jsonl`,
 `-public-timing.jsonl` and `-holdout.jsonl`, plus the two results files.
 
-## Security model
+## Access
 
-No secret ships in the browser bundle. The UI asks for an access key at
-**sign-in** and exchanges it (`POST /auth/session`) for a random session
-token. The token is held server-side with an expiry (`OGR_SESSION_TTL_S`,
-8 h), is revocable (Sign out), and lives in the browser tab's
-`sessionStorage` only. The frontend build refuses to run with a
-`VITE_API_KEY` set, so an old `.env` cannot leak a key into the JavaScript.
+The application is open: there is no sign-in, API key or role, and every
+route can be called without credentials. Anyone who can reach the backend can
+build or reset the graph, upload datasets, switch embedding models, change the
+LLM and start benchmarks. Run it on a trusted network, or put a reverse proxy
+with its own authentication in front of it for a public deployment.
 
-Two keys, two roles:
-
-| Key | Role | Can |
-|---|---|---|
-| `OGR_API_KEY` | viewer (admin when no admin key is set) | ask questions, read runs, history and settings |
-| `OGR_ADMIN_KEY` (optional) | admin | also build or reset the graph, upload datasets, switch or evict embedding models, change the LLM, start benchmarks, import runs |
-
-Give judges or reviewers the viewer key; keep the admin key to yourself. Ten
-wrong keys from one client in ten minutes lock it out for the rest of the
-window. Scripts and the CLI may send a key directly as `X-API-Key`.
-
-Still run the backend behind HTTPS in any public deployment (the key is sent
-once, at sign-in), and never reuse a key that protects anything else. Backend secrets (`TG_*`, `LLM_API_KEY`, provider keys,
-`CLOUDFLARE_API_TOKEN`) stay in the backend `.env`. They never go in the
-frontend.
+Backend secrets (`TG_*`, `LLM_API_KEY`, provider keys, `CLOUDFLARE_API_TOKEN`)
+stay in the backend `.env`. They never go in the frontend: the frontend build
+refuses to run with a `VITE_API_KEY` set, because every `VITE_` value is
+compiled into the public bundle.
 
 # Backend
 
@@ -208,43 +194,37 @@ Tests and lint: `cd backend && pytest -q` and `cd backend && ruff check src test
 
 ## HTTP API
 
-Routes from `backend/src/ogr/api/main.py`. **Auth** is a session
-(`Authorization: Bearer <token>` from `POST /auth/session {key}`) or the key
-itself as `X-API-Key`, unless stated otherwise; routes that change state need
-the admin role (`OGR_ADMIN_KEY`, or `OGR_API_KEY` when no admin key is set)
-and answer `403` to a viewer. An unset `OGR_API_KEY` returns `503` on every key-protected
-route. A wrong or missing key returns `401`. The two SSE streams take the
-single-use `stream_token` from the start response as `?token=`, because
-browser `EventSource` cannot send headers.
+Routes from `backend/src/ogr/api/main.py`. None needs credentials (see
+Access).
 
-| Method and path | Auth | Purpose |
-|---|---|---|
-| `GET /health` | none | Liveness: `{"status":"ok"}` |
-| `GET /health/db`, `/health/llm`, `/health/embedding` | none | One dependency check each. Results are cached for 30 s, and hosts are redacted |
-| `GET /settings` | none | Effective LLM provider/model and embedding model (no secrets) |
-| `GET /settings/providers` | key | Gemini / NVIDIA NIM / Groq presets and whether each key is set |
-| `GET /settings/models?provider=` | key | That provider's live model list. NVIDIA is narrowed to free endpoints |
-| `PATCH /settings` | key | Change the provider/model at runtime. Also switches the embedding model when the target is already complete |
-| `GET /embeddings` | key | Each embedding model's state, the 2-model cap and the current job |
-| `GET /embeddings/plan?model=` | key | What switching to `model` would do |
-| `POST /embeddings/switch` | key | Switch the embedding model. `mode` is `replace` or `parallel`. At the cap, `evict` names the model to delete |
-| `POST /embeddings/resume` | key | Continue a failed re-embed job from its last batch |
-| `POST /embeddings/{model}/complete` | key | Embed the chunks a stored model is missing |
-| `POST /query` | key | `{query, embedding_model?}` → `202 {query_id, stream_token}`. Returns `409 embedding_mismatch` when the model has no complete embeddings |
-| `GET /query/{id}/stream?token=` | stream token | SSE: `trace`, `pipeline`, `done` |
-| `GET /query/{id}/result` | key | The merged `QueryLevelRecord`. Returns `409` while the query is still running |
-| `GET /corpora` | key | Datasets in `data/corpus/` with display names, and which are loaded |
-| `POST /corpora/{name}` | key | Upload a JSONL dataset (the request body is the file). Options: `unique`, `overwrite`, `title`, `source_file` |
-| `PATCH /corpora/{name}` | key | Rename a dataset (`title`, `description`) |
-| `POST /build` | key | `{dataset, rebuild, reset}` → `202 {build_id, stream_token}`. Returns `409` with `already_built`, `reset_required`, `build_running`, `embedding_job_running`, `batch_running` or `embedding_cap` |
-| `GET /build/current` | key | The latest build and its events, so a reloaded page can resume following it |
-| `GET /build/{id}/stream?token=` | stream token | SSE: `build`, `done` |
-| `GET /datasets` | key | Question sets in `data/questions/` |
-| `POST /batch` | key | `{dataset, run_id?, latency_mode?, resume?}` → `202 {run_id, status}`. Records go to `out/{run_id}.jsonl` |
-| `GET /runs` | key | One summary per stored run, newest first |
-| `POST /runs/import` | key | Import a run export, a record list, a native JSONL file or an `ogr.cli export` file (imported unscored: it carries no gold). Returns `409` if the run id already exists |
-| `GET /batch/{run_id}/records` | key | A run's scored records |
-| `GET /history?kind=&limit=` | key | Every query, build, benchmark and embedding-job attempt (`out/history.jsonl`), newest first |
+| Method and path | Purpose |
+|---|---|
+| `GET /health` | Liveness: `{"status":"ok"}` |
+| `GET /health/db`, `/health/llm`, `/health/embedding` | One dependency check each. Results are cached for 30 s, and hosts are redacted |
+| `GET /settings` | Effective LLM provider/model and embedding model (no secrets) |
+| `GET /settings/providers` | Gemini / NVIDIA NIM / Groq presets and whether each key is set |
+| `GET /settings/models?provider=` | That provider's live model list. NVIDIA is narrowed to free endpoints |
+| `PATCH /settings` | Change the provider/model at runtime. Also switches the embedding model when the target is already complete |
+| `GET /embeddings` | Each embedding model's state, the 2-model cap and the current job |
+| `GET /embeddings/plan?model=` | What switching to `model` would do |
+| `POST /embeddings/switch` | Switch the embedding model. `mode` is `replace` or `parallel`. At the cap, `evict` names the model to delete |
+| `POST /embeddings/resume` | Continue a failed re-embed job from its last batch |
+| `POST /embeddings/{model}/complete` | Embed the chunks a stored model is missing |
+| `POST /query` | `{query, embedding_model?}` → `202 {query_id}`. Returns `409 embedding_mismatch` when the model has no complete embeddings |
+| `GET /query/{id}/stream` | SSE: `trace`, `pipeline`, `done` |
+| `GET /query/{id}/result` | The merged `QueryLevelRecord`. Returns `409` while the query is still running |
+| `GET /corpora` | Datasets in `data/corpus/` with display names, and which are loaded. With no dataset recorded in `out/datasets.json` (a fresh install against a graph built elsewhere), `graph.live` carries TigerGraph's own vertex counts |
+| `POST /corpora/{name}` | Upload a JSONL dataset (the request body is the file). Options: `unique`, `overwrite`, `title`, `source_file` |
+| `PATCH /corpora/{name}` | Rename a dataset (`title`, `description`) |
+| `POST /build` | `{dataset, rebuild, reset}` → `202 {build_id}`. Returns `409` with `already_built`, `reset_required`, `build_running`, `embedding_job_running`, `batch_running` or `embedding_cap` |
+| `GET /build/current` | The latest build and its events, so a reloaded page can resume following it |
+| `GET /build/{id}/stream` | SSE: `build`, `done` |
+| `GET /datasets` | Question sets in `data/questions/` |
+| `POST /batch` | `{dataset, run_id?, latency_mode?, resume?}` → `202 {run_id, status}`. Records go to `out/{run_id}.jsonl` |
+| `GET /runs` | One summary per stored run, newest first |
+| `POST /runs/import` | Import a run export, a record list, a native JSONL file or an `ogr.cli export` file (imported unscored: it carries no gold). Returns `409` if the run id already exists |
+| `GET /batch/{run_id}/records` | A run's scored records |
+| `GET /history?kind=&limit=` | Every query, build, benchmark and embedding-job attempt (`out/history.jsonl`), newest first |
 
 State is kept in process memory (one uvicorn worker). A restart loses
 in-flight queries and builds. Runs, history, the dataset registry and the
@@ -339,8 +319,7 @@ frontend/
                           RunPicker, Charts, colors, Icon, Notice, ErrorBoundary,
                           EmbeddingSettings, EmbeddingMismatchDialog, useDialogFocus
     services/
-      http.ts             fetch wrapper (session Bearer token, ApiError) + EventSource helper
-      session.ts          sign-in / sign-out, the session token (sessionStorage)
+      http.ts             fetch wrapper (ApiError) + EventSource helper
       queryService.ts  buildService.ts  batchService.ts  benchmarkService.ts
       datasetService.ts  historyService.ts  settingsService.ts
       mock/               transport.ts (fixture replay), runs.ts (mock run history)
@@ -363,10 +342,8 @@ set them through `style`, because `var()` does not resolve in SVG attributes.
 | Symptom | Likely cause |
 |---|---|
 | Header shows a `mock data` chip | `VITE_USE_MOCK_API=true` in `frontend/.env`. Restart `npm run dev` after changing it: Vite reads `.env` only at startup |
-| Every request gets `503 OGR_API_KEY is not configured` | `OGR_API_KEY` is unset on the backend |
-| Every request gets `401` | Not signed in, or the session expired or the backend restarted (sessions are held in memory). Sign in again |
-| An action says it needs the admin key | You signed in with the viewer key while `OGR_ADMIN_KEY` is set. Sign out and sign in with the admin key |
-| The frontend build stops on `VITE_API_KEY is set` | Remove `VITE_API_KEY` from `frontend/.env*`: the key is typed at sign-in now |
+| The frontend build stops on `VITE_API_KEY is set` | Remove `VITE_API_KEY` from `frontend/.env*`: the application needs no key |
+| The Build screen shows the graph as "not built from this install" | TigerGraph holds data but `out/datasets.json` does not record it (a fresh checkout). Queries work. Building again asks for a full reset; to keep the graph and rebuild single datasets instead, copy `out/datasets.json` and `out/embeddings.json` from the machine that built it |
 | CORS error in the browser console | The frontend origin is not in `OGR_CORS_ORIGINS`. Add it and restart the backend |
 | `verify` fails on TigerGraph | `TG_HOST` must be the full `https://…` URL, the credentials must be valid, and `TG_CLOUD=true` is needed for Savanna |
 | `verify` fails on the LLM with `429`/quota | The key has no quota left. Pick another provider/model in Settings, or use a local server (`LLM_BASE_URL=http://localhost:11434/v1`, no key needed) |

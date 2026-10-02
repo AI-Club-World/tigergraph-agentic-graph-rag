@@ -13,7 +13,7 @@ from ogr.common.config import RunConfig
 from ogr.common.contracts import PipelineRecord, TokenUsage
 from ogr.common.trials import TrialLog
 
-HEADERS = {"X-API-Key": "k"}
+HEADERS: dict[str, str] = {}  # the API is open: no key
 
 
 def _record(pipeline: str, status: str = "done") -> PipelineRecord:
@@ -39,7 +39,7 @@ def client(monkeypatch, tmp_path):
     monkeypatch.setattr(api_main, "astream_p3_agentic", p3)
     monkeypatch.setattr(api_main, "CORPUS_DIR", tmp_path)
     previous = api_main.app.dependency_overrides.get(get_config)
-    api_main.app.dependency_overrides[get_config] = lambda: RunConfig(ogr_api_key="k", llm_model="m1")
+    api_main.app.dependency_overrides[get_config] = lambda: RunConfig(llm_model="m1")
     with TestClient(api_main.app) as c:
         yield c
     if previous is None:
@@ -50,7 +50,7 @@ def client(monkeypatch, tmp_path):
 
 def test_query_is_captured_with_per_pipeline_outcome(client):
     body = client.post("/query", headers=HEADERS, json={"query": "How many?"}).json()
-    with client.stream("GET", f"/query/{body['query_id']}/stream", params={"token": body["stream_token"]}) as r:
+    with client.stream("GET", f"/query/{body['query_id']}/stream") as r:
         list(r.iter_lines())
     [trial] = client.get("/history", headers=HEADERS, params={"kind": "query"}).json()
     assert trial["subject"] == "How many?" and trial["status"] == "partial"

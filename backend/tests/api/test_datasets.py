@@ -14,7 +14,7 @@ from ogr.api.security import get_config
 from ogr.common.config import RunConfig
 from ogr.ingest.registry import DatasetRegistry
 
-HEADERS = {"X-API-Key": "k"}
+HEADERS: dict[str, str] = {}  # the API is open: no key
 DOC = json.dumps({"doc_id": "Q1", "title": "Sailing at the 2016 Summer Olympics", "text": "Sailing text."})
 
 
@@ -28,7 +28,7 @@ def env(monkeypatch, tmp_path):
     monkeypatch.setattr(api_main, "_get_client", lambda config: SimpleNamespace(conn=None, _ensure_connection=lambda: None))
     api_main._builds.clear()
     previous = api_main.app.dependency_overrides.get(get_config)
-    api_main.app.dependency_overrides[get_config] = lambda: RunConfig(ogr_api_key="k", embedding_dim=1024)
+    api_main.app.dependency_overrides[get_config] = lambda: RunConfig(embedding_dim=1024)
     with TestClient(api_main.app) as c:
         yield SimpleNamespace(client=c, corpora=corpora, registry=DatasetRegistry(tmp_path / "out" / "datasets.json"))
     if previous is None:
@@ -44,6 +44,22 @@ def test_lists_corpora_with_build_state(env):
     [row] = body["corpora"]
     assert row["name"] == "olympics" and row["documents"] == 1
     assert row["built"]["documents"] == 1 and "doc_ids" not in row["built"]
+
+
+def test_an_untracked_graph_shows_tigergraphs_own_counts(env, monkeypatch):
+    # A fresh install (no out/datasets.json) against a graph built elsewhere.
+    counts = {"Document": 2951, "OlympicEvent": 2187, "Chunk": 16669, "Games": 21, "Sport": 42, "Venue": 319}
+    conn = SimpleNamespace(getVertexCount=lambda vtype: counts[vtype])
+    monkeypatch.setattr(api_main, "_get_client", lambda config: SimpleNamespace(conn=conn, _ensure_connection=lambda: None))
+    graph = env.client.get("/corpora", headers=HEADERS).json()["graph"]
+    assert graph["datasets"] == {} and graph["live"]["documents"] == 2951 and graph["live"]["chunks"] == 16669
+
+
+def test_live_counts_are_skipped_when_tigergraph_is_unreachable_or_datasets_are_recorded(env):
+    assert env.client.get("/corpora", headers=HEADERS).json()["graph"]["live"] is None  # conn=None
+    env.registry.reset("@cf/baai/bge-m3", 1024)
+    env.registry.record("olympics", {"doc_ids": ["Q1"]}, {"documents": 1, "events": 0, "chunks": 1}, 10)
+    assert env.client.get("/corpora", headers=HEADERS).json()["graph"]["live"] is None
 
 
 def test_upload_validates_and_stores_a_new_dataset(env):
@@ -124,7 +140,7 @@ def _run_build_stream(client, body):
     accepted = client.post("/build", headers=HEADERS, json=body)
     assert accepted.status_code == 202, accepted.text
     ids = accepted.json()
-    with client.stream("GET", f"/build/{ids['build_id']}/stream", params={"token": ids["stream_token"]}) as r:
+    with client.stream("GET", f"/build/{ids['build_id']}/stream") as r:
         lines = list(r.iter_lines())
     return [json.loads(lines[i + 1][len("data: "):]) for i, line in enumerate(lines) if line == "event: build"]
 

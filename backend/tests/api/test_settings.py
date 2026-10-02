@@ -12,7 +12,7 @@ import ogr.common.llm as llm_module
 from ogr.api.security import get_config
 from ogr.common.config import RunConfig
 
-HEADERS = {"X-API-Key": "test-key"}
+HEADERS: dict[str, str] = {}  # the API is open: no key
 
 
 @pytest.fixture
@@ -20,7 +20,7 @@ def client(monkeypatch):
     monkeypatch.setenv("GROQ_API_KEY", "groq-key")
     monkeypatch.setenv("GEMINI_API_KEY", "")
     previous = api_main.app.dependency_overrides.get(get_config)
-    api_main.app.dependency_overrides[get_config] = lambda: RunConfig(ogr_api_key="test-key")
+    api_main.app.dependency_overrides[get_config] = lambda: RunConfig()
     api_main._runtime_overrides.clear()
     with TestClient(api_main.app) as c:
         yield c

@@ -5,16 +5,14 @@ Requirement: FR-1, FR-13, TECHNICAL-SPEC §4, §5 · Gate: G3
 
 Routes match exactly what `frontend/src/services/*.ts` already expects
 (confirmed against the frontend code, not guessed): `POST /query` -> `202
-{query_id, stream_token}`, `GET /query/{id}/stream` (SSE), `GET
-/query/{id}/result`, `POST /build` -> `202 {build_id, stream_token}`, `GET
-/build/{id}/stream` (SSE), `GET /batch/{run_id}/records`, plus the
-unauthenticated `GET /health`. Benchmark history: `GET /datasets`, `POST
+{query_id}`, `GET /query/{id}/stream` (SSE), `GET /query/{id}/result`,
+`POST /build` -> `202 {build_id}`, `GET /build/{id}/stream` (SSE), `GET
+/batch/{run_id}/records`, plus `GET /health`. Benchmark history: `GET /datasets`, `POST
 /batch` (execute a benchmark), `GET /runs`, `POST /runs/import`.
 
-`X-API-Key` is a router-level dependency (`require_api_key`), so a new route
-is protected by default rather than by someone remembering. The two SSE
-routes cannot carry that header (browser `EventSource` is header-less), so
-they take a short-lived, single-use `?token=` instead (DP-8).
+The application is open: no sign-in, key or role on any route (owner's
+decision). Put it behind a network boundary or a reverse proxy with its own
+authentication if it must not be public.
 
 State is a module-level in-memory dict — this is a single-process demo tool,
 not a multi-worker service; a restart loses in-flight query
@@ -36,20 +34,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 
-from fastapi import APIRouter, Body, Depends, FastAPI, Header, HTTPException, Request
+from fastapi import APIRouter, Body, Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
-from ogr.api.security import (
-    StreamTokenStore,
-    get_config,
-    require_admin,
-    require_api_key,
-    role_for_key,
-    sessions,
-    sign_in_limiter,
-)
+from ogr.api.security import get_config
 from ogr.common.config import RunConfig, get_default_config
 from ogr.common.contracts import PipelineRecord, QueryLevelRecord
 from ogr.common.embedding_models import (
@@ -82,9 +72,8 @@ app = FastAPI(title="OGR API")
 
 # The frontend runs on a different origin (Vite dev server, or a deployed
 # static host) and calls this API directly from the browser — without this,
-# every fetch fails at the CORS preflight before X-API-Key is ever checked.
-# Origins come from OGR_CORS_ORIGINS (config.py); `allow_credentials=False`
-# because auth is a header/query token, not a cookie.
+# every fetch fails at the CORS preflight. Origins come from OGR_CORS_ORIGINS
+# (config.py); no cookies are used, so `allow_credentials=False`.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=get_default_config().ogr_cors_origins,
@@ -93,9 +82,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-router = APIRouter(dependencies=[Depends(require_api_key)])
+router = APIRouter()
 
-_stream_tokens = StreamTokenStore(ttl_s=get_default_config().ogr_stream_token_ttl_s)
 _queries: dict[str, dict[str, Any]] = {}
 _builds: dict[str, dict[str, Any]] = {}
 # Finished query/build entries kept for result reads; older ones are dropped.
@@ -190,34 +178,6 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-# ── Sign-in (TECHNICAL-SPEC §4.5): no secret in the browser bundle ──
-@app.post("/auth/session")
-def sign_in(request: Request, body: dict = Body(...), config: RunConfig = Depends(get_config)) -> dict:
-    """Exchange a key the operator types for a session token (Bearer)."""
-    if not config.ogr_api_key:
-        raise HTTPException(status_code=503, detail="OGR_API_KEY is not configured")
-    client = request.client.host if request.client else "unknown"
-    if sign_in_limiter.blocked(client):
-        raise HTTPException(status_code=429, detail="Too many wrong keys; try again in a few minutes")
-    role = role_for_key(str(body.get("key") or ""), config)
-    if role is None:
-        sign_in_limiter.fail(client)
-        raise HTTPException(status_code=401, detail="Wrong key")
-    token = sessions.issue(role, config.ogr_session_ttl_s)
-    return {"token": token, "role": role, "expires_in_s": config.ogr_session_ttl_s}
-
-
-@app.get("/auth/session")
-def session_role(role: str = Depends(require_api_key)) -> dict:
-    return {"role": role}
-
-
-@app.delete("/auth/session", status_code=204)
-def sign_out(authorization: str | None = Header(default=None)) -> None:
-    if authorization and authorization.lower().startswith("bearer "):
-        sessions.revoke(authorization[7:].strip())
-
-
 # ─────────────────────────────────────────── /settings ──────────────────────
 
 
@@ -305,7 +265,7 @@ async def get_provider_models(provider: Literal["gemini", "nvidia_nim", "groq"])
     return {"provider": provider, "models": models, "note": note}
 
 
-@router.patch("/settings", dependencies=[Depends(require_admin)])
+@router.patch("/settings")
 async def patch_settings(body: SettingsPatch) -> dict[str, Any]:
     """Update runtime model/embedding without a server restart. The selected
     LLM applies to all three pipelines: each run snapshots config once.
@@ -509,7 +469,7 @@ def _start_embedding_job(config: RunConfig) -> None:
     _embedding_job["task"] = asyncio.create_task(asyncio.to_thread(job))
 
 
-@router.post("/embeddings/switch", status_code=202, dependencies=[Depends(require_admin)])
+@router.post("/embeddings/switch", status_code=202)
 async def post_embedding_switch(
     body: EmbeddingSwitch, config: RunConfig = Depends(get_config)
 ) -> dict[str, Any]:
@@ -531,7 +491,7 @@ async def post_embedding_switch(
     return result
 
 
-@router.post("/embeddings/resume", status_code=202, dependencies=[Depends(require_admin)])
+@router.post("/embeddings/resume", status_code=202)
 async def post_embedding_resume(config: RunConfig = Depends(get_config)) -> dict[str, Any]:
     """Continue a failed job from its last checkpointed batch."""
     _refuse_while_busy()
@@ -541,7 +501,7 @@ async def post_embedding_resume(config: RunConfig = Depends(get_config)) -> dict
     return {"job": job}
 
 
-@router.post("/embeddings/{model}/complete", status_code=202, dependencies=[Depends(require_admin)])
+@router.post("/embeddings/{model}/complete", status_code=202)
 async def post_embedding_complete(model: str, config: RunConfig = Depends(get_config)) -> dict[str, Any]:
     """Embed the chunks a stored model is missing (a dataset built while it
     was not the active model)."""
@@ -664,12 +624,11 @@ async def post_query(body: QueryRequest, config: RunConfig = Depends(get_config)
     config = await asyncio.to_thread(_query_config, config, body.embedding_model)
     _evict_finished(_queries)
     query_id = str(uuid.uuid4())
-    token = _stream_tokens.issue(query_id)
     queue: asyncio.Queue = asyncio.Queue()
     _queries[query_id] = {"queue": queue, "record": None}
     task = asyncio.create_task(_run_query(query_id, body.query, queue, config))
     _queries[query_id]["task"] = task
-    return {"query_id": query_id, "stream_token": token}
+    return {"query_id": query_id}
 
 
 async def _run_query(query_id: str, query: str, queue: asyncio.Queue, config: RunConfig) -> None:
@@ -766,11 +725,9 @@ async def get_query_result(query_id: str) -> dict[str, Any]:
 
 
 @app.get("/query/{query_id}/stream")
-async def query_stream(query_id: str, token: str):
+async def query_stream(query_id: str):
     if query_id not in _queries:
         raise HTTPException(status_code=404, detail="Unknown query_id")
-    if not _stream_tokens.consume(token, query_id):
-        raise HTTPException(status_code=401, detail="Invalid or expired stream token")
     return EventSourceResponse(_stream_events(_queries[query_id]["queue"]))
 
 
@@ -805,11 +762,39 @@ def _corpus_file(name: str) -> Path:
     return CORPUS_DIR / f"{name}.jsonl"
 
 
+_LIVE_VERTEX_TYPES = {"documents": "Document", "events": "OlympicEvent", "chunks": "Chunk",
+                      "games": "Games", "sports": "Sport", "venues": "Venue"}
+LIVE_COUNT_TIMEOUT_S = 15.0
+
+
+def _live_graph_counts(client: TigerGraphClient) -> dict[str, int] | None:
+    """Vertex counts read from TigerGraph itself, or None when it cannot be
+    reached. Used when this install has no record of the graph (a fresh
+    checkout, or a graph built from another machine): the data is there even
+    though out/datasets.json is not."""
+    client._ensure_connection()
+    if client.conn is None:
+        return None
+    try:
+        return {key: int(client.conn.getVertexCount(vtype) or 0) for key, vtype in _LIVE_VERTEX_TYPES.items()}
+    except Exception:  # noqa: BLE001 - unreachable or no schema yet: nothing to show
+        return None
+
+
 @router.get("/corpora")
-async def get_corpora() -> dict[str, Any]:
+async def get_corpora(config: RunConfig = Depends(get_config)) -> dict[str, Any]:
     """Datasets available to build (JSONL files in data/corpus/) and which of
-    them are loaded into the graph."""
+    them are loaded into the graph. `graph.live` carries TigerGraph's own
+    counts when no dataset is recorded here, so existing data still shows."""
     registry = _registry().summary()
+    registry["live"] = None
+    if not registry["datasets"]:
+        try:
+            registry["live"] = await asyncio.wait_for(
+                asyncio.to_thread(_live_graph_counts, _get_client(config)), LIVE_COUNT_TIMEOUT_S
+            )
+        except TimeoutError:
+            registry["live"] = None
     corpora = []
     for path in sorted(CORPUS_DIR.glob("*.jsonl")) if CORPUS_DIR.exists() else []:
         # `title` is the name shown for the dataset; `name` stays its id.
@@ -829,7 +814,7 @@ class CorpusPatch(BaseModel):
     description: str | None = None
 
 
-@router.patch("/corpora/{name}", dependencies=[Depends(require_admin)])
+@router.patch("/corpora/{name}")
 async def patch_corpus(name: str, body: CorpusPatch) -> dict[str, Any]:
     """Rename a dataset (its display title); its id and file stay as they are."""
     path = _corpus_file(name)
@@ -844,7 +829,7 @@ async def patch_corpus(name: str, body: CorpusPatch) -> dict[str, Any]:
     return {"name": name, **await asyncio.to_thread(dataset_meta.describe, path)}
 
 
-@router.post("/corpora/{name}", status_code=201, dependencies=[Depends(require_admin)])
+@router.post("/corpora/{name}", status_code=201)
 async def upload_corpus(
     name: str,
     request: Request,
@@ -958,7 +943,7 @@ def _graph_has_documents(client: TigerGraphClient) -> bool:
         return False
 
 
-@router.post("/build", status_code=202, dependencies=[Depends(require_admin)])
+@router.post("/build", status_code=202)
 async def post_build(
     body: BuildRequest | None = None, config: RunConfig = Depends(get_config)
 ) -> dict[str, str]:
@@ -1042,12 +1027,11 @@ async def _checked_build(build_id: str, body: BuildRequest, config: RunConfig) -
                 built_at=existing["built_at"],
             )
 
-    token = _stream_tokens.issue(build_id)
     queue: asyncio.Queue = asyncio.Queue()
     _builds[build_id].update(queue=queue)
     task = asyncio.create_task(_run_build(build_id, queue, config, body))
     _builds[build_id]["task"] = task
-    return {"build_id": build_id, "stream_token": token}
+    return {"build_id": build_id}
 
 
 async def _run_build(build_id: str, queue: asyncio.Queue, config: RunConfig, request: BuildRequest) -> None:
@@ -1252,11 +1236,9 @@ async def get_current_build() -> dict[str, Any]:
 
 
 @app.get("/build/{build_id}/stream")
-async def build_stream(build_id: str, token: str):
+async def build_stream(build_id: str):
     if build_id not in _builds:
         raise HTTPException(status_code=404, detail="Unknown build_id")
-    if not _stream_tokens.consume(token, build_id):
-        raise HTTPException(status_code=401, detail="Invalid or expired stream token")
     return EventSourceResponse(_stream_build_events(_builds[build_id]["queue"]))
 
 
@@ -1300,7 +1282,7 @@ async def get_datasets() -> list[str]:
     return _datasets()
 
 
-@router.post("/batch", status_code=202, dependencies=[Depends(require_admin)])
+@router.post("/batch", status_code=202)
 async def post_batch(body: BatchRequest, config: RunConfig = Depends(get_config)) -> dict[str, str]:
     try:
         return await _start_batch(body, config)
@@ -1408,7 +1390,7 @@ async def get_runs() -> list[dict[str, Any]]:
     return runs
 
 
-@router.post("/runs/import", status_code=201, dependencies=[Depends(require_admin)])
+@router.post("/runs/import", status_code=201)
 async def post_run_import(payload: Any = Body(...)) -> dict[str, Any]:
     """Store a previously executed run from its JSON export."""
     try:

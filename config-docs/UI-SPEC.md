@@ -298,18 +298,7 @@ Every other view behaves the same against fixtures and against the real API.
   is a string, from `detail.message` when it is an object, or from the joined
   `loc: msg` entries of a 422 validation list. Otherwise it falls back to the
   HTTP status text. A non-JSON error body must not throw; keep the status text.
-- Unauthenticated routes: `GET /health`, `/health/db|llm|embedding` and
-  `GET /settings`, and `POST /auth/session`. The SSE streams use a token
-  instead (§5.2). Everything else needs a session. When the server has no key
-  configured, it answers `503`.
-- **Sign-in.** With no session (live mode), the header shows a `Sign in` button
-  and the sign-in dialog opens: one password field, `Access key`, and the note
-  on viewer vs admin keys. The key goes once to `POST /auth/session`; only the
-  returned token and role are kept, in `sessionStorage`. Signed in, the header
-  shows the role and `Sign out` (revokes the session). A `401` from any call
-  clears the session and reopens the dialog with `Your session has ended. Sign
-  in again to continue.` A viewer's admin-only action shows the server's `403`
-  message. Mock mode has no sign-in.
+- No route needs credentials: the application is open, with no sign-in.
 
 | Call | Method / path | Returns |
 |---|---|---|

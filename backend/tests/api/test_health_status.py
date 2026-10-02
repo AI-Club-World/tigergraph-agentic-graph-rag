@@ -17,7 +17,7 @@ from ogr.common.config import RunConfig
 @pytest.fixture
 def client(monkeypatch):
     previous = api_main.app.dependency_overrides.get(get_config)
-    api_main.app.dependency_overrides[get_config] = lambda: RunConfig(ogr_api_key="k")
+    api_main.app.dependency_overrides[get_config] = lambda: RunConfig()
     with TestClient(api_main.app) as c:
         yield c
     if previous is None:
@@ -30,7 +30,7 @@ def test_each_dependency_has_its_own_route_and_time_limit(client, monkeypatch):
     monkeypatch.setattr(verify, "check_tigergraph", lambda config, c=None: ("OK", "up"))
     monkeypatch.setattr(verify, "check_llm", lambda config: time.sleep(1) or ("OK", "late"))
     monkeypatch.setattr(verify, "check_embedding", lambda config: ("SKIP", "local"))
-    api_main.app.dependency_overrides[get_config] = lambda: RunConfig(ogr_api_key="k", health_llm_timeout_s=0.2)
+    api_main.app.dependency_overrides[get_config] = lambda: RunConfig(health_llm_timeout_s=0.2)
     assert client.get("/health/db").json()["status"] == "ok"
     llm = client.get("/health/llm").json()
     assert llm["status"] == "fail" and "did not answer within" in llm["detail"]

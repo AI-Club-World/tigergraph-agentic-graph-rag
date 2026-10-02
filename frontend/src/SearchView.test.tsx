@@ -58,7 +58,7 @@ async function submit() {
 
 beforeEach(() => {
   vi.resetAllMocks()
-  mocked.submitQuery.mockResolvedValue({ query_id: 'q1', stream_token: 't1' })
+  mocked.submitQuery.mockResolvedValue({ query_id: 'q1' })
   mocked.openQueryStream.mockImplementation((_accepted, h) => {
     handlers = h
     return () => undefined

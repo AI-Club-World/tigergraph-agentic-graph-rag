@@ -144,12 +144,10 @@ export interface BuildEvent {
 
 export interface QueryAccepted {
   query_id: string
-  stream_token: string
 }
 
 export interface BuildAccepted {
   build_id: string
-  stream_token: string
 }
 
 /** One pipeline's aggregate over a benchmark run (GET /runs). Accuracy is null without ground truth. */

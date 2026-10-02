@@ -1,8 +1,10 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
+import { StrictMode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { BuildView } from './BuildView'
 import type { BuildEvent, PipelineId } from './types'
 import * as buildService from './services/buildService'
+import * as datasetService from './services/datasetService'
 import { datasetLabel } from './services/datasetService'
 
 vi.mock('./services/buildService')
@@ -54,7 +56,7 @@ async function emit(e: BuildEvent) {
 
 beforeEach(() => {
   vi.resetAllMocks()
-  mocked.startBuild.mockResolvedValue({ build_id: 'b1', stream_token: 't1' })
+  mocked.startBuild.mockResolvedValue({ build_id: 'b1' })
   mocked.openBuildStream.mockImplementation((_accepted, h) => {
     handlers = h
     return () => undefined
@@ -179,5 +181,43 @@ describe('BuildView dataset names', () => {
     expect(datasetLabel(all[1], all)).toBe('Olympics (corpus-2)')
     expect(datasetLabel(all[2], all)).toBe('Films')
     expect(datasetLabel({ name: 'legacy' }, all)).toBe('legacy')
+  })
+})
+
+describe('BuildView after navigating back', () => {
+  it('follows a build still running on the server, under StrictMode too', async () => {
+    mocked.getCurrentBuild.mockResolvedValue({
+      build_id: 'b9',
+      dataset: 'corpus',
+      running: true,
+      events: [event({ stage: 'embed_chunks', items_done: 30, pipeline_affected: ['rag'] })],
+    })
+    await act(async () => {
+      render(
+        <StrictMode>
+          <BuildView />
+        </StrictMode>,
+      )
+    })
+    expect(await screen.findByText('JOB-ID: b9')).toBeInTheDocument()
+    expect(column('rag').dataset.status).toBe('running')
+  })
+
+  it('shows what TigerGraph holds when this install recorded no dataset', async () => {
+    mocked.getCurrentBuild.mockResolvedValue(null)
+    vi.spyOn(datasetService, 'listCorpora').mockResolvedValue({
+      corpora: [],
+      graph: {
+        tracked: false,
+        schema: null,
+        datasets: {},
+        live: { documents: 2951, events: 2187, chunks: 16669, games: 21, sports: 42, venues: 319 },
+      },
+    })
+    await act(async () => {
+      render(<BuildView />)
+    })
+    expect(await screen.findByText(/In TigerGraph: 2,951 documents/)).toBeInTheDocument()
+    expect(column('agentic_graphrag').dataset.status).toBe('ready')
   })
 })

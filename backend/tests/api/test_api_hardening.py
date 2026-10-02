@@ -13,14 +13,14 @@ import ogr.api.main as api_main
 from ogr.api.security import get_config
 from ogr.common.config import RunConfig
 
-HEADERS = {"X-API-Key": "k"}
+HEADERS: dict[str, str] = {}  # the API is open: no key
 DOC = json.dumps({"doc_id": "Q1", "title": "Sailing at the 2016 Summer Olympics", "text": "Sailing."})
 
 
 @pytest.fixture
 def client(monkeypatch, tmp_path):
     monkeypatch.setattr(api_main, "CORPUS_DIR", tmp_path / "corpus")
-    api_main.app.dependency_overrides[get_config] = lambda: RunConfig(ogr_api_key="k")
+    api_main.app.dependency_overrides[get_config] = lambda: RunConfig()
     api_main._builds.clear()
     api_main._batch_tasks.clear()
     api_main._runtime_overrides.clear()
@@ -56,7 +56,7 @@ def test_health_detail_hides_hosts_and_checks_are_cached(client, monkeypatch):
         return "OK", f"connected to {config.tg_host} as https://u:pw@db.internal"
 
     monkeypatch.setattr(verify, "check_tigergraph", check)
-    api_main.app.dependency_overrides[get_config] = lambda: RunConfig(ogr_api_key="k", tg_host="https://tg.secret.io")
+    api_main.app.dependency_overrides[get_config] = lambda: RunConfig(tg_host="https://tg.secret.io")
     first = client.get("/health/db").json()
     assert "tg.secret.io" not in first["detail"] and "pw@" not in first["detail"]
     client.get("/health/db")

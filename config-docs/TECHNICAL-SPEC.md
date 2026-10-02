@@ -172,16 +172,14 @@ Run header (`batch_runner.run_config_header` + API/CLI additions), first line of
 
 Scored view records (§9.2) for the dashboard and eval table. Benchmark history: `GET /datasets`, `GET /runs`, `POST /runs/import` (§4.0).
 
-### 4.5 Authentication
+### 4.5 Access
 
-No secret ships in the browser bundle (the frontend build refuses a `VITE_API_KEY`).
-
-- **Sign-in** (unauthenticated): `POST /auth/session {key}` → `{token, role, expires_in_s}`. The token is `secrets.token_urlsafe(32)`, held server-side (`SessionStore`, in memory) for `OGR_SESSION_TTL_S` (28,800 s). `GET /auth/session` returns the caller's role; `DELETE /auth/session` revokes the token (204). A wrong key → 401; 10 wrong keys from one client within 600 s → 429 until the window passes (`SignInLimiter`).
-- **Roles** (`role_for_key`, constant-time compares): `OGR_ADMIN_KEY` → `admin`; `OGR_API_KEY` → `viewer` when an admin key is configured, else `admin` (single-key deployments keep every right).
-- **`require_api_key`** (router-level dependency, so a new route on `router` is protected by default) accepts `Authorization: Bearer <session>` or `X-API-Key: <key>` and returns the role: missing/wrong/expired → **401**; `OGR_API_KEY` unset → **503** `OGR_API_KEY is not configured` (the API refuses rather than running open).
-- **`require_admin`** on every state-changing route: `PATCH /settings`, `POST /embeddings/switch|resume|{model}/complete`, `PATCH|POST /corpora/{name}`, `POST /build`, `POST /batch`, `POST /runs/import`. A viewer → **403**. `POST /query` and every read stay open to viewers.
-
-Browser `EventSource` cannot send headers, so the two SSE routes take `?token=`: issued with the id by `POST /query` / `POST /build`, scoped to that id, single-use, TTL `OGR_STREAM_TOKEN_TTL_S` (default 300 s). Expired tokens are purged on each issue. Invalid/expired/used → 401. No key or session token enters a URL.
+The application is open (owner's decision): no sign-in, API key, role or SSE
+stream token. Every route, state-changing ones included, needs no
+credentials; the SSE streams are plain `GET /query/{id}/stream` and
+`GET /build/{id}/stream`. No secret ships in the browser bundle (the frontend
+build refuses a `VITE_API_KEY`). A public deployment goes behind a proxy or
+network boundary with its own authentication.
 
 CORS: `OGR_CORS_ORIGINS` (default `http://localhost:5173,http://127.0.0.1:5173`), `allow_credentials=False`.
 
@@ -557,16 +555,12 @@ Defaults are the effective ones (file value where the file sets one, else code).
 | | `EMBEDDING_HOST_URL` | unset; a self-hosted `POST {url}/embed {"model","texts"} → {"embeddings"}` service, tried first |
 | | `EMBEDDING_CLOUDFLARE`, `EMBEDDING_REMOTE` | `true`; `false` skips the Cloudflare tier / every remote tier. Tier order: host → Cloudflare → local → hash (non-strict only) |
 | Run | `RUN_K`, `RUN_CHUNK_TOKENS`, `RUN_CHUNK_OVERLAP`, `RUN_MAX_STEPS`, `RUN_MAX_TOKENS_PER_QUERY`, `RUN_POOL_SIZE`, `RUN_LATENCY_MODE`, `RUN_MAX_TOTAL_TOKENS`, `RUN_SEED` | 10, 300, 50, 6, 20000, 2, `throughput`, 5000000, none |
-| API | `OGR_API_KEY` | required; unset → every protected route 503 |
-| | `OGR_ADMIN_KEY` | unset; set → `OGR_API_KEY` is a viewer and this key alone may call state-changing routes (§4.5) |
-| | `OGR_SESSION_TTL_S` | 28800 (sign-in session lifetime) |
-| | `OGR_STREAM_TOKEN_TTL_S` | 300 |
-| | `OGR_CORS_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` |
+| API | `OGR_CORS_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` |
 | | `HEALTH_LLM_TIMEOUT_S` | 120 |
 
 There is no `OGR_HOST`/`OGR_PORT`; bind address and port are uvicorn arguments (§12.3).
 
-**Frontend** (build-time, `frontend/.env.example`; Vite exposes only `VITE_*`): `VITE_API_BASE_URL` (`http://127.0.0.1:8000`), no key (sign-in at runtime; a `VITE_API_KEY` fails the build), `VITE_USE_MOCK_API` (only the string `true`, case-insensitive, enables the fixture transport; default `false`), `VITE_MOCK_LATENCY_SCALE` (1), `VITE_DEFAULT_RUN_ID`, `VITE_ADMIN_EMAIL`, `VITE_POLL_INTERVAL_MS` (600000). Details: `UI-SPEC.md`.
+**Frontend** (build-time, `frontend/.env.example`; Vite exposes only `VITE_*`): `VITE_API_BASE_URL` (`http://127.0.0.1:8000`), no key (the application is open; a `VITE_API_KEY` fails the build), `VITE_USE_MOCK_API` (only the string `true`, case-insensitive, enables the fixture transport; default `false`), `VITE_MOCK_LATENCY_SCALE` (1), `VITE_DEFAULT_RUN_ID`, `VITE_ADMIN_EMAIL`, `VITE_POLL_INTERVAL_MS` (600000). Details: `UI-SPEC.md`.
 
 ### 14.3 Rules
 
@@ -576,7 +570,7 @@ There is no `OGR_HOST`/`OGR_PORT`; bind address and port are uvicorn arguments (
 | No credential in `server_config.json`, a persisted record, an SSE frame, a log or an unauthenticated response | `eval/store._assert_no_secret` on every header, record and import: key shapes (`sk-`, `gsk_`, `AIza`, `hf_`, `gh[pousr]_`, JWT) plus the literal values (≥ 8 chars) of `LLM_API_KEY`, `TG_PASSWORD`, `TG_SECRET`, `TG_TOKEN`, `TG_JWT_TOKEN`, `OGR_API_KEY`. The run header is an explicit allow-list. Health details are redacted (§4.7); `GET /settings` exposes only the base host |
 | `run_config` is written into every run's header | a result without its conditions is not reproducible (NFR-4) |
 | The model is pinned within a run, swappable between runs | each query/run snapshots the config once; P1/P2/P3 share one cached client |
-| No key ships to the browser | sign-in exchanges a typed key for a server-side session; viewer and admin keys split read from write (§4.5) |
+| No key ships to the browser | the application has no key (§4.5); a `VITE_API_KEY` fails the frontend build |
 | Changing provider is a `.env` edit or a Settings preset — no code change | single boundary `common/llm.py` |
 
 ### 14.4 Runtime LLM presets (`common/llm.py` `PROVIDER_PRESETS`)

@@ -37,7 +37,6 @@ _FILE_KEYS: dict[str, tuple[str, ...]] = {
     "LLM_REQUESTS_PER_MINUTE": ("llm_config", "rate_limit", "requests_per_minute"),
     "LLM_BACKOFF_BASE_S": ("llm_config", "rate_limit", "backoff_base_s"),
     "LLM_MAX_RETRIES": ("llm_config", "rate_limit", "max_retries"),
-    "OGR_STREAM_TOKEN_TTL_S": ("api_config", "stream_token_ttl_s"),
     "RUN_K": ("run_defaults", "k"),
     "RUN_CHUNK_TOKENS": ("run_defaults", "chunk_tokens"),
     "RUN_CHUNK_OVERLAP": ("run_defaults", "chunk_overlap"),
@@ -216,24 +215,10 @@ class RunConfig(BaseModel):
     # bounds a whole batch run. 0 disables it.
     max_total_tokens: int = Field(default_factory=lambda: int(_env("RUN_MAX_TOTAL_TOKENS", "5000000")))
 
-    # API-01. Required on every route except /health (TECHNICAL-SPEC §4.5).
-    # Empty means "no key configured" — the API refuses every request rather
-    # than silently running unauthenticated.
-    ogr_api_key: str = Field(default_factory=lambda: _env("OGR_API_KEY", ""))
-    # Optional second key for destructive routes (build/reset, uploads,
-    # embedding jobs, settings, benchmarks, imports). Set, it splits access:
-    # OGR_API_KEY becomes a viewer key (ask, read). Unset, OGR_API_KEY keeps
-    # every right, as before.
-    ogr_admin_key: str = Field(default_factory=lambda: _env("OGR_ADMIN_KEY", ""))
-    # Lifetime of a browser session (POST /auth/session); 8 h by default.
-    ogr_session_ttl_s: int = Field(default_factory=lambda: int(_env("OGR_SESSION_TTL_S", "28800")))
     # /health/llm waits this long for its one-token completion; a cold
     # free-tier model can take well over 20 s.
     health_llm_timeout_s: float = Field(
         default_factory=lambda: float(_env("HEALTH_LLM_TIMEOUT_S", "120"))
-    )
-    ogr_stream_token_ttl_s: int = Field(
-        default_factory=lambda: int(_env("OGR_STREAM_TOKEN_TTL_S", "300"))
     )
     # CORS. Comma-separated browser origins allowed to call this API; the
     # Vite dev server (5173) is included by default so `npm run dev` works

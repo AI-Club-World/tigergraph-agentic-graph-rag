@@ -176,8 +176,7 @@ and every agentic trace) are in `submission/hidden-set-export.json`
 ## Demo script (3 minutes)
 
 Slides: the "Agentic GraphRAG — final presentation" deck (13 slides, speaker
-notes on each). Before recording, sign in with the **viewer** key so the demo
-shows that a viewer can ask and read but not rebuild.
+notes on each). The application is open: no sign-in is needed.
 
 1. **Build screen** (20 s): the graph loads from the corpus. The counts
    match the numbers above, and the embedding model and its index state are
@@ -220,9 +219,10 @@ shows that a viewer can ask and read but not rebuild.
   events share; the right behaviour there is to ask back.
 - **Hidden set?** Run once, raw outputs in `submission/`. No gold, so cost,
   routing and grounding only.
-- **How is it secured?** No key in the browser bundle: sign-in exchanges a
-  typed key for a server-side session; a viewer key cannot build, upload,
-  switch embeddings or start benchmarks (`OGR_ADMIN_KEY`).
+- **How is it secured?** It is an open demo application: no sign-in, and no
+  secret in the browser bundle (the build refuses a `VITE_API_KEY`). Backend
+  credentials stay in the server's `.env`; a public deployment goes behind a
+  proxy with its own authentication.
 - **What is novel?** Necessity routing refined after entity linking, exact
   event ids derived the way ingest builds them, gazetteer anchor recovery, a
   zero-token answer-verification step with conflict reporting, per-model

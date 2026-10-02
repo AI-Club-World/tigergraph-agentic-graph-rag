@@ -27,7 +27,7 @@ flowchart LR
         ui["React + Vite UI<br/>Search · Build · Dashboard · History · Settings<br/>fetch + EventSource (SSE)"]
     end
     subgraph backend[FastAPI process — backend/src/ogr]
-        api["api/main.py<br/>sign-in sessions · viewer/admin roles · SSE stream tokens<br/>query / build / batch / settings / embeddings / history"]
+        api["api/main.py<br/>open access (no sign-in)<br/>query / build / batch / settings / embeddings / history"]
         disp["eval/dispatcher + aggregator<br/>3 pipelines concurrently, verdict"]
         p1["P1 RAG<br/>pipelines/p1_rag.py"]
         p2["P2 GraphRAG<br/>pipelines/p2_graphrag.py"]
@@ -194,7 +194,7 @@ Edges: `DESCRIBES`, `AT_GAMES`, `IN_SPORT`, `HELD_AT`, `PREV_EDITION`, `NEXT_EDI
 | Fault isolation | Each pipeline, each batch question and each CLI `ask` pipeline is wrapped separately; a failure yields an error record. Exception: `LLMRateLimitError` stops the run by design |
 | Observability | Per-step tokens, latency, chunks and citations in the P3 trace; `token_source` per record (`provider`, `local_tokenizer`, `estimated`); embedding backend recorded in each run header and embedding index |
 | Reproducibility | Deterministic EM/F1; `run_config` header per run (provider, model, base URL, temperature, seed, embedding model and backend, k, chunking, step/token budgets, run token ceiling, pool size, latency mode, requests per minute); `make reproduce` |
-| Security | Sign-in sessions (server-side tokens, expiry, sign-out, lockout) or `X-API-Key` on the router (constant-time compare); viewer/admin roles, `require_admin` on every state-changing route; no key in the browser bundle; single-use, short-lived SSE tokens; unauthenticated: `/health`, `/health/db`, `/health/llm`, `/health/embedding`, `GET /settings` (no secrets in its body); write-time secret check in the run store |
+| Security | Open access, no sign-in or key (owner's decision); no secret in the browser bundle; write-time secret check in the run store; `GET /settings` carries no secrets |
 | Anti-overfitting | No question-template regex, no `qtype` read in the answer path, paraphrase set of 15 questions |
 | Shared resources | One cached LLM client per config shared by all pipelines (and its rate limiter); one process-wide TigerGraph client; vocabularies cached per client |
 
@@ -391,7 +391,7 @@ One line per decision ID cited in the code. `DP-n` numbers were assigned per are
 ## Known limitations
 
 - **Round 2 is only started.** Answer verification reports conflicting figures between a page's infobox and its prose; there is no fact versioning, supersession or source-authority model.
-- **Sessions live in memory.** Sign-in sessions (TECHNICAL-SPEC §4.5) are held in the API process, so a restart signs everyone out, and one process serves them (no shared session store for several replicas).
+- **Open access.** There is no sign-in (TECHNICAL-SPEC §4.5): anyone who can reach the API can build, reset and start benchmarks.
 - **GSQL is tested live by the benchmark runs, statically in CI.** The schema and Q1–Q5 are installed and run against a TigerGraph Savanna workspace by every build and benchmark; CI checks them only statically (`tests/graph/test_schema.py`).
 - **Traversal follows `PREV_EDITION` only.** Multi-hop and traversal agents use PREV_EDITION or HELD_AT; `NEXT_EDITION` exists in the schema and Q4 but no agent calls it (the dataset has no "next edition" questions).
 - **Q2 treats a missing value as 0.** The loader writes `competitors` / `nations` as 0 when the infobox has none, so a constraint such as `competitors < 10` counts those events.

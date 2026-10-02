@@ -1,6 +1,5 @@
 import { config } from '../config'
 import { triggerRecheckOnFailure } from '../useServiceStatus'
-import { authHeaders, sessionRejected } from './session'
 
 export class ApiError extends Error {
   constructor(
@@ -17,15 +16,13 @@ export class ApiError extends Error {
 }
 
 function headers(): HeadersInit {
-  return { 'Content-Type': 'application/json', ...authHeaders() }
+  return { 'Content-Type': 'application/json' }
 }
 
 async function parse<T>(res: Response): Promise<T> {
   if (!res.ok) {
     // Server errors (5xx) suggest the backend is degraded — re-check health.
     if (res.status >= 500) triggerRecheckOnFailure()
-    // The session expired or was signed out: ask to sign in again.
-    if (res.status === 401) sessionRejected()
     let detail = res.statusText
     let code: string | undefined
     let structured: Record<string, unknown> | undefined
@@ -93,19 +90,13 @@ export async function patch<T>(path: string, body: unknown): Promise<T> {
 
 export type SseHandlers = Record<string, (data: unknown) => void>
 
-/**
- * Opens an SSE stream. `EventSource` cannot send headers, so the stream is
- * authenticated by the short-lived single-use token returned with the id
- * (TECHNICAL-SPEC §4.5, DP-8).
- */
+/** Opens an SSE stream. Returns a cancel function. */
 export function openSse(
   path: string,
-  streamToken: string,
   handlers: SseHandlers,
   onTransportError: (message: string) => void,
 ): () => void {
-  const url = `${config.apiBaseUrl}${path}?token=${encodeURIComponent(streamToken)}`
-  const source = new EventSource(url)
+  const source = new EventSource(`${config.apiBaseUrl}${path}`)
 
   for (const [name, handler] of Object.entries(handlers)) {
     source.addEventListener(name, (event) => {
@@ -124,8 +115,8 @@ export function openSse(
     })
   }
 
-  // Any transport error ends the stream: the token is single-use, so the
-  // browser's automatic reconnect could only fail with 401.
+  // Any transport error ends the stream; callers fall back to polling, so the
+  // browser's automatic reconnect (which would replay nothing) is not used.
   source.onerror = () => {
     source.close()
     onTransportError('Stream interrupted before the run finished')

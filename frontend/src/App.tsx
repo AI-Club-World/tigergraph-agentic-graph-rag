@@ -9,7 +9,6 @@ import { useTheme } from './useTheme'
 import { ServiceStatusBar, ServiceStatusProvider } from './ServiceStatus'
 import { SettingsPanel } from './SettingsPanel'
 import { ErrorBoundary } from './components/ErrorBoundary'
-import { SessionControl } from './components/SignIn'
 
 function RouteBoundary({ children }: { children: React.ReactNode }) {
   // Navigating away from a screen that failed clears the error.
@@ -66,7 +65,6 @@ export function App() {
               </span>
             )}
             {!config.useMockApi && <ServiceStatusBar />}
-            <SessionControl />
             <SettingsPanel />
             <button
               type="button"

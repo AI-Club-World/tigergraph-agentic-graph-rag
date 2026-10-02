@@ -48,7 +48,7 @@ def client(monkeypatch):
 
     monkeypatch.setattr(api_main, "astream_p3_agentic", fake_astream_p3)
 
-    api_main.app.dependency_overrides[get_config] = lambda: RunConfig(ogr_api_key="test-key")
+    api_main.app.dependency_overrides[get_config] = lambda: RunConfig()
     api_main._queries.clear()
     api_main._builds.clear()
     with TestClient(api_main.app) as c:
@@ -56,7 +56,7 @@ def client(monkeypatch):
     api_main.app.dependency_overrides.clear()
 
 
-HEADERS = {"X-API-Key": "test-key"}
+HEADERS: dict[str, str] = {}  # the API is open: no key
 
 
 class TestHealth:
@@ -66,31 +66,21 @@ class TestHealth:
         assert response.json() == {"status": "ok"}
 
 
-class TestAuth:
-    def test_missing_key_is_rejected(self, client):
-        response = client.post("/query", json={"query": "q"})
-        assert response.status_code == 401
+class TestOpenAccess:
+    """The application is open: no key, session or stream token anywhere."""
 
-    def test_wrong_key_is_rejected(self, client):
-        response = client.post("/query", json={"query": "q"}, headers={"X-API-Key": "wrong"})
-        assert response.status_code == 401
+    def test_a_query_needs_no_key(self, client):
+        assert client.post("/query", json={"query": "q"}).status_code == 202
 
-    def test_unconfigured_key_refuses_rather_than_running_open(self, client):
-        api_main.app.dependency_overrides[get_config] = lambda: RunConfig(ogr_api_key="")
-        response = client.post("/query", json={"query": "q"}, headers=HEADERS)
-        assert response.status_code == 503
-
-    def test_correct_key_is_accepted(self, client):
-        response = client.post("/query", json={"query": "q"}, headers=HEADERS)
-        assert response.status_code == 202
+    def test_the_sign_in_routes_are_gone(self, client):
+        assert client.post("/auth/session", json={"key": "x"}).status_code in (404, 405)
 
 
 class TestQueryLifecycle:
-    def test_post_query_returns_id_and_stream_token_immediately(self, client):
+    def test_post_query_returns_its_id_immediately(self, client):
         response = client.post("/query", json={"query": "How many?"}, headers=HEADERS)
         assert response.status_code == 202
-        body = response.json()
-        assert "query_id" in body and "stream_token" in body
+        assert set(response.json()) == {"query_id"}
 
     def test_result_is_409_before_the_stream_completes(self, client):
         # Bypass the async task entirely: register a query with no record yet.
@@ -107,7 +97,7 @@ class TestQueryLifecycle:
         body = post.json()
 
         with client.stream(
-            "GET", f"/query/{body['query_id']}/stream", params={"token": body["stream_token"]}
+            "GET", f"/query/{body['query_id']}/stream"
         ) as response:
             assert response.status_code == 200
             events = [line for line in response.iter_lines() if line.startswith("event:")]
@@ -116,23 +106,11 @@ class TestQueryLifecycle:
         assert events.count("event: pipeline") == 3
         assert events[-1] == "event: done"
 
-    def test_stream_token_is_single_use(self, client):
-        post = client.post("/query", json={"query": "q"}, headers=HEADERS)
-        body = post.json()
-        with client.stream(
-            "GET", f"/query/{body['query_id']}/stream", params={"token": body["stream_token"]}
-        ):
-            pass
-        second = client.get(
-            f"/query/{body['query_id']}/stream", params={"token": body["stream_token"]}
-        )
-        assert second.status_code == 401
-
     def test_result_is_populated_once_the_stream_is_drained(self, client):
         post = client.post("/query", json={"query": "How many?"}, headers=HEADERS)
         body = post.json()
         with client.stream(
-            "GET", f"/query/{body['query_id']}/stream", params={"token": body["stream_token"]}
+            "GET", f"/query/{body['query_id']}/stream"
         ) as response:
             for _ in response.iter_lines():
                 pass
@@ -172,7 +150,7 @@ class TestBuildStream:
         monkeypatch.setattr(api_main, "_get_client", lambda config: _Offline())
         body = client.post("/build", headers=HEADERS).json()
         with client.stream(
-            "GET", f"/build/{body['build_id']}/stream", params={"token": body["stream_token"]}
+            "GET", f"/build/{body['build_id']}/stream"
         ) as response:
             lines = list(response.iter_lines())
         events = [json.loads(lines[i + 1][len("data: "):]) for i, line in enumerate(lines) if line == "event: build"]
@@ -206,11 +184,6 @@ class TestBatchRecords:
 
 
 class TestStateHardening:
-    def test_stream_token_ttl_comes_from_config(self):
-        from ogr.common.config import get_default_config
-
-        assert api_main._stream_tokens.ttl_s == get_default_config().ogr_stream_token_ttl_s
-
     def test_finished_queries_are_evicted_beyond_the_cap(self, client):
         for i in range(api_main._MAX_RETAINED + 20):
             api_main._queries[f"old-{i}"] = {"queue": None, "record": None}

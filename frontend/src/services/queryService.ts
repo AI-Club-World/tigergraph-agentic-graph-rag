@@ -13,7 +13,7 @@ export interface QueryStreamHandlers {
   onError: (message: string) => void
 }
 
-/** POST /query -> 202 {query_id, stream_token} (TECHNICAL-SPEC §4.1, §5).
+/** POST /query -> 202 {query_id} (TECHNICAL-SPEC §4.1, §5).
  *  `embeddingModel` searches with that model instead of the active one — only
  *  one the server offered as complete (409 embedding_mismatch otherwise). */
 export async function submitQuery(query: string, embeddingModel?: string): Promise<QueryAccepted> {
@@ -25,10 +25,10 @@ export async function submitQuery(query: string, embeddingModel?: string): Promi
   const scenario = scenarioFor(query)
   const queryId = `mock-${Date.now()}`
   mockPending.set(queryId, { ...scenario, query_id: queryId, query_text: query })
-  return { query_id: queryId, stream_token: `mock-token-${queryId}` }
+  return { query_id: queryId }
 }
 
-/** GET /query/{id}/stream?token=… (SSE). Returns a cancel function. */
+/** GET /query/{id}/stream (SSE). Returns a cancel function. */
 export function openQueryStream(
   accepted: QueryAccepted,
   handlers: QueryStreamHandlers,
@@ -36,7 +36,6 @@ export function openQueryStream(
   if (!config.useMockApi) {
     return openSse(
       `/query/${accepted.query_id}/stream`,
-      accepted.stream_token,
       {
         trace: (data) => handlers.onTrace(data as TraceStep),
         pipeline: (data) => handlers.onPipeline(data as PipelineRecord),

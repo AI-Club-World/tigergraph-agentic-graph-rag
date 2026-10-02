@@ -16,17 +16,17 @@ export interface BuildOptions {
   reset?: boolean
 }
 
-/** POST /build {dataset, rebuild, reset} -> 202 {build_id, stream_token}.
+/** POST /build {dataset, rebuild, reset} -> 202 {build_id}.
  *  409 with code already_built / reset_required / build_running asks first. */
 export async function startBuild(dataset = 'corpus', options: BuildOptions = {}): Promise<BuildAccepted> {
   if (!config.useMockApi) return post<BuildAccepted>('/build', { dataset, ...options })
 
   await delay(120)
   const buildId = `mock-build-${Date.now()}`
-  return { build_id: buildId, stream_token: `mock-token-${buildId}` }
+  return { build_id: buildId }
 }
 
-/** GET /build/{id}/stream?token=… (SSE). Returns a cancel function. */
+/** GET /build/{id}/stream (SSE). Returns a cancel function. */
 export function openBuildStream(
   accepted: BuildAccepted,
   handlers: BuildStreamHandlers,
@@ -34,7 +34,6 @@ export function openBuildStream(
   if (!config.useMockApi) {
     return openSse(
       `/build/${accepted.build_id}/stream`,
-      accepted.stream_token,
       {
         build: (data) => handlers.onEvent(data as BuildEvent),
         done: () => handlers.onDone(),

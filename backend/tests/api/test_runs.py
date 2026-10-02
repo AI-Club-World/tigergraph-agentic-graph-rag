@@ -15,7 +15,7 @@ from ogr.api.security import get_config
 from ogr.common.config import RunConfig
 from ogr.common.contracts import Citation, PipelineRecord, TokenUsage
 
-HEADERS = {"X-API-Key": "test-key"}
+HEADERS: dict[str, str] = {}  # the API is open: no key
 
 
 def _record(pipeline: str) -> PipelineRecord:
@@ -47,7 +47,7 @@ def client(monkeypatch, tmp_path):
         "default_pipelines",
         lambda config, client: {p: (lambda q, p=p: _record(p)) for p in ("rag", "graphrag", "agentic_graphrag")},
     )
-    api_main.app.dependency_overrides[get_config] = lambda: RunConfig(ogr_api_key="test-key")
+    api_main.app.dependency_overrides[get_config] = lambda: RunConfig()
     api_main._batch_tasks.clear()
     with TestClient(api_main.app) as c:
         yield c
@@ -64,10 +64,8 @@ def _wait_complete(client, run_id: str) -> dict:
     raise AssertionError(f"run {run_id} never completed")
 
 
-def test_routes_require_the_api_key(client):
-    assert client.get("/runs").status_code == 401
-    assert client.post("/runs/import", json=[]).status_code == 401
-    assert client.post("/batch", json={"dataset": "mini"}).status_code == 401
+def test_routes_are_open(client):
+    assert client.get("/runs").status_code == 200
 
 
 def test_datasets_lists_question_files(client):

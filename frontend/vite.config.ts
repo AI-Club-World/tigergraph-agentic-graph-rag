@@ -2,14 +2,13 @@ import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 
 export default defineConfig(({ mode }) => {
-  // No secret may ship in the bundle: VITE_* values are public. The API key
-  // used to be VITE_API_KEY; it is now typed at sign-in (services/session.ts).
-  // Refuse to build or serve with it set, so an old .env cannot leak it.
+  // VITE_* values are compiled into the public bundle. The application has
+  // no API key any more; refuse an old VITE_API_KEY so it cannot leak.
   const env = loadEnv(mode, '.', 'VITE_')
   if (env.VITE_API_KEY) {
     throw new Error(
       'VITE_API_KEY is set, but every VITE_ value is compiled into the public bundle. ' +
-        'Remove it: the UI signs in at runtime with the key (OGR_API_KEY / OGR_ADMIN_KEY).',
+        'Remove it: the application is open and needs no key.',
     )
   }
   return {
