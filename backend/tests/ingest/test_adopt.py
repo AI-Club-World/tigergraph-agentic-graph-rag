@@ -56,9 +56,21 @@ def test_nothing_is_adopted_when_documents_are_not_from_one_corpus_file(tmp_path
     assert not registry.exists and not store.path.exists()
 
 
-def test_an_existing_record_or_an_empty_graph_is_left_alone(tmp_path):
+def test_a_recorded_dataset_or_an_empty_graph_is_left_alone(tmp_path):
     registry, store = _state(tmp_path)
     assert adopt_graph(_client({}), registry, store, _corpus(tmp_path, ["Q1"]), BGE.key) is None
     registry.reset(BGE.key, BGE.dim)
+    registry.record("mine", {"doc_ids": ["Q1"]}, {"documents": 1, "events": 0, "chunks": 0}, 1)
     assert adopt_graph(_client(GRAPH), registry, store, _corpus(tmp_path, ["Q1", "Q2"]), BGE.key) is None
     assert registry.get("corpus") is None
+
+
+def test_an_empty_record_left_by_a_failed_reset_build_is_adopted_over(tmp_path):
+    # A confirmed reset wrote an empty datasets.json and reset the store, then the
+    # build failed before recording its dataset; the graph still holds everything.
+    registry, store = _state(tmp_path)
+    registry.reset(BGE.key, BGE.dim)
+    store.reset(BGE.key)
+    adopted = adopt_graph(_client(GRAPH), registry, store, _corpus(tmp_path, ["Q1", "Q2"]), BGE.key)
+    assert adopted and registry.get("corpus")["chunks"] == 3
+    assert store.model_status(BGE.key, registry.all_chunk_ids())["complete"]

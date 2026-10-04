@@ -122,6 +122,14 @@ class TigerGraphClient:
             if self.conn is None:
                 self._connect()
 
+    def reconnect(self) -> None:
+        """Drop the connection and open a fresh one. A connection left idle
+        for hours (a long CPU embedding step in a build) can be closed by the
+        server, and the next call fails with a connection reset."""
+        with self._conn_lock:
+            self.conn = None
+            self._connect()
+
     def _connect(self) -> None:
         try:
             # One process-wide lock for the first import: each pipeline builds

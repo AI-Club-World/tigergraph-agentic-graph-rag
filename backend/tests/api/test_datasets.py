@@ -155,7 +155,7 @@ def test_second_dataset_keeps_the_first_and_rebuild_replaces_its_own(env, monkey
     conn.getVertexCount.return_value = 0
     conn.delVerticesById.side_effect = lambda vtype, ids: calls.append(("delete", vtype, list(ids))) or len(ids)
     monkeypatch.setattr(api_main, "_get_client", lambda config: SimpleNamespace(
-        conn=conn, _ensure_connection=lambda: None, _vocab_cache={},
+        conn=conn, _ensure_connection=lambda: None, reconnect=lambda: None, _vocab_cache={},
         delete_embeddings=lambda model, ids: calls.append(("delete_embeddings", model.vertex_type, list(ids))),
         delete_by_ids=lambda vtype, ids: calls.append(("delete", vtype, list(ids))) or len(ids)))
     monkeypatch.setattr(schema, "install_schema", lambda client: calls.append(("install_schema",)))
@@ -201,7 +201,7 @@ def test_stages_are_scoped_to_the_pipelines_they_serve(env, monkeypatch):
     conn = MagicMock()
     conn.getVertexCount.return_value = 0
     monkeypatch.setattr(api_main, "_get_client", lambda config: SimpleNamespace(
-        conn=conn, _ensure_connection=lambda: None, _vocab_cache={}))
+        conn=conn, _ensure_connection=lambda: None, reconnect=lambda: None, _vocab_cache={}))
     monkeypatch.setattr(schema, "install_schema", lambda client: None)
     monkeypatch.setattr(schema, "install_queries", lambda client: None)
     monkeypatch.setattr(vector_status, "wait_until_ready", lambda *a, **k: {})
@@ -278,3 +278,24 @@ def test_a_fresh_install_adopts_the_graph_before_listing_or_building(env, monkey
     assert body["corpora"][0]["built"]["documents"] == 1 and body["corpora"][0]["built"]["adopted"]
     response = env.client.post("/build", headers=HEADERS, json={"dataset": "olympics"})
     assert response.status_code == 409 and response.json()["detail"]["code"] == "already_built"
+
+
+def test_a_dropped_tigergraph_connection_is_reconnected_and_retried_once():
+    calls, reconnects = [], []
+    client = SimpleNamespace(reconnect=lambda: reconnects.append(1))
+
+    def step():
+        calls.append(1)
+        if len(calls) == 1:
+            raise ConnectionResetError(10054, "An existing connection was forcibly closed by the remote host")
+        return "loaded"
+
+    assert api_main._retry_on_dropped_connection(client, step) == "loaded"
+    assert len(calls) == 2 and len(reconnects) == 1
+
+    def broken():
+        raise ValueError("bad schema")
+
+    with pytest.raises(ValueError):
+        api_main._retry_on_dropped_connection(client, broken)  # other errors are not retried
+    assert len(reconnects) == 1

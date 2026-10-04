@@ -9,8 +9,10 @@ refused, and a build that asks to reset everything.
 `adopt_graph` rebuilds both files from the graph itself: the vertex ids per
 type, which corpus file in `data/corpus/` the documents come from, and which
 embedding models cover which chunks (an `Embedding_*` vertex's primary id is
-the chunk it embeds). It only ever writes a file that does not exist, and it
-adopts only when every document in the graph belongs to one corpus file;
+the chunk it embeds). It also covers the case where a reset wrote an empty
+`datasets.json` and the build then failed before recording its dataset (the
+graph kept its data). It never touches an install that records a dataset,
+and adopts only when every document in the graph belongs to one corpus file;
 anything else is left alone (the Build screen then shows the live counts).
 """
 
@@ -50,8 +52,8 @@ def adopt_graph(
 ) -> dict[str, Any] | None:
     """Write the missing state files from the graph. Returns what was adopted,
     or None when there was nothing to adopt (or it could not be attributed)."""
-    if registry.exists:
-        return None
+    if registry.read()["datasets"]:
+        return None  # this install already records what it loaded
     doc_ids = set(client.vertex_ids("Document"))
     if not doc_ids:
         return None
@@ -91,10 +93,10 @@ def adopt_graph(
         },
         owner.stat().st_size,
     )
-    if not store.path.exists():
-        for key, ids in covered.items():
-            store.add_covered(key, ids)
-        store.set_active(active)
+    # The graph is the truth here: a reset left the store empty (or a failed
+    # build left it stale), so each model's coverage is what the graph holds.
+    store.adopt_coverage(covered)
+    store.set_active(active)
     summary = {
         "dataset": owner.stem,
         "documents": len(doc_ids),

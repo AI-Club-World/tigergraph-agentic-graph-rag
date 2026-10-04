@@ -349,7 +349,7 @@ def _ensure_adopted() -> None:
     with _adoption_lock:
         if OUT_DIR in _adoption_done:
             return
-        if _registry().exists:
+        if _registry().read()["datasets"]:
             _adoption_done.add(OUT_DIR)
             return
         config = _get_config_with_overrides()
@@ -1154,11 +1154,13 @@ async def _run_build(build_id: str, queue: asyncio.Queue, config: RunConfig, req
 
         client = _get_client(config)
         begin("schema_install", everyone)
-        await asyncio.to_thread(client._ensure_connection)
+        # Embedding can take hours on CPU; never reuse a connection that sat
+        # idle that long (r: a 5 h build failed here on a connection reset).
+        await asyncio.to_thread(client.reconnect)
         if client.conn is None:
             raise ConnectionError("TigerGraph unreachable — set TG_HOST and credentials")
         if request.reset or not registry.exists:
-            await asyncio.to_thread(install_schema, client)
+            await asyncio.to_thread(_retry_on_dropped_connection, client, install_schema, client)
             registry.reset(model.key, model.dim)
             store.reset(model.key)
             progress.finish(stage, affected, items_done=1, note="graph created (empty)")
@@ -1184,7 +1186,9 @@ async def _run_build(build_id: str, queue: asyncio.Queue, config: RunConfig, req
         # One load call writes graph and chunk vertices; its counts are
         # reported to the pipelines each part serves.
         begin("load_vertices", graph_pipelines)
-        load = await asyncio.to_thread(load_graph, client, docs, chunks, 500, model.key)
+        load = await asyncio.to_thread(
+            _retry_on_dropped_connection, client, load_graph, client, docs, chunks, 500, model.key
+        )
         entities = load.documents + load.olympic_events + load.games + load.sports + load.venues
         relationships = load.edges - load.chunks  # every chunk adds one HAS_CHUNK edge
         progress.finish(
@@ -1256,6 +1260,26 @@ async def _run_build(build_id: str, queue: asyncio.Queue, config: RunConfig, req
         **_model_fields(config),
     )
     await queue.put(("done", None))
+
+
+def _is_dropped_connection(error: BaseException) -> bool:
+    text = f"{type(error).__name__} {error}"
+    return any(s in text for s in ("ConnectionReset", "Connection aborted", "RemoteDisconnected",
+                                   "ConnectionError", "BrokenPipe"))
+
+
+def _retry_on_dropped_connection(client: TigerGraphClient, fn: Any, *args: Any) -> Any:
+    """Run a graph step; if the connection was dropped, reconnect and run it
+    once more. Schema install and loading are idempotent (drop-and-create,
+    upserts), so a second attempt cannot duplicate data."""
+    try:
+        return fn(*args)
+    except Exception as e:  # noqa: BLE001 - only a dropped connection is retried
+        if not _is_dropped_connection(e):
+            raise
+        logger.warning("TigerGraph connection dropped (%s); reconnecting and retrying once", e)
+        client.reconnect()
+        return fn(*args)
 
 
 def _delete_vertices(client: TigerGraphClient, ids_by_type: dict[str, list[str]], batch: int = 500) -> int:
@@ -1336,7 +1360,9 @@ async def post_batch(body: BatchRequest, config: RunConfig = Depends(get_config)
     except HTTPException as e:
         _trials().append(
             "benchmark", "refused", subject=body.dataset, dataset=body.dataset, run_id=body.run_id,
-            error=str(e.detail), **_model_fields(config),
+            code=e.detail.get("code") if isinstance(e.detail, dict) else None,
+            error=e.detail.get("message", str(e.detail)) if isinstance(e.detail, dict) else str(e.detail),
+            **_model_fields(config),
         )
         raise
 

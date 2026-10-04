@@ -125,6 +125,18 @@ class EmbeddingStore:
 
         self._mutate(change)
 
+    def adopt_coverage(self, covered: dict[str, list[str]]) -> None:
+        """Set each model's coverage to what the graph holds (adopting a
+        graph this install did not record); models with none are dropped."""
+
+        def change(d: dict[str, Any]) -> None:
+            d["models"] = {
+                key: {"covered": sorted(set(ids)), "evicting": False, "updated_at": _now()}
+                for key, ids in covered.items()
+            }
+
+        self._mutate(change)
+
     def remove_covered(self, chunk_ids: list[str]) -> None:
         """Chunks left the corpus (a dataset rebuild): no model covers them."""
         gone = set(chunk_ids)
