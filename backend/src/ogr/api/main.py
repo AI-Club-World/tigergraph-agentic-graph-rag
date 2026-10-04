@@ -23,10 +23,12 @@ demo/benchmark session, not deployed behind a load balancer.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import os
 import re
+import threading
 import time
 import uuid
 from contextlib import contextmanager
@@ -56,6 +58,7 @@ from ogr.eval.dispatcher import error_record
 from ogr.eval.history import import_run, is_run_id, list_runs, read_run, summarize_run, view_record
 from ogr.graph.client import TigerGraphClient
 from ogr.ingest import dataset_meta
+from ogr.ingest.adopt import adopt_graph
 from ogr.ingest.chunk_embed import chunk_and_embed_corpus
 from ogr.ingest.embedding_index import EmbeddingStore, SwitchRefused, run_job
 from ogr.ingest.infobox import parse_corpus
@@ -68,7 +71,15 @@ from ogr.pipelines.p3_agentic.orchestrator import astream_p3_agentic
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="OGR API")
+@contextlib.asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    # Adopt a graph built elsewhere off the event loop: the first page load
+    # should not wait on TigerGraph (ingest/adopt.py).
+    threading.Thread(target=_ensure_adopted, name="adopt-graph", daemon=True).start()
+    yield
+
+
+app = FastAPI(title="OGR API", lifespan=_lifespan)
 
 # The frontend runs on a different origin (Vite dev server, or a deployed
 # static host) and calls this API directly from the browser — without this,
@@ -323,7 +334,39 @@ def _embedding_store() -> EmbeddingStore:
     return EmbeddingStore(OUT_DIR / "embeddings.json")
 
 
+# Fresh install against a graph built elsewhere: adopt it once (ingest/adopt.py).
+_ADOPTION_ENABLED = True
+_adoption_done: set[Path] = set()
+_adoption_lock = threading.Lock()
+
+
+def _ensure_adopted() -> None:
+    """Write out/datasets.json and out/embeddings.json from the graph when
+    this install has neither record of it. Once per state directory; retried
+    while TigerGraph is unreachable."""
+    if not _ADOPTION_ENABLED or OUT_DIR in _adoption_done:
+        return
+    with _adoption_lock:
+        if OUT_DIR in _adoption_done:
+            return
+        if _registry().exists:
+            _adoption_done.add(OUT_DIR)
+            return
+        config = _get_config_with_overrides()
+        client = _get_client(config)
+        client._ensure_connection()
+        if client.conn is None:
+            return  # TigerGraph not reachable yet: try again on the next call
+        try:
+            adopt_graph(client, _registry(), _embedding_store(), CORPUS_DIR, config.embedding_model)
+        except Exception as e:  # noqa: BLE001 - adoption is best effort; live counts still show
+            logger.warning("Could not adopt the existing graph: %s", e)
+            return
+        _adoption_done.add(OUT_DIR)
+
+
 def _corpus_chunk_ids() -> set[str]:
+    _ensure_adopted()
     return _registry().all_chunk_ids()
 
 
@@ -786,6 +829,7 @@ async def get_corpora(config: RunConfig = Depends(get_config)) -> dict[str, Any]
     """Datasets available to build (JSONL files in data/corpus/) and which of
     them are loaded into the graph. `graph.live` carries TigerGraph's own
     counts when no dataset is recorded here, so existing data still shows."""
+    await asyncio.to_thread(_ensure_adopted)
     registry = _registry().summary()
     registry["live"] = None
     if not registry["datasets"]:
@@ -991,6 +1035,9 @@ async def _start_build(body: BuildRequest, config: RunConfig) -> dict[str, str]:
 
 
 async def _checked_build(build_id: str, body: BuildRequest, config: RunConfig) -> dict[str, str]:
+    # A graph built elsewhere is adopted first, so building its dataset asks
+    # to rebuild that dataset instead of resetting the whole graph.
+    await asyncio.to_thread(_ensure_adopted)
 
     registry = _registry()
     store = _embedding_store()

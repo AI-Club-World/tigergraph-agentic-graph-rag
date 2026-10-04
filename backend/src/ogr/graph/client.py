@@ -455,6 +455,14 @@ class TigerGraphClient:
                 self._note_error(f"HAS_CHUNK expansion for {doc_id}: {e}")
         return sorted(all_chunks, key=lambda c: (c["doc_id"], c["seq"]))
 
+    def vertex_ids(self, vtype: str) -> list[str]:
+        """Every primary id of one vertex type, without attributes (one REST
+        call; ~1 s for the 16k chunks of the Olympics corpus)."""
+        if not _IDENTIFIER.match(vtype):
+            raise ValueError(f"{vtype!r} is not a vertex type name")
+        vertices = _read_with_retry(self._require_conn().getVertices, vtype, select="-_")
+        return sorted(v["v_id"] for v in vertices or [] if v.get("v_id"))
+
     def get_vocabulary(self, vtype: str) -> list[str]:
         """Retrieve distinct values for a vertex type (Games, Sport, Venue names).
 

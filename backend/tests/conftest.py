@@ -29,6 +29,16 @@ def _isolated_out_dir(monkeypatch, tmp_path):
 
 
 @pytest.fixture(autouse=True)
+def _no_graph_adoption(monkeypatch):
+    """Adopting an existing graph talks to TigerGraph; tests that want it
+    turn it back on with a fake client."""
+    import ogr.api.main as api_main
+
+    monkeypatch.setattr(api_main, "_ADOPTION_ENABLED", False)
+    api_main._adoption_done.clear()
+
+
+@pytest.fixture(autouse=True)
 def _no_local_reranker(monkeypatch):
     """The local cross-encoder fallback would load bge-reranker-base weights
     (seconds per test, and GBs of memory across the suite). Reranking then

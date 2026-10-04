@@ -261,3 +261,20 @@ def test_rename_sets_and_clears_the_title(env):
     cleared = env.client.patch("/corpora/olympics", headers=HEADERS, json={"title": ""}).json()
     assert cleared["title_source"] == "inferred"
     assert env.client.patch("/corpora/missing", headers=HEADERS, json={"title": "x"}).status_code == 404
+
+
+def test_a_fresh_install_adopts_the_graph_before_listing_or_building(env, monkeypatch):
+    # No out/datasets.json, a graph already holding the dataset: it is listed as built,
+    # and building it asks to rebuild that dataset, never to reset the whole graph.
+    from ogr.common.embedding_models import EMBEDDING_MODELS
+
+    bge = EMBEDDING_MODELS["bge-large-en-v1.5"]
+    graph = {"Document": ["Q1"], "OlympicEvent": [], "Chunk": ["Q1_c0"], bge.vertex_type: ["Q1_c0"]}
+    fake = SimpleNamespace(conn=object(), _ensure_connection=lambda: None,
+                           vertex_ids=lambda vtype: graph.get(vtype, []))
+    monkeypatch.setattr(api_main, "_get_client", lambda config: fake)
+    monkeypatch.setattr(api_main, "_ADOPTION_ENABLED", True)
+    body = env.client.get("/corpora", headers=HEADERS).json()
+    assert body["corpora"][0]["built"]["documents"] == 1 and body["corpora"][0]["built"]["adopted"]
+    response = env.client.post("/build", headers=HEADERS, json={"dataset": "olympics"})
+    assert response.status_code == 409 and response.json()["detail"]["code"] == "already_built"

@@ -343,7 +343,7 @@ set them through `style`, because `var()` does not resolve in SVG attributes.
 |---|---|
 | Header shows a `mock data` chip | `VITE_USE_MOCK_API=true` in `frontend/.env`. Restart `npm run dev` after changing it: Vite reads `.env` only at startup |
 | The frontend build stops on `VITE_API_KEY is set` | Remove `VITE_API_KEY` from `frontend/.env*`: the application needs no key |
-| The Build screen shows the graph as "not built from this install" | TigerGraph holds data but `out/datasets.json` does not record it (a fresh checkout). Queries work. Building again asks for a full reset; to keep the graph and rebuild single datasets instead, copy `out/datasets.json` and `out/embeddings.json` from the machine that built it |
+| A fresh checkout against a graph built elsewhere | Handled: on startup (and before listing datasets, building, querying or benchmarking) the backend rebuilds `out/datasets.json` and `out/embeddings.json` from TigerGraph when this install has neither, provided every document in the graph comes from one file in `data/corpus/` (`ingest/adopt.py`). Otherwise the Build screen shows TigerGraph's own counts |
 | CORS error in the browser console | The frontend origin is not in `OGR_CORS_ORIGINS`. Add it and restart the backend |
 | `verify` fails on TigerGraph | `TG_HOST` must be the full `https://…` URL, the credentials must be valid, and `TG_CLOUD=true` is needed for Savanna |
 | `verify` fails on the LLM with `429`/quota | The key has no quota left. Pick another provider/model in Settings, or use a local server (`LLM_BASE_URL=http://localhost:11434/v1`, no key needed) |
