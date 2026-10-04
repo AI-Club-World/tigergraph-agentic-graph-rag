@@ -6,6 +6,7 @@ import type { BuildEvent, PipelineId } from './types'
 import * as buildService from './services/buildService'
 import * as datasetService from './services/datasetService'
 import { datasetLabel } from './services/datasetService'
+import { STALE_BACKEND } from './services/http'
 
 vi.mock('./services/buildService')
 
@@ -219,5 +220,16 @@ describe('BuildView after navigating back', () => {
     })
     expect(await screen.findByText(/In TigerGraph: 2,951 documents/)).toBeInTheDocument()
     expect(column('agentic_graphrag').dataset.status).toBe('ready')
+  })
+})
+
+describe('BuildView when the datasets cannot be read', () => {
+  it('says why instead of showing an empty dataset list', async () => {
+    mocked.getCurrentBuild.mockResolvedValue(null)
+    vi.spyOn(datasetService, 'listCorpora').mockRejectedValue(new Error(STALE_BACKEND))
+    await act(async () => {
+      render(<BuildView />)
+    })
+    expect(await screen.findByText(/older version that still asks for a sign-in/)).toBeInTheDocument()
   })
 })

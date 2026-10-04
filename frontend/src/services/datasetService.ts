@@ -1,5 +1,5 @@
 import { config } from '../config'
-import { ApiError, get, patch } from './http'
+import { ApiError, STALE_BACKEND, get, patch } from './http'
 import { delay } from './mock/transport'
 
 export interface BuiltInfo {
@@ -91,7 +91,7 @@ export async function uploadCorpus(name: string, file: File, title?: string): Pr
     body: file,
   })
   if (!res.ok) {
-    let detail = res.statusText
+    let detail = res.status === 401 ? STALE_BACKEND : res.statusText
     try {
       const body = (await res.json()) as { detail?: string }
       if (typeof body.detail === 'string') detail = body.detail

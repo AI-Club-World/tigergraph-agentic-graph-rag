@@ -286,7 +286,11 @@ export function BuildView() {
           return names.includes(current) ? current : names[0] ?? current
         })
       })
-      .catch(() => setCorpora(null))
+      .catch((e) => {
+        // Never a silent "0 docs": say why the datasets could not be read.
+        setCorpora(null)
+        setError(`Could not load the datasets: ${e instanceof Error ? e.message : String(e)}`)
+      })
   }
   useEffect(() => refreshCorpora(), [])
 

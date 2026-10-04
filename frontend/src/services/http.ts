@@ -19,6 +19,10 @@ function headers(): HeadersInit {
   return { 'Content-Type': 'application/json' }
 }
 
+export const STALE_BACKEND =
+  'The backend is an older version that still asks for a sign-in. Stop it, update it to the latest code ' +
+  '(git pull; pip install -e "backend[dev]") and start it again.'
+
 async function parse<T>(res: Response): Promise<T> {
   if (!res.ok) {
     // Server errors (5xx) suggest the backend is degraded — re-check health.
@@ -44,6 +48,9 @@ async function parse<T>(res: Response): Promise<T> {
     } catch {
       // Non-JSON error body; keep the status text.
     }
+    // The application has no sign-in. A 401 means the backend answering is an
+    // older build that still had one: say that, not "sign in".
+    if (res.status === 401) detail = STALE_BACKEND
     throw new ApiError(detail, res.status, code, structured)
   }
   return (await res.json()) as T

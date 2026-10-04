@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ApiError, get } from './http'
+import { ApiError, STALE_BACKEND, get } from './http'
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -22,5 +22,15 @@ describe('API errors', () => {
     const error = (await get('/x').catch((e: unknown) => e)) as ApiError
     expect(error.code).toBe('embedding_mismatch')
     expect(error.detail?.available).toEqual([])
+  })
+
+  it('explain a 401 as an outdated backend, since the application has no sign-in', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(
+      JSON.stringify({ detail: 'Sign in required (missing or invalid credentials)' }),
+      { status: 401 },
+    )))
+    const error = (await get('/corpora').catch((e: unknown) => e)) as ApiError
+    expect(error.status).toBe(401)
+    expect(error.message).toBe(STALE_BACKEND)
   })
 })
