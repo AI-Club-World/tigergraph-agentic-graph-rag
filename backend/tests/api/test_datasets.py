@@ -299,3 +299,13 @@ def test_a_dropped_tigergraph_connection_is_reconnected_and_retried_once():
     with pytest.raises(ValueError):
         api_main._retry_on_dropped_connection(client, broken)  # other errors are not retried
     assert len(reconnects) == 1
+
+
+def test_a_dataset_recorded_without_relationships_gets_the_graphs_count(env, monkeypatch):
+    # An older build recorded no relationship count; the Build screen showed 0.
+    env.registry.reset("@cf/baai/bge-m3", 1024)
+    env.registry.record("olympics", {"doc_ids": ["Q1"]}, {"documents": 1, "events": 2, "chunks": 1}, 10)
+    fake = SimpleNamespace(conn=object(), _ensure_connection=lambda: None, relationship_count=lambda: 42)
+    monkeypatch.setattr(api_main, "_get_client", lambda config: fake)
+    built = env.client.get("/corpora", headers=HEADERS).json()["graph"]["datasets"]["olympics"]
+    assert built["relationships"] == 42 and built["entities"] == 3

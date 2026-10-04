@@ -824,12 +824,37 @@ def _live_graph_counts(client: TigerGraphClient) -> dict[str, int] | None:
         return None
 
 
+def _backfill_relationships(config: RunConfig) -> None:
+    """A single dataset recorded by an older build (or adopted) carries no
+    relationship count; the Build screen would show 0. Read it once from the
+    graph and keep it. With several datasets the edges cannot be attributed."""
+    registry = _registry()
+    datasets = registry.read()["datasets"]
+    if len(datasets) != 1:
+        return
+    [(name, entry)] = datasets.items()
+    if entry.get("relationships"):
+        return
+    client = _get_client(config)
+    client._ensure_connection()
+    if client.conn is None or not hasattr(client, "relationship_count"):
+        return
+    try:
+        relationships = client.relationship_count()
+    except Exception as e:  # noqa: BLE001 - the count is cosmetic; the listing must not fail
+        logger.debug("Relationship count unavailable: %s", e)
+        return
+    entities = entry.get("entities") or (entry.get("documents", 0) + entry.get("events", 0))
+    registry.update(name, relationships=relationships, entities=entities)
+
+
 @router.get("/corpora")
 async def get_corpora(config: RunConfig = Depends(get_config)) -> dict[str, Any]:
     """Datasets available to build (JSONL files in data/corpus/) and which of
     them are loaded into the graph. `graph.live` carries TigerGraph's own
     counts when no dataset is recorded here, so existing data still shows."""
     await asyncio.to_thread(_ensure_adopted)
+    await asyncio.to_thread(_backfill_relationships, config)
     registry = _registry().summary()
     registry["live"] = None
     if not registry["datasets"]:

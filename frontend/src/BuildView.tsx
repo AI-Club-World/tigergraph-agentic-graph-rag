@@ -723,7 +723,7 @@ export function BuildView() {
                 <div className="stat-grid three">
                   <Stat
                     label={column.status === 'ready' ? 'Time to ready' : 'Elapsed'}
-                    value={ms(column.elapsedMs)}
+                    value={column.status === 'ready' && restored && !column.elapsedMs ? '—' : ms(column.elapsedMs)}
                     tone={active ? 'pipe-color' : undefined}
                   />
                   {PIPELINE_METRICS[pipeline].map(([label, key]) => (
@@ -796,7 +796,7 @@ export function BuildView() {
                       {PIPELINE_LABELS[row.pipeline]}
                       {i > 0 && row.ms > 0 && ` (${delta >= 0 ? '+' : '−'}${secs(Math.abs(delta))}${row.active ? ' active' : ''})`}
                     </span>
-                    <span>{(row.ms / 1000).toFixed(2)} s</span>
+                    <span>{restored && !row.ms ? 'not recorded' : `${(row.ms / 1000).toFixed(2)} s`}</span>
                   </div>
                   <div className="progress">
                     <div className="progress-bar" style={{ width: `${Math.round((row.ms / latencyMax) * 100)}%` }} />

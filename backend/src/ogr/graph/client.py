@@ -471,6 +471,16 @@ class TigerGraphClient:
         vertices = _read_with_retry(self._require_conn().getVertices, vtype, select="-_")
         return sorted(v["v_id"] for v in vertices or [] if v.get("v_id"))
 
+    def relationship_count(self) -> int:
+        """Graph relationships as a build counts them: every edge type except
+        HAS_CHUNK and HAS_EMBEDDING (chunk plumbing) and reverse_* (TigerGraph's
+        mirror of an undirected-in-practice edge)."""
+        counts = _read_with_retry(self._require_conn().getEdgeCount, "*") or {}
+        skip = {"HAS_CHUNK", "HAS_EMBEDDING"}
+        return sum(
+            int(n) for etype, n in counts.items() if etype not in skip and not etype.startswith("reverse_")
+        )
+
     def get_vocabulary(self, vtype: str) -> list[str]:
         """Retrieve distinct values for a vertex type (Games, Sport, Venue names).
 
