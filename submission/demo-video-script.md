@@ -1,4 +1,4 @@
-# Demo video script — Agentic GraphRAG (about 3 min 45 s)
+# Demo video script — Agentic GraphRAG (3.5 to 4 minutes)
 
 Speak at a steady pace (about 140 words a minute). **Bold lines** are what
 you do on screen; the rest is what you say. Times are cumulative.
@@ -119,7 +119,7 @@ you do on screen; the rest is what you say. Times are cumulative.
 
 ---
 
-**Word count:** about 560 spoken words, roughly 3 min 45 s at a natural pace.
+**Length:** about 490 spoken words (3.5 min at a natural pace); with the two answers loading, the video runs 3.5 to 4 minutes.
 
 **If an answer differs on the day** (the LLM can vary): describe what is on
 screen, for example "RAG picks a different event" — the point is that only
