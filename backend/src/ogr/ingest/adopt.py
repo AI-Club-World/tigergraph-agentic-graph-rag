@@ -72,7 +72,9 @@ def adopt_graph(
     # The graph's schema model: the configured one when it has embeddings,
     # else the model covering the most chunks.
     default_key = resolve_model(default_model).key
-    active = default_key if default_key in covered else max(covered, key=lambda k: len(covered[k]), default=default_key)
+    active = default_key
+    if default_key not in covered and covered:
+        active = max(covered, key=lambda k: len(covered[k]))
     model = EMBEDDING_MODELS[active]
 
     registry.reset(model.key, model.dim)
