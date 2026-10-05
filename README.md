@@ -5,13 +5,16 @@ questions over the same corpus, side by side. The benchmark shows when a
 multi-step agentic investigation beats simpler retrieval, and when it is
 overkill once tokens, latency and complexity are counted.
 
-The repo holds two modules:
+The repo holds:
 
 - `backend/`: the FastAPI service, the three pipelines, ingestion, the GSQL
   schema and query library, the deterministic scorer/dispatcher/aggregator, the
   batch runner and the CLI.
 - `frontend/`: the React UI, with Search, Build, Dashboard and History screens
   and a Settings panel.
+- [`embedding_server_2.ipynb`](embedding_server_2.ipynb): dual-GPU Kaggle notebook
+  serving the 5 catalog embedding models (GPU 0) and Ollama Gemma 4 12B (GPU 1)
+  over FastAPI and an ngrok tunnel.
 
 ## Documentation
 
@@ -26,6 +29,7 @@ The repo holds two modules:
 | [`config-docs/SCORE-AUDIT.md`](config-docs/SCORE-AUDIT.md) | Rubric audit: baseline, root causes, owner decisions, before/after scores |
 | [`submission/`](submission/README.md) | Hidden-set raw outputs (answers, tokens, citations, agentic traces) and the public and hidden run reports |
 | [`config-docs/DEPLOY.md`](config-docs/DEPLOY.md) | Hosting the frontend on Netlify |
+| [`embedding_server_2.ipynb`](embedding_server_2.ipynb) | Kaggle dual-GPU embedding & LLM server notebook with ngrok / Cloudflare tunnel |
 | [`data/README.md`](data/README.md) | The corpus and question sets, and how dataset names are resolved |
 | [`ATTRIBUTION.md`](ATTRIBUTION.md) | Licences for the corpus, embedding models and software |
 
@@ -49,7 +53,48 @@ On Windows, `run.bat` opens both dev servers in separate windows. It uses
 | Node.js | 20+ | Frontend (Vite, React) |
 | A TigerGraph workspace | Savanna (cloud) or Community Edition 4.2+ | Vectors *and* the graph both live there. There is no FAISS/Chroma/pgvector substitute |
 | An LLM endpoint | Gemini, Groq, NVIDIA NIM, Anthropic, OpenAI, or any OpenAI-compatible server (Ollama, llama.cpp, vLLM) | Intent parsing, answer generation, groundedness checks |
-| An embedding backend | Cloudflare Workers AI credentials, or local `sentence-transformers` | Chunk and query embeddings |
+| An embedding backend | Cloudflare Workers AI credentials, local `sentence-transformers`, or the Kaggle GPU host (`embedding_server_2.ipynb`) | Chunk and query embeddings |
+
+### Optional: Run the Embedding & LLM Server on Kaggle (`embedding_server_2.ipynb`)
+
+If you do not have local GPU hardware or Cloudflare Workers AI credentials, you can host the 5 catalog embedding models and Ollama on a free Kaggle GPU instance (2× T4) using [`embedding_server_2.ipynb`](embedding_server_2.ipynb):
+
+- **GPU 0 (~6 GB VRAM)**: Loads all 5 catalog embedding models (`bge-large-en-v1.5`, `qwen3-embedding-0.6b`, `embeddinggemma-300m`, `gte-large-en-v1.5`, `mxbai-embed-large-v1`) and serves them via FastAPI (`/models`, `/embed`, `/health`, `/embed/status`).
+- **GPU 1 (~8 GB VRAM)**: Runs Ollama serving Google's official `gemma4:12b` chat model (`/chat`, `/chat/status`).
+- **Tunnel**: Exposes the FastAPI server to the internet via ngrok Agent Endpoint (with automatic fallback to Cloudflare Quick Tunnel).
+
+#### Steps to launch on Kaggle:
+
+1. **Import Notebook**: On [Kaggle](https://www.kaggle.com/code), click **New Notebook** → **File** → **Import Notebook** → select [`embedding_server_2.ipynb`](embedding_server_2.ipynb).
+2. **Session Settings**:
+   - In the right sidebar under **Notebook options**, set **Accelerator** to **GPU T4 x2**.
+   - Make sure **Internet on** is toggled on.
+3. **Configure Secrets** (**Add-ons** → **Secrets** in the notebook menu):
+   - `HF_TOKEN`: Hugging Face user access token (required for `embeddinggemma-300m`; accept the model agreement on [Hugging Face](https://huggingface.co/google/embeddinggemma-300m) first).
+   - `NGROK_AUTHTOKEN`: Auth token from [ngrok dashboard](https://dashboard.ngrok.com/get-started/your-authtoken).
+   - *(Optional)* `NGROK_COMMAND` or `NGROK_URL`: Custom domain or agent command from your ngrok dashboard (if omitted, ngrok assigns a random URL; if ngrok fails, it falls back to Cloudflare Quick Tunnel).
+4. **Run Cells**: Execute Cells 1 through 6 sequentially.
+   - Once Cell 5 completes, it checks readiness and prints:
+     ```text
+     ============================================================
+     EXECUTION COMPLETE -- SERVER IS LIVE AND READY
+     ============================================================
+     Tunnel         : ngrok (your ngrok endpoint)
+     Public URL     : https://your-name.ngrok-free.app
+     ```
+   - Cell 6 continues running to keep the server alive and prevent kernel shutdown.
+5. **Point Backend to Kaggle**: Copy the `Public URL` into your local `.env`:
+   ```bash
+   EMBEDDING_HOST_URL=https://your-name.ngrok-free.app
+   ```
+   *(Optional)* If you also wish to use the Kaggle Ollama server as your chat LLM:
+   ```bash
+   LLM_PROVIDER=openai_compatible
+   LLM_MODEL=gemma4:12b
+   LLM_BASE_URL=https://your-name.ngrok-free.app/v1
+   LLM_API_KEY=ollama
+   ```
+   Verify health with `curl https://your-name.ngrok-free.app/health` or `python -m ogr.cli verify --pre-build`.
 
 ### 1. Configure the backend
 
@@ -73,7 +118,7 @@ default. The main variables:
 | `GEMINI_API_KEY`, `GROQ_API_KEY`, `NVIDIA_API_KEY` | Keys for the three providers you can pick at runtime in the Settings panel. Leave a provider's key empty and that provider is disabled in the panel. The chosen model applies to all three pipelines |
 | `EMBEDDING_MODEL` | The startup embedding model, by key (table below). Default `bge-large-en-v1.5`. After the first switch in Settings, the active model is stored in `out/embeddings.json` and overrides this value |
 | `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN` | Workers AI. They serve `bge-large-en-v1.5` embeddings and the Agentic pipeline's reranker (`@cf/baai/bge-reranker-base`). Without them, or when a call fails, both run the same models locally (`sentence-transformers`) |
-| `EMBEDDING_HOST_URL` | Optional self-hosted embedding service serving the catalog models: `POST {url}/embed` with `{"model": "<key>", "texts": [...]}` returns `{"embeddings": [...]}`. Tried first; on failure the next tier runs |
+| `EMBEDDING_HOST_URL` | Optional self-hosted embedding service serving the catalog models: `POST {url}/embed` with `{"model": "<key>", "texts": [...]}` returns `{"embeddings": [...]}` (e.g. from `embedding_server_2.ipynb`). Tried first; on failure the next tier runs |
 | `EMBEDDING_CLOUDFLARE`, `EMBEDDING_REMOTE` | `false` skips the Cloudflare embedding tier (e.g. quota spent), or every remote tier. Both default to `true` |
 | `OGR_CORS_ORIGINS` | Browser origins allowed to call the API. Defaults to `http://localhost:5173,http://127.0.0.1:5173`, the Vite dev server |
 | `RUN_K`, `RUN_CHUNK_TOKENS`, `RUN_CHUNK_OVERLAP` | Retrieval and chunking (10 / 300 / 50). They are fixed before the first run and never tuned against results |
@@ -346,9 +391,10 @@ set them through `style`, because `var()` does not resolve in SVG attributes.
 | A fresh checkout against a graph built elsewhere | Handled: on startup (and before listing datasets, building, querying or benchmarking) the backend rebuilds `out/datasets.json` and `out/embeddings.json` from TigerGraph when this install has neither, provided every document in the graph comes from one file in `data/corpus/` (`ingest/adopt.py`). Otherwise the Build screen shows TigerGraph's own counts |
 | CORS error in the browser console | The frontend origin is not in `OGR_CORS_ORIGINS`. Add it and restart the backend |
 | `verify` fails on TigerGraph | `TG_HOST` must be the full `https://…` URL, the credentials must be valid, and `TG_CLOUD=true` is needed for Savanna |
-| `verify` fails on the LLM with `429`/quota | The key has no quota left. Pick another provider/model in Settings, or use a local server (`LLM_BASE_URL=http://localhost:11434/v1`, no key needed) |
+| `verify` fails on the LLM with `429`/quota | The key has no quota left. Pick another provider/model in Settings, use a local server (`LLM_BASE_URL=http://localhost:11434/v1`, no key needed), or run the Kaggle GPU server (`embedding_server_2.ipynb`) |
 | Answers are empty / "not mentioned" for every question | `graph/client.py` does not raise when TigerGraph is unreachable or a query is missing. It logs a warning and returns `[]`. Check the backend log and `verify` before debugging a pipeline, and run `build` if Q1–Q5 are missing |
 | A query opens "No matching embeddings" | The active embedding model has no complete embeddings for the loaded data. Pick an offered model, or finish the job in Settings (Resume / Complete) |
+| `EMBEDDING_HOST_URL` fails or times out | If using `embedding_server_2.ipynb` on Kaggle, ensure Cell 6 is still running and check that the tunnel URL has not expired or changed |
 | Build returns `reset_required` | The graph predates dataset tracking or per-model embedding storage. Confirm "Reset graph and build" (this removes every loaded dataset) |
 | Embedding switching is greyed out | A build, re-embed job or benchmark is running. It re-enables when that ends |
 | `/dashboard`, `/build` or `/history` 404 on refresh of a deployed build | The SPA rewrite is missing. Keep both `netlify.toml` and `frontend/public/_redirects` (see `config-docs/DEPLOY.md`) |
