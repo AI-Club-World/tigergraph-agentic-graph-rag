@@ -1,4 +1,4 @@
-# Demo video script — Agentic GraphRAG (about 4 minutes)
+# Demo video script — Agentic GraphRAG (about 4 minutes, intro to outro)
 
 **Bold lines** are what you do on screen. Quoted lines are what you say.
 The two Search questions take 10–20 seconds each to answer: the lines marked
@@ -11,31 +11,41 @@ The two Search questions take 10–20 seconds each to answer: the lines marked
 - Open the Dashboard once with `?run=r5-public` so it loads instantly.
 - Run both Search questions once beforehand to warm up the LLM.
 - Have the two questions ready to paste.
+- Open the deck on slide 1 (title) for the intro and slide 20 (close) for the
+  outro, or record those two parts on camera. Fill in your names first.
 
 ---
 
-## 1. The question and the fair test — Search page, empty (0:00–0:25)
+## Intro — title slide (0:00–0:20)
 
-**Show the Search page. Point at the three pipeline columns.**
+**Show slide 1 of the deck (or yourself on camera).**
 
-> This is our Agentic GraphRAG application on TigerGraph. It answers one
-> question: when is an AI agent worth its tokens? Every question runs through
-> three pipelines side by side. RAG is vector search only. GraphRAG makes
-> exactly one graph query. Our agent can plan, call graph tools and re-query.
-> It's a controlled test: all three use the same LLM, Nemotron 120B, the same
-> answer prompt, the same graph and the same scorer. Only the method differs.
+> Hello, I'm [your name] from team [team name], and this is our entry for the
+> TigerGraph Agentic GraphRAG hackathon. AI agents can answer harder
+> questions, but they spend more tokens doing it. So we built an application
+> that measures, question by question, when an agent is actually worth its
+> cost. In the next four minutes I'll show you the application live, the
+> results, and why you can trust them.
 
-## 2. The graph — Build page (0:25–0:50)
+## 1. The fair test — Search page, empty (0:20–0:35)
+
+**Switch to the app's Search page. Point at the three pipeline columns.**
+
+> Every question runs through three pipelines side by side: RAG, which is
+> vector search only; GraphRAG, which makes one graph query; and our agent,
+> which can plan and re-query. All three share the same LLM, prompt, graph and
+> scorer, so only the method differs.
+
+## 2. The graph — Build page (0:35–0:55)
 
 **Click Build. Point at the three readiness columns, then the counts at the bottom.**
 
 > The Build page loads Olympics Wikipedia articles into one TigerGraph graph:
 > 2,951 documents, 2,187 events linked to their Games, sport and venue, 11,343
-> relationships including previous and next editions, and 16,669 text chunks
-> with vector embeddings. Each column shows when that pipeline can answer.
-> Infoboxes are parsed deterministically, so building costs zero LLM tokens.
+> relationships and 16,669 chunks with vector embeddings. Building uses no
+> LLM, so it costs zero tokens.
 
-## 3. A counting question — direct route (0:50–1:35)
+## 3. A counting question — direct route (0:55–1:35)
 
 **Click Search. Paste and click Compare:**
 `How many biathlon events at the 2006 Winter Olympics had more than 72 competitors?`
@@ -71,11 +81,10 @@ The two Search questions take 10–20 seconds each to answer: the lines marked
 **Scroll to the trace; point at the orange step, then the last step.**
 
 > In the trace, the agent found 37 events at the stadium and narrowed them to
-> one by date. Its evidence check then failed, so it changed strategy and read
-> the event's own page before answering. Last, a verification step checks the
-> answer against the graph rows. Every claim is cited.
+> one by date. Its evidence check failed, so it changed strategy and read the
+> event's page before answering, then verified the answer against the graph.
 
-## 5. Results — Dashboard (2:25–3:05)
+## 5. Results — Dashboard (2:25–3:00)
 
 **Click Dashboard. Point at the headline table.**
 
@@ -86,50 +95,53 @@ The two Search questions take 10–20 seconds each to answer: the lines marked
 
 **Point at the "Is the agent worth it" table, then scroll to the stop reasons.**
 
-> Per question type: counting and superlatives gain around 0.9, and multi-hop
-> reaches 0.96 while GraphRAG scores 0.07, so it's the loop that makes the
-> difference. On simple lookups the agent is overkill, which is why 62 of 100
-> questions take the direct route, and all 62 are correct.
+> Counting and superlatives gain around 0.9; multi-hop reaches 0.96 against
+> 0.07 for GraphRAG, so the loop makes the difference. On simple lookups the
+> agent is overkill, so 62 questions take the direct route, all correct.
 
-## 6. Why you can trust it — Run benchmark and Eval table (3:05–3:35)
+## 6. Why you can trust it — Run benchmark and Eval table (3:00–3:25)
 
 **Click Run benchmark. Tick r1-public and r5-public; scroll to the comparison.**
 
-> Every run is stored with its full configuration. From our first run to our
-> last, the agent went from 0.74 to 0.98 while using 46 percent fewer tokens.
-> Each gain came from fixing a root cause found in the traces, not from
-> tuning prompts. RAG, which none of our fixes touched, stayed flat, and tests
-> block question templates.
+> Every run is stored with its configuration. From our first run to our last,
+> the agent went from 0.74 to 0.98 with 46 percent fewer tokens. Each gain
+> fixed a root cause found in the traces, not a tuned prompt; RAG, which no
+> fix touched, stayed flat.
 
 **Click Eval table; tick "Pipelines disagree only".**
 
 > The Eval table puts every answer side by side; filter to where the
 > pipelines disagree.
 
-## 7. Engineering — History and Settings (3:35–3:50)
+## 7. Engineering — History and Settings (3:25–3:40)
 
 **Click History, then the gear icon; scroll to the embedding models.**
 
 > History logs every query, build and benchmark, failures included. In
 > Settings you can switch the LLM or the embedding model; each model has its
-> own vector index in TigerGraph, so searches never mix models.
+> own vector index, so searches never mix models.
 
-## 8. Close (3:50–4:00)
+## Outro — closing slide (3:40–4:00)
 
-**Back to the Search page with the multi-hop answer on screen.**
+**Switch to slide 20 of the deck (or back to camera).**
 
-> So the agent isn't always better, but it pays where structure matters, and
-> overall it costs less than RAG. Thank you.
+> To sum up: the agent isn't always better, but it pays where structure
+> matters. It's exact on counts, 0.96 on multi-hop questions, and overall
+> it uses 40 percent of RAG's tokens. The code, results and full traces are
+> in our repository. Thank you for watching, and we'd be happy to take
+> your questions.
 
 ---
 
-**Length:** about 560 spoken words. Read at a natural pace, with the fill-ins
-spoken while answers load, it runs just under 4 minutes.
+**Length:** about 580 spoken words, intro and outro included. Read at a
+natural pace, with the fill-ins spoken while answers load, it runs about
+4 minutes. If you run long, drop section 7 (History and Settings).
 
 ## What this script covers
 
 | Judging point | Where it is said |
 |---|---|
+| What we built and why (problem, hackathon, what the video shows) | Intro |
 | Fair comparison (same LLM, prompt, graph, scorer) | 1 |
 | TigerGraph graph design and scale | 2 |
 | Agent design: intent parse, zero-token linking, necessity router, GSQL tools | 3 |
@@ -139,6 +151,7 @@ spoken while answers load, it runs just under 4 minutes.
 | Where the agent is and isn't worth it; the loop's value (0.96 vs 0.07) | 5 |
 | No benchmark tuning: root-cause fixes, RAG as a flat control, anti-template tests | 6 |
 | Reproducibility, audit log, per-model vector indexes | 6, 7 |
+| Takeaways, where to find the work, thanks | Outro |
 
 **If an answer differs on the day** (the LLM can vary between runs): describe
 what is on screen, for example "RAG picks a different event". The point to
