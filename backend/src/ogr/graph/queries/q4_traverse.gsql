@@ -1,0 +1,54 @@
+USE GRAPH OlympicGraphRAG
+
+// Q4: traverse(anchor, edge_type, hops) — TECHNICAL-SPEC §3.
+// PREV_EDITION / NEXT_EDITION / HELD_AT expansion, serving temporal and
+// multi_hop questions (graph_traversal.py, multi_hop.py's Q4->Q1 chain).
+//
+// GSQL cannot select an edge type by a runtime string inside a single
+// traversal step, so `edge_type` is handled with an explicit branch per
+// value rather than a dynamic edge lookup. `anchor` is either an
+// OlympicEvent identifier (event_id or event_name) for PREV/NEXT_EDITION,
+// or — for HELD_AT — either an event (resolve its venue) or a Venue name
+// (resolve the events held there, via `reverse_HELD_AT`).
+
+CREATE OR REPLACE QUERY q4_traverse(STRING anchor = "", STRING edge_type = "PREV_EDITION", INT hops = 1)
+FOR GRAPH OlympicGraphRAG SYNTAX V2 {
+
+  TYPEDEF TUPLE<STRING event_id, STRING event_name, STRING doc_id, STRING title> EventRow;
+  ListAccum<EventRow> @@rows;
+
+  Start = SELECT e FROM OlympicEvent:e WHERE e.event_id == anchor OR e.event_name == anchor;
+
+  IF edge_type == "HELD_AT" THEN
+    IF Start.size() > 0 THEN
+      Venues = SELECT v FROM Start:e -(HELD_AT>)- Venue:v;
+      PRINT Venues AS venues;
+    ELSE
+      VenueEvents = SELECT e FROM Venue:ve -(reverse_HELD_AT>:conn)- OlympicEvent:e
+                    WHERE ve.venue_name == anchor;
+      // Each event's page (doc_id, title), so venue answers are citable too.
+      VenueDocs = SELECT e FROM VenueEvents:e -(reverse_DESCRIBES>:conn)- Document:doc
+                  ACCUM @@rows += EventRow(e.event_id, e.event_name, doc.doc_id, doc.title);
+      PRINT @@rows AS results;
+    END;
+  ELSE
+    Current = Start;
+    INT step = 0;
+    INT boundedHops = hops;
+    IF boundedHops > 10 THEN boundedHops = 10; END;  // sanity cap; never expect >2 in practice
+    WHILE step < boundedHops AND Current.size() > 0 DO
+      IF edge_type == "NEXT_EDITION" THEN
+        Current = SELECT e2 FROM Current:e1 -(NEXT_EDITION>)- OlympicEvent:e2;
+      ELSE
+        Current = SELECT e2 FROM Current:e1 -(PREV_EDITION>)- OlympicEvent:e2;
+      END;
+      step = step + 1;
+    END;
+
+    Resolved = SELECT e FROM Current:e -(reverse_DESCRIBES>:conn)- Document:doc
+      ACCUM @@rows += EventRow(e.event_id, e.event_name, doc.doc_id, doc.title);
+    PRINT @@rows AS results;
+  END;
+}
+
+INSTALL QUERY q4_traverse

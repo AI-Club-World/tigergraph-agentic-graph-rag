@@ -1,0 +1,350 @@
+"""Intent parser for P3 Agentic GraphRAG pipeline.
+
+Source spec: TECHNICAL-SPEC §7 · APPLICATION-SPEC FR-12 · NFR-7
+
+Emits {operation, anchor, constraints, target_field} per TECHNICAL-SPEC §7,
+Pydantic-validated with exactly ONE retry on schema failure.
+
+TWO EXTRACTION PATHS, ONE OUTPUT (PLAT-08 / AD-13):
+  - Native tool-calling: where the configured model supports function-calling
+    (detected by capability probe in LLM-01).
+  - JSON-schema prompting: fallback for locally-hosted models that lack reliable
+    tool-calling. Both paths produce an identical IntentSchema object and share
+    the same validation and retry.
+
+qtype → operation mapping (documented here; qtype is NEVER read at runtime):
+  lookup      → LOOKUP
+  aggregation → COUNT
+  superlative → ARGMAX
+  temporal    → TRAVERSE
+  multi_hop   → TRAVERSE
+
+NFR-7 compliance: qtype is an eval-set label and must never appear in the
+answer path. The mapping above is for reporting only. No question-template
+regex, no eval-string branching anywhere in this module.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import re
+from typing import Any, Literal
+
+from pydantic import BaseModel, Field, ValidationError
+
+from ogr.common.contracts import TokenUsage
+from ogr.common.llm import _response_text, _status, invoke_and_count
+
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Schema (TECHNICAL-SPEC §7)
+# ---------------------------------------------------------------------------
+
+AnchorConstraintOp = Literal[">", "<", "=", ">=", "<="]
+
+OPERATION_TYPES = Literal["LOOKUP", "COUNT", "ARGMAX", "TRAVERSE"]
+
+
+class AnchorConstraint(BaseModel):
+    field: str
+    op: AnchorConstraintOp
+    value: Any  # int or str per spec
+
+
+class Anchor(BaseModel):
+    sport: str | None = None
+    games: str | None = None
+    venue: str | None = None
+    title: str | None = None
+    event_id: str | None = None
+
+
+class IntentSchema(BaseModel):
+    """Constrained intent output per TECHNICAL-SPEC §7."""
+    operation: OPERATION_TYPES
+    anchor: Anchor = Field(default_factory=Anchor)
+    constraints: list[AnchorConstraint] = Field(default_factory=list)
+    target_field: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# Tool definition for native function-calling path
+# ---------------------------------------------------------------------------
+
+INTENT_TOOL_DEFINITION = {
+    "type": "function",
+    "function": {
+        "name": "emit_intent",
+        "description": (
+            "Emit the parsed intent schema from the user's question. "
+            "operation must be one of: LOOKUP, COUNT, ARGMAX, TRAVERSE. "
+            "LOOKUP: an attribute of one named event, numeric attributes included "
+            "(e.g. the participant total of that one event). COUNT: how many EVENTS match a filter. "
+            "ARGMAX: find max/min/best/most. TRAVERSE: follow temporal or multi-hop chains. "
+            "Never invent a venue or event_id; omit fields the question does not give."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "operation": {
+                    "type": "string",
+                    "enum": ["LOOKUP", "COUNT", "ARGMAX", "TRAVERSE"],
+                    "description": "Query operation type.",
+                },
+                "anchor": {
+                    "type": "object",
+                    "properties": {
+                        "sport": {"type": "string", "description": "Sport name (e.g. 'Sailing')"},
+                        "games": {"type": "string", "description": "Games identifier (e.g. '2016-Summer')"},
+                        "venue": {"type": "string", "description": "Venue name as written in the question"},
+                        "title": {"type": "string", "description": "Event name as written in the question"},
+                        "event_id": {
+                            "type": "string",
+                            "description": "Only if the question quotes an event id verbatim",
+                        },
+                    },
+                },
+                "constraints": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "field": {"type": "string"},
+                            "op": {"type": "string", "enum": [">", "<", "=", ">=", "<="]},
+                            "value": {},
+                        },
+                        "required": ["field", "op", "value"],
+                    },
+                },
+                "target_field": {
+                    "type": "string",
+                    "description": (
+                        "The field to retrieve or aggregate "
+                        "(e.g. 'nations', 'gold', 'event_name')."
+                    ),
+                },
+            },
+            "required": ["operation"],
+        },
+    },
+}
+
+# ---------------------------------------------------------------------------
+# JSON-schema fallback prompt
+# ---------------------------------------------------------------------------
+
+JSON_SCHEMA_SYSTEM_PROMPT = """You are an intent parser for an Olympic sports question-answering system.
+Parse the user's question and return a JSON object matching this exact schema:
+
+{
+  "operation": "LOOKUP" | "COUNT" | "ARGMAX" | "TRAVERSE",
+  "anchor": {
+    "sport": string or null,
+    "games": string or null,
+    "venue": string or null,
+    "title": string or null,
+    "event_id": string or null
+  },
+  "constraints": [
+    { "field": string, "op": ">" | "<" | "=" | ">=" | "<=", "value": number or string }
+  ],
+  "target_field": string or null
+}
+
+Operation selection rules:
+- LOOKUP: question asks for a specific attribute of a named event (use title or event_id),
+  numeric attributes included (e.g. the participant total of that one event)
+- COUNT: question asks how many EVENTS match a filter
+- ARGMAX: question asks for most / highest / lowest / best / first / last
+- TRAVERSE: question involves temporal chains (previous/next edition) or multi-hop relations
+
+Copy venue and event_id exactly as written in the question; never invent them — use null.
+Return ONLY valid JSON, no markdown, no explanation.
+"""
+
+JSON_SCHEMA_USER_PROMPT = "Question: {question}\n\nJSON:"
+
+
+# ---------------------------------------------------------------------------
+# Parser implementation
+# ---------------------------------------------------------------------------
+
+
+def _normalize(text: str) -> str:
+    return " ".join(text.replace("\u2019", "'").replace("\u2013", "-").lower().split())
+
+
+def _ground_in_question(intent: IntentSchema, question: str) -> IntentSchema:
+    """Deterministic post-check of the LLM's extraction.
+
+    - "" means "not given" (some providers fill every field) -> None.
+    - Numeric strings in constraints become numbers, so Q2/Q3 compare numbers.
+    - venue and event_id are spans the question itself must contain; one
+      that does not appear in it was invented. An invented event_id makes Q1
+      match nothing (it takes precedence over title); an invented venue adds
+      a wrong filter. title, sport and games are exempt: the model
+      legitimately composes or normalises them ("2016 Summer Olympics" ->
+      "2016-Summer"), and entity linking / Q1 check them against the graph.
+    """
+    q = _normalize(question)
+    anchor = intent.anchor
+    for name in ("sport", "games", "venue", "title", "event_id"):
+        value = getattr(anchor, name)
+        if isinstance(value, str) and not value.strip():
+            setattr(anchor, name, None)
+    for name in ("venue", "event_id"):
+        value = getattr(anchor, name)
+        if value and _normalize(value) not in q:
+            logger.info("Intent %s %r is not in the question; dropped as invented", name, value)
+            setattr(anchor, name, None)
+    for constraint in intent.constraints:
+        if isinstance(constraint.value, str):
+            try:
+                constraint.value = int(constraint.value)
+            except ValueError:
+                try:
+                    constraint.value = float(constraint.value)
+                except ValueError:
+                    pass
+    if isinstance(intent.target_field, str) and not intent.target_field.strip():
+        intent.target_field = None
+    return intent
+
+
+def _correction_message(error: Exception) -> str:
+    # Validation errors can be long; the first few hundred chars name the field.
+    return (
+        f"Your previous output was rejected: {str(error)[:300]}. "
+        "Return only output that matches the schema exactly."
+    )
+
+class IntentParser:
+    """Intent parser with dual extraction paths and one schema validation + retry.
+
+    At startup a capability probe decides whether to use native tool-calling
+    (fast, structured) or JSON-schema prompting (compatible with all local models).
+    Both paths produce identical IntentSchema objects — routing behaviour does not
+    change with the provider.
+    """
+
+    def __init__(self, model: Any, supports_tool_calling: bool = False, reports_usage: str = "auto") -> None:
+        self.model = model
+        self.supports_tool_calling = supports_tool_calling
+        self.reports_usage = reports_usage
+        # Record which extraction path is active for run_config header
+        self.extraction_path = "tool_calling" if supports_tool_calling else "json_schema"
+        # Tokens spent parsing intent. Read by the orchestrator so the entry
+        # point to P3 is not invisible on the cost axis (DP-5).
+        self.last_tokens = TokenUsage()
+        self.last_token_source = "provider"
+
+    def parse(self, question: str) -> IntentSchema:
+        """Parse question into IntentSchema with one retry on schema failure."""
+        self.last_tokens = TokenUsage()
+        correction: str | None = None
+        for attempt in range(2):  # exactly one retry
+            try:
+                raw = self._extract_or_downgrade(question, correction)
+                schema = self._validate(raw)
+                return _ground_in_question(schema, question)
+            except (ValidationError, ValueError, TypeError) as e:
+                if attempt == 0:
+                    # The retry carries the validation error back to the model;
+                    # an identical prompt at temperature 0 would just reproduce
+                    # the same failure and waste the call.
+                    correction = _correction_message(e)
+                    logger.warning(
+                        "Intent parse attempt 1 failed (%s); retrying with the validation error fed back.",
+                        e,
+                    )
+                else:
+                    logger.error("Intent parse failed after 1 retry: %s", e)
+                    # Return a safe default: TRAVERSE with empty anchor (routes to loop)
+                    return IntentSchema(operation="TRAVERSE")
+        return IntentSchema(operation="TRAVERSE")
+
+    def _extract_or_downgrade(self, question: str, correction: str | None) -> dict[str, Any]:
+        """G-6 (ARCHITECTURE-SPEC, Decision log): the capability probe says 'yes' for every
+        OpenAI-compatible client, but some selectable NIM/Groq models reject a
+        tool request (HTTP 400/422). Ask the same model via the JSON-schema path."""
+        try:
+            return self._extract(question, correction)
+        except Exception as e:
+            if not self.supports_tool_calling or _status(e) not in (400, 422):
+                raise
+            logger.warning("Tool-calling rejected (%s); switching to the JSON-schema path", str(e)[:200])
+            self.supports_tool_calling = False
+            self.extraction_path = "json_schema"
+            return self._extract(question, correction)
+
+    def _extract(self, question: str, correction: str | None = None) -> dict[str, Any]:
+        if self.supports_tool_calling:
+            return self._extract_tool_calling(question, correction)
+        return self._extract_json_schema(question, correction)
+
+    def _extract_tool_calling(self, question: str, correction: str | None = None) -> dict[str, Any]:
+        """Native function-calling path."""
+        try:
+            from langchain_core.messages import HumanMessage
+        except ImportError:
+            from langchain.schema import HumanMessage
+
+        # Forcing the one tool stops a model answering with empty text instead
+        # of a call (observed with Gemini), which would burn the retry.
+        try:
+            model_with_tools = self.model.bind_tools([INTENT_TOOL_DEFINITION], tool_choice="emit_intent")
+        except (TypeError, ValueError, NotImplementedError):
+            model_with_tools = self.model.bind_tools([INTENT_TOOL_DEFINITION])
+        content = f"{question}\n\n{correction}" if correction else question
+        response = self._invoke_counted(model_with_tools, [HumanMessage(content=content)])
+        tool_calls = getattr(response, "tool_calls", [])
+        if tool_calls:
+            return tool_calls[0].get("args", {})
+        # Fallback if tool_calls empty
+        return self._parse_json_from_text(_response_text(response) or "{}")
+
+    def _extract_json_schema(self, question: str, correction: str | None = None) -> dict[str, Any]:
+        """JSON-schema prompting fallback for local models."""
+        try:
+            from langchain_core.messages import HumanMessage, SystemMessage
+        except ImportError:
+            from langchain.schema import HumanMessage, SystemMessage
+
+        messages = [
+            SystemMessage(content=JSON_SCHEMA_SYSTEM_PROMPT),
+            HumanMessage(content=JSON_SCHEMA_USER_PROMPT.format(question=question)),
+        ]
+        if correction:
+            messages.append(HumanMessage(content=correction))
+        response = self._invoke_counted(self.model, messages)
+        return self._parse_json_from_text(_response_text(response))
+
+    def _invoke_counted(self, model: Any, messages: Any) -> Any:
+        """Invoke through the accounting module, accumulating across retries."""
+        response, tokens, source, _ = invoke_and_count(model, messages, reports_usage=self.reports_usage)
+        self.last_tokens = TokenUsage(
+            input=self.last_tokens.input + tokens.input,
+            output=self.last_tokens.output + tokens.output,
+            total=self.last_tokens.total + tokens.total,
+        )
+        self.last_token_source = source
+        return response
+
+    @staticmethod
+    def _parse_json_from_text(text: str) -> dict[str, Any]:
+        text = text.strip()
+        # Strip markdown fences
+        text = re.sub(r"^```(?:json)?\s*", "", text)
+        text = re.sub(r"\s*```$", "", text)
+        text = text.strip()
+        return json.loads(text)
+
+    @staticmethod
+    def _validate(raw: dict[str, Any]) -> IntentSchema:
+        """Validate raw dict against IntentSchema (raises ValidationError on failure)."""
+        # Normalize anchor: ensure it's a dict
+        if "anchor" not in raw or raw["anchor"] is None:
+            raw["anchor"] = {}
+        return IntentSchema.model_validate(raw)

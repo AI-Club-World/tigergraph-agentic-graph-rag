@@ -1,0 +1,502 @@
+{
+  "aggregation": {
+    "query_id": "fixture-aggregation",
+    "query_text": "How many archery events were contested at the 2012 Summer Olympics?",
+    "qtype": "aggregation",
+    "timestamp": "2026-09-21T09:14:02Z",
+    "pipelines": {
+      "rag": {
+        "pipeline": "rag",
+        "answer": "2",
+        "explanation": "The retrieved passages describe the men's and women's individual archery competitions at London 2012 [Q3624078, Q3624081]. No passage enumerates the full event programme, so the count reflects only the documents returned by top-k retrieval.",
+        "citations": [
+          { "source_id": "Q3624078", "chunk_id": "Q3624078::c02", "ref_type": "chunk" },
+          { "source_id": "Q3624081", "chunk_id": "Q3624081::c00", "ref_type": "chunk" },
+          { "source_id": "Q1191846", "chunk_id": "Q1191846::c07", "ref_type": "chunk" },
+          { "source_id": "Q2887145", "chunk_id": "Q2887145::c01", "ref_type": "chunk" }
+        ],
+        "chunks_returned": 10,
+        "citations_count": 4,
+        "tokens": { "input": 2450, "output": 120, "total": 2570 },
+        "token_source": "provider",
+        "latency_ms": 1820,
+        "trace": null,
+        "strategy_changed": null,
+        "stop_reason": null,
+        "status": "done",
+        "error_detail": null
+      },
+      "graphrag": {
+        "pipeline": "graphrag",
+        "answer": "4",
+        "explanation": "Q2 counted OlympicEvent vertices with IN_SPORT = Archery and AT_GAMES = 2012-Summer, returning 4 events: men's individual, women's individual, men's team and women's team.",
+        "citations": [
+          { "source_id": "Q3624078", "chunk_id": null, "ref_type": "entity" },
+          { "source_id": "Q3624081", "chunk_id": null, "ref_type": "entity" },
+          { "source_id": "Q3624085", "chunk_id": null, "ref_type": "entity" },
+          { "source_id": "Q3624090", "chunk_id": null, "ref_type": "entity" }
+        ],
+        "chunks_returned": 0,
+        "citations_count": 4,
+        "tokens": { "input": 890, "output": 95, "total": 985 },
+        "token_source": "provider",
+        "latency_ms": 1240,
+        "trace": null,
+        "strategy_changed": null,
+        "stop_reason": null,
+        "status": "done",
+        "error_detail": null
+      },
+      "agentic_graphrag": {
+        "pipeline": "agentic_graphrag",
+        "answer": "4",
+        "explanation": "The parsed intent was COUNT with anchor {sport: Archery, games: 2012-Summer}, which routes to a single scoped aggregation query rather than the step loop. Q2 enumerated 4 events, all with parse_confidence 1.0, and the scope-coverage check confirmed the set was exhaustive.",
+        "citations": [
+          { "source_id": "Q3624078", "chunk_id": null, "ref_type": "entity" },
+          { "source_id": "Q3624081", "chunk_id": null, "ref_type": "entity" },
+          { "source_id": "Q3624085", "chunk_id": null, "ref_type": "entity" },
+          { "source_id": "Q3624090", "chunk_id": null, "ref_type": "entity" }
+        ],
+        "chunks_returned": 0,
+        "citations_count": 4,
+        "tokens": { "input": 4120, "output": 480, "total": 4600 },
+        "token_source": "provider",
+        "latency_ms": 2310,
+        "trace": [
+          {
+            "step_n": 1,
+            "agent_type": "entity_linking",
+            "tool_called": "intent_parser",
+            "tokens": { "input": 620, "output": 84 },
+            "chunks_returned": 0,
+            "citations_count": 0,
+            "latency_ms": 780,
+            "strategy_change": false,
+            "notes": "operation=COUNT, anchor={sport: Archery, games: 2012-Summer}, constraints=[], target_field=event_name"
+          },
+          {
+            "step_n": 2,
+            "agent_type": "aggregation",
+            "tool_called": "Q2 count_where",
+            "tokens": { "input": 0, "output": 0 },
+            "chunks_returned": 0,
+            "citations_count": 4,
+            "latency_ms": 210,
+            "strategy_change": false,
+            "notes": "Scoped count over IN_SPORT=Archery AND AT_GAMES=2012-Summer returned 4 events from 4 source documents"
+          },
+          {
+            "step_n": 3,
+            "agent_type": "evidence_evaluation",
+            "tool_called": "evidence_evaluator",
+            "tokens": { "input": 3500, "output": 396 },
+            "chunks_returned": 0,
+            "citations_count": 4,
+            "latency_ms": 1120,
+            "strategy_change": false,
+            "notes": "Scope coverage 4/4, every event parse_confidence 1.0; groundedness check passed; answer generated from the enumerated set"
+          }
+        ],
+        "strategy_changed": false,
+        "stop_reason": "evidence_sufficient",
+        "status": "done",
+        "error_detail": null
+      }
+    },
+    "verdict": {
+      "token_multiplier_vs_rag": 1.79,
+      "token_multiplier_vs_graphrag": 4.67,
+      "accuracy_delta_vs_rag": 1.0,
+      "accuracy_delta_vs_graphrag": 0.0,
+      "summary_line": "Top-k retrieval cannot enumerate a scoped set: RAG undercounted regardless of k. GraphRAG and Agentic both returned the exact count, and Agentic paid 4.7x GraphRAG's tokens to reach the same answer."
+    }
+  },
+  "lookup": {
+    "query_id": "fixture-lookup",
+    "query_text": "Who took gold in the men's 100 metres in Rio?",
+    "qtype": "lookup",
+    "timestamp": "2026-09-21T09:18:44Z",
+    "pipelines": {
+      "rag": {
+        "pipeline": "rag",
+        "answer": "Usain Bolt",
+        "explanation": "The retrieved passage for the men's 100 metres at the 2016 Summer Olympics records Usain Bolt of Jamaica as the gold medallist [Q20026519].",
+        "citations": [
+          { "source_id": "Q20026519", "chunk_id": "Q20026519::c00", "ref_type": "chunk" },
+          { "source_id": "Q20026519", "chunk_id": "Q20026519::c03", "ref_type": "chunk" },
+          { "source_id": "Q1191846", "chunk_id": "Q1191846::c11", "ref_type": "chunk" }
+        ],
+        "chunks_returned": 10,
+        "citations_count": 3,
+        "tokens": { "input": 2080, "output": 130, "total": 2210 },
+        "token_source": "provider",
+        "latency_ms": 1650,
+        "trace": null,
+        "strategy_changed": null,
+        "stop_reason": null,
+        "status": "done",
+        "error_detail": null
+      },
+      "graphrag": {
+        "pipeline": "graphrag",
+        "answer": "Usain Bolt",
+        "explanation": "Q1 resolved event_id athletics-mens-100m-2016-Summer and read target_field gold, returning Usain Bolt.",
+        "citations": [{ "source_id": "Q20026519", "chunk_id": null, "ref_type": "entity" }],
+        "chunks_returned": 0,
+        "citations_count": 1,
+        "tokens": { "input": 690, "output": 70, "total": 760 },
+        "token_source": "provider",
+        "latency_ms": 940,
+        "trace": null,
+        "strategy_changed": null,
+        "stop_reason": null,
+        "status": "done",
+        "error_detail": null
+      },
+      "agentic_graphrag": {
+        "pipeline": "agentic_graphrag",
+        "answer": "Usain Bolt",
+        "explanation": "The intent parser could not bind \"Rio\" to a Games vertex on the first pass, so the anchor was underspecified and routing sent the query into the step loop. A vector pass over candidate Games editions resolved 2016-Summer, after which Q1 answered directly.",
+        "citations": [
+          { "source_id": "Q20026519", "chunk_id": null, "ref_type": "entity" },
+          { "source_id": "Q8577", "chunk_id": null, "ref_type": "relationship" }
+        ],
+        "chunks_returned": 4,
+        "citations_count": 2,
+        "tokens": { "input": 8210, "output": 730, "total": 8940 },
+        "token_source": "provider",
+        "latency_ms": 4310,
+        "trace": [
+          {
+            "step_n": 1,
+            "agent_type": "entity_linking",
+            "tool_called": "intent_parser",
+            "tokens": { "input": 640, "output": 92 },
+            "chunks_returned": 0,
+            "citations_count": 0,
+            "latency_ms": 810,
+            "strategy_change": false,
+            "notes": "operation=LOOKUP, anchor={sport: Athletics, games: null, title: null}; \"Rio\" unresolved so the anchor is underspecified and routing selects the loop"
+          },
+          {
+            "step_n": 2,
+            "agent_type": "similarity_search",
+            "tool_called": "Q5 hybrid_search",
+            "tokens": { "input": 0, "output": 0 },
+            "chunks_returned": 8,
+            "citations_count": 0,
+            "latency_ms": 240,
+            "strategy_change": false,
+            "notes": "vectorSearch over OlympicEvent.emb, k=8, to produce candidate Games editions for re-linking"
+          },
+          {
+            "step_n": 3,
+            "agent_type": "entity_linking",
+            "tool_called": "intent_parser",
+            "tokens": { "input": 1180, "output": 88 },
+            "chunks_returned": 0,
+            "citations_count": 0,
+            "latency_ms": 690,
+            "strategy_change": false,
+            "notes": "Re-linked \"Rio\" to Games 2016-Summer from the candidate set; anchor now fully specified"
+          },
+          {
+            "step_n": 4,
+            "agent_type": "graph_traversal",
+            "tool_called": "Q1 lookup",
+            "tokens": { "input": 0, "output": 0 },
+            "chunks_returned": 0,
+            "citations_count": 1,
+            "latency_ms": 130,
+            "strategy_change": false,
+            "notes": "Q1 on event_id athletics-mens-100m-2016-Summer, target_field=gold"
+          },
+          {
+            "step_n": 5,
+            "agent_type": "evidence_evaluation",
+            "tool_called": "evidence_evaluator",
+            "tokens": { "input": 6390, "output": 550 },
+            "chunks_returned": 4,
+            "citations_count": 2,
+            "latency_ms": 2140,
+            "strategy_change": false,
+            "notes": "Groundedness check passed against 2 source documents; answer generated"
+          }
+        ],
+        "strategy_changed": false,
+        "stop_reason": "evidence_sufficient",
+        "status": "done",
+        "error_detail": null
+      }
+    },
+    "verdict": {
+      "token_multiplier_vs_rag": 4.05,
+      "token_multiplier_vs_graphrag": 11.76,
+      "accuracy_delta_vs_rag": 0.0,
+      "accuracy_delta_vs_graphrag": 0.0,
+      "summary_line": "All three pipelines correct. Agentic spent 4.0x RAG and 11.8x GraphRAG tokens for no accuracy gain - an underspecified anchor sent a single-retrieval question into the loop. Overkill for this question type."
+    }
+  },
+  "multi_hop": {
+    "query_id": "fixture-multi-hop",
+    "query_text": "Which nation won the most gold medals in athletics at the Games immediately before the 2012 Summer Olympics?",
+    "qtype": "multi_hop",
+    "timestamp": "2026-09-21T09:23:10Z",
+    "pipelines": {
+      "rag": {
+        "pipeline": "rag",
+        "answer": "China",
+        "explanation": "Passages about the 2008 Summer Olympics medal table rank China first overall [Q8567]. The retrieved set does not separate athletics from the full programme, so the answer reflects the overall table rather than the sport asked about.",
+        "citations": [
+          { "source_id": "Q8567", "chunk_id": "Q8567::c04", "ref_type": "chunk" },
+          { "source_id": "Q8567", "chunk_id": "Q8567::c09", "ref_type": "chunk" },
+          { "source_id": "Q1191846", "chunk_id": "Q1191846::c02", "ref_type": "chunk" },
+          { "source_id": "Q2887145", "chunk_id": "Q2887145::c05", "ref_type": "chunk" }
+        ],
+        "chunks_returned": 10,
+        "citations_count": 4,
+        "tokens": { "input": 2620, "output": 140, "total": 2760 },
+        "token_source": "provider",
+        "latency_ms": 1910,
+        "trace": null,
+        "strategy_changed": null,
+        "stop_reason": null,
+        "status": "done",
+        "error_detail": null
+      },
+      "graphrag": {
+        "pipeline": "graphrag",
+        "answer": "2008 Summer Olympics",
+        "explanation": "Q4 traversed PREV_EDITION from the 2012-Summer anchor and returned the preceding Games. With one query and no loop there was no second hop to aggregate gold medallists by nation, so the traversal result itself was returned.",
+        "citations": [
+          { "source_id": "Q8567", "chunk_id": null, "ref_type": "entity" },
+          { "source_id": "Q8577", "chunk_id": null, "ref_type": "relationship" }
+        ],
+        "chunks_returned": 0,
+        "citations_count": 2,
+        "tokens": { "input": 950, "output": 82, "total": 1032 },
+        "token_source": "provider",
+        "latency_ms": 1180,
+        "trace": null,
+        "strategy_changed": null,
+        "stop_reason": null,
+        "status": "done",
+        "error_detail": null
+      },
+      "agentic_graphrag": {
+        "pipeline": "agentic_graphrag",
+        "answer": "United States",
+        "explanation": "PREV_EDITION was unresolved on the first traversal, so the orchestrator changed strategy and fell back to year arithmetic over the Games cadence, resolving 2012-Summer to 2008-Summer. Q3 then took an argmax over gold_noc across all 47 athletics events in scope: USA 7, Russia 6, Jamaica 6.",
+        "citations": [
+          { "source_id": "Q8567", "chunk_id": null, "ref_type": "entity" },
+          { "source_id": "Q8577", "chunk_id": null, "ref_type": "relationship" },
+          { "source_id": "Q1146294", "chunk_id": null, "ref_type": "entity" },
+          { "source_id": "Q1146301", "chunk_id": null, "ref_type": "entity" },
+          { "source_id": "Q1146318", "chunk_id": null, "ref_type": "entity" },
+          { "source_id": "Q1146322", "chunk_id": null, "ref_type": "entity" },
+          { "source_id": "Q1146340", "chunk_id": null, "ref_type": "entity" },
+          { "source_id": "Q1146357", "chunk_id": null, "ref_type": "entity" },
+          { "source_id": "Q1146366", "chunk_id": null, "ref_type": "entity" }
+        ],
+        "chunks_returned": 0,
+        "citations_count": 9,
+        "tokens": { "input": 11840, "output": 1020, "total": 12860 },
+        "token_source": "provider",
+        "latency_ms": 4980,
+        "trace": [
+          {
+            "step_n": 1,
+            "agent_type": "entity_linking",
+            "tool_called": "intent_parser",
+            "tokens": { "input": 680, "output": 104 },
+            "chunks_returned": 0,
+            "citations_count": 0,
+            "latency_ms": 840,
+            "strategy_change": false,
+            "notes": "operation=TRAVERSE, anchor={games: 2012-Summer, sport: Athletics}, target_field=gold_noc; traversal routes to the agentic loop"
+          },
+          {
+            "step_n": 2,
+            "agent_type": "graph_traversal",
+            "tool_called": "Q4 traverse",
+            "tokens": { "input": 0, "output": 0 },
+            "chunks_returned": 0,
+            "citations_count": 0,
+            "latency_ms": 180,
+            "strategy_change": false,
+            "notes": "PREV_EDITION from Games 2012-Summer returned no edge - the infobox prev field is absent on 6.6% of events"
+          },
+          {
+            "step_n": 3,
+            "agent_type": "evidence_evaluation",
+            "tool_called": "evidence_evaluator",
+            "tokens": { "input": 1920, "output": 118 },
+            "chunks_returned": 0,
+            "citations_count": 0,
+            "latency_ms": 720,
+            "strategy_change": false,
+            "notes": "Insufficient: preceding Games unresolved, 0 candidate events in scope"
+          },
+          {
+            "step_n": 4,
+            "agent_type": "multi_hop_reasoning",
+            "tool_called": "Q4 traverse",
+            "tokens": { "input": 0, "output": 0 },
+            "chunks_returned": 0,
+            "citations_count": 9,
+            "latency_ms": 210,
+            "strategy_change": true,
+            "notes": "Strategy change - year-arithmetic fallback on the Games cadence resolved 2012-Summer to 2008-Summer; 47 athletics events now in scope"
+          },
+          {
+            "step_n": 5,
+            "agent_type": "aggregation",
+            "tool_called": "Q3 argmax",
+            "tokens": { "input": 0, "output": 0 },
+            "chunks_returned": 0,
+            "citations_count": 9,
+            "latency_ms": 260,
+            "strategy_change": false,
+            "notes": "HeapAccum over gold_noc across 47 events: USA 7, RUS 6, JAM 6"
+          },
+          {
+            "step_n": 6,
+            "agent_type": "evidence_evaluation",
+            "tool_called": "evidence_evaluator",
+            "tokens": { "input": 9240, "output": 798 },
+            "chunks_returned": 0,
+            "citations_count": 9,
+            "latency_ms": 2480,
+            "strategy_change": false,
+            "notes": "Scope coverage 47/47; groundedness check passed; answer generated"
+          }
+        ],
+        "strategy_changed": true,
+        "stop_reason": "evidence_sufficient",
+        "status": "done",
+        "error_detail": null
+      }
+    },
+    "verdict": {
+      "token_multiplier_vs_rag": 4.66,
+      "token_multiplier_vs_graphrag": 12.46,
+      "accuracy_delta_vs_rag": 1.0,
+      "accuracy_delta_vs_graphrag": 1.0,
+      "summary_line": "Only the agentic path chained PREV_EDITION into an argmax, and only after one strategy change when the edge was missing. It cost 4.7x RAG and 12.5x GraphRAG tokens and was the only correct answer."
+    }
+  },
+  "default": {
+    "query_id": "fixture-default",
+    "query_text": "In which year were the Summer Olympics first held in Tokyo?",
+    "qtype": "temporal",
+    "timestamp": "2026-09-21T09:27:31Z",
+    "pipelines": {
+      "rag": {
+        "pipeline": "rag",
+        "answer": "1964",
+        "explanation": "Retrieved passages date the first Tokyo Summer Games to 1964 [Q8558].",
+        "citations": [
+          { "source_id": "Q8558", "chunk_id": "Q8558::c01", "ref_type": "chunk" },
+          { "source_id": "Q8558", "chunk_id": "Q8558::c06", "ref_type": "chunk" }
+        ],
+        "chunks_returned": 10,
+        "citations_count": 2,
+        "tokens": { "input": 2200, "output": 130, "total": 2330 },
+        "token_source": "provider",
+        "latency_ms": 1700,
+        "trace": null,
+        "strategy_changed": null,
+        "stop_reason": null,
+        "status": "done",
+        "error_detail": null
+      },
+      "graphrag": {
+        "pipeline": "graphrag",
+        "answer": "1964",
+        "explanation": "Q1 read the year attribute of the Games vertex 1964-Summer.",
+        "citations": [{ "source_id": "Q8558", "chunk_id": null, "ref_type": "entity" }],
+        "chunks_returned": 0,
+        "citations_count": 1,
+        "tokens": { "input": 810, "output": 70, "total": 880 },
+        "token_source": "provider",
+        "latency_ms": 1090,
+        "trace": null,
+        "strategy_changed": null,
+        "stop_reason": null,
+        "status": "done",
+        "error_detail": null
+      },
+      "agentic_graphrag": {
+        "pipeline": "agentic_graphrag",
+        "answer": "1964",
+        "explanation": "Traversal over Games editions hosted in Tokyo returned 1964-Summer as the earliest, confirmed by prose expansion over the host-city document.",
+        "citations": [
+          { "source_id": "Q8558", "chunk_id": null, "ref_type": "entity" },
+          { "source_id": "Q8567", "chunk_id": "Q8567::c02", "ref_type": "chunk" }
+        ],
+        "chunks_returned": 3,
+        "citations_count": 2,
+        "tokens": { "input": 3520, "output": 390, "total": 3910 },
+        "token_source": "provider",
+        "latency_ms": 2650,
+        "trace": [
+          {
+            "step_n": 1,
+            "agent_type": "entity_linking",
+            "tool_called": "intent_parser",
+            "tokens": { "input": 600, "output": 80 },
+            "chunks_returned": 0,
+            "citations_count": 0,
+            "latency_ms": 760,
+            "strategy_change": false,
+            "notes": "operation=TRAVERSE, anchor={venue: null, games: null}, target_field=year"
+          },
+          {
+            "step_n": 2,
+            "agent_type": "graph_traversal",
+            "tool_called": "Q4 traverse",
+            "tokens": { "input": 0, "output": 0 },
+            "chunks_returned": 0,
+            "citations_count": 2,
+            "latency_ms": 190,
+            "strategy_change": false,
+            "notes": "Expanded Games editions hosted in Tokyo, ordered by year"
+          },
+          {
+            "step_n": 3,
+            "agent_type": "document_retrieval",
+            "tool_called": "HAS_CHUNK expansion",
+            "tokens": { "input": 0, "output": 0 },
+            "chunks_returned": 3,
+            "citations_count": 2,
+            "latency_ms": 150,
+            "strategy_change": false,
+            "notes": "Prose fallback over the host-city document to confirm the earliest edition"
+          },
+          {
+            "step_n": 4,
+            "agent_type": "evidence_evaluation",
+            "tool_called": "evidence_evaluator",
+            "tokens": { "input": 2920, "output": 310 },
+            "chunks_returned": 3,
+            "citations_count": 2,
+            "latency_ms": 1320,
+            "strategy_change": false,
+            "notes": "Groundedness check passed; answer generated"
+          }
+        ],
+        "strategy_changed": false,
+        "stop_reason": "evidence_sufficient",
+        "status": "done",
+        "error_detail": null
+      }
+    },
+    "verdict": {
+      "token_multiplier_vs_rag": 1.68,
+      "token_multiplier_vs_graphrag": 4.44,
+      "accuracy_delta_vs_rag": "n/a",
+      "accuracy_delta_vs_graphrag": "n/a",
+      "summary_line": "No ground truth is available for this query, so the accuracy delta is N/A. Agentic cost 1.7x RAG and 4.4x GraphRAG tokens."
+    }
+  }
+}

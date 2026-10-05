@@ -1,0 +1,89 @@
+USE GRAPH OlympicGraphRAG
+
+// Q1: lookup(title | event_id, target_field) — TECHNICAL-SPEC §3.
+// Primary-ID hash lookup, serves the LOOKUP operation and the Q4->Q1 chain
+// in multi_hop.py. `target_field` is accepted for documentation and future
+// server-side projection, but is not used to select attributes inside this
+// query: PRINT already returns every OlympicEvent attribute, and
+// client.py's `_normalize_q5_results`/agent code already picks the
+// requested field out of the full attribute dict on the Python side
+// (`attrs.get(target_field, ...)`) — so this query does not need to know
+// attribute names dynamically, which GSQL cannot do anyway.
+//
+// Callers pass either `event_id` (multi_hop.py, orchestrator's direct
+// lookup) or `title` (orchestrator's direct lookup when only a name was
+// resolved); both parameters default to empty so either call shape works
+// without error.
+
+CREATE OR REPLACE QUERY q1_lookup(STRING title = "", STRING event_id = "", STRING target_field = "")
+FOR GRAPH OlympicGraphRAG SYNTAX V2 {
+
+  // GSQL tuple fields must be primitive types — LIST/SET are rejected by the
+  // parser. The medal fields are therefore flattened to "; "-joined strings.
+  // Nothing on the Python side treats them as lists (they are read out of the
+  // flat evidence dict by name and fed to the prompt as text).
+  TYPEDEF TUPLE<
+    STRING event_id, STRING event_name, STRING doc_id, STRING title,
+    INT competitors, STRING competitors_text, INT nations, STRING nations_text,
+    STRING date_text, INT date_year, INT date_month, INT date_day_start, INT date_day_end,
+    STRING gold, STRING silver, STRING bronze,
+    STRING gold_noc, STRING win_value, STRING win_label, FLOAT parse_confidence
+  > EventRow;
+  ListAccum<EventRow> @@rows;
+
+  SumAccum<STRING> @doc_id;
+  SumAccum<STRING> @title;
+  SumAccum<STRING> @gold_s;
+  SumAccum<STRING> @silver_s;
+  SumAccum<STRING> @bronze_s;
+
+  Candidates = {OlympicEvent.*};
+  // A title may be the page title ("Biathlon at the 2022 Winter Olympics –
+  // Women's relay"): the event that page DESCRIBES is a candidate too, so a
+  // page-title lookup returns the event's attributes, not just the Document.
+  ByPage = SELECT e FROM Document:d -(DESCRIBES>)- OlympicEvent:e
+           WHERE title != "" AND d.title == title;
+  IF event_id != "" THEN
+    Candidates = SELECT e FROM Candidates:e WHERE e.event_id == event_id;
+  ELSE IF title != "" THEN
+    Candidates = SELECT e FROM Candidates:e WHERE e.event_name == title;
+    Candidates = Candidates UNION ByPage;
+  ELSE
+    Candidates = SELECT e FROM Candidates:e WHERE FALSE;
+  END;
+
+  // Resolve each event's parent Document.doc_id via the reverse DESCRIBES
+  // edge (declared WITH REVERSE_EDGE="reverse_DESCRIBES" in schema.gsql) —
+  // OlympicEvent itself does not store doc_id.
+  Resolved = SELECT e FROM Candidates:e -(reverse_DESCRIBES>:conn)- Document:doc
+             ACCUM e.@doc_id += doc.doc_id, e.@title += doc.title
+             POST-ACCUM
+               FOREACH g IN e.gold DO e.@gold_s += g + "; " END,
+               FOREACH sv IN e.silver DO e.@silver_s += sv + "; " END,
+               FOREACH b IN e.bronze DO e.@bronze_s += b + "; " END,
+               @@rows += EventRow(
+                 e.event_id, e.event_name, e.@doc_id, e.@title,
+                 e.competitors, e.competitors_text, e.nations, e.nations_text,
+                 e.date_text, e.date_year, e.date_month, e.date_day_start, e.date_day_end,
+                 e.@gold_s, e.@silver_s, e.@bronze_s,
+                 e.gold_noc, e.win_value, e.win_label,
+                 e.parse_confidence
+               );
+
+  IF @@rows.size() > 0 THEN
+    PRINT @@rows AS results;
+  ELSE IF title != "" THEN
+    // Fall back to a direct Document-title match (a page that describes no
+    // event). NOTE: shape divergence — this branch prints
+    // Document vertices ({v_id, attributes: {doc_id, title, url, ...}}) under
+    // the same `results` alias the branches above use for EventRow tuples.
+    // client._run_query and the agents read results generically by key, which
+    // is why both shapes work; a consumer that assumes EventRow must check.
+    DocMatches = SELECT d FROM Document:d WHERE d.title == title;
+    PRINT DocMatches AS results;
+  ELSE
+    PRINT @@rows AS results;
+  END;
+}
+
+INSTALL QUERY q1_lookup

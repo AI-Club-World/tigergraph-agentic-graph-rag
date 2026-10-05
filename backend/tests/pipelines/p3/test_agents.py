@@ -1,0 +1,235 @@
+"""Tests for Group 3: Tool agents (one conformance test per agent).
+
+Verification Plan Group 3:
+- One conformance test per agent returning AgentResult
+"""
+
+from __future__ import annotations
+
+import json
+
+import pytest
+from unittest.mock import MagicMock, patch
+
+from ogr.graph.client import TigerGraphClient
+from ogr.common.config import RunConfig
+from ogr.pipelines.p3_agentic.agents.agent_result import AgentResult
+from ogr.pipelines.p3_agentic.agents.entity_linking import ResolvedAnchors
+from ogr.pipelines.p3_agentic.intent import Anchor, AnchorConstraint, IntentSchema
+
+
+def _make_client(mock_query_results=None, mock_chunks=None):
+    client = TigerGraphClient(config=RunConfig(), mock_chunks=mock_chunks or [])
+    if mock_query_results is not None:
+        client._run_query = MagicMock(return_value=mock_query_results)
+    return client
+
+
+def _make_anchors(**kwargs) -> ResolvedAnchors:
+    return ResolvedAnchors(**kwargs)
+
+
+class TestGraphTraversalConformance:
+    def test_returns_agent_result(self):
+        from ogr.pipelines.p3_agentic.agents.graph_traversal import run_graph_traversal
+        client = _make_client(mock_query_results=[
+            {"v_id": "Q123_event", "attributes": {"event_id": "Q123", "event_name": "Previous Event", "doc_id": "Q200"}}
+        ])
+        anchors = _make_anchors(title="Triathlon at 2016 Olympics")
+        result = run_graph_traversal(client, anchors, edge_type="PREV_EDITION", hops=1)
+        assert isinstance(result, AgentResult)
+        assert isinstance(result.chunks_returned, int)
+        assert isinstance(result.citations_count, int)
+        assert isinstance(result.latency_ms, float)
+        assert result.latency_ms >= 0.0
+
+    def test_empty_anchor_returns_error_result(self):
+        from ogr.pipelines.p3_agentic.agents.graph_traversal import run_graph_traversal
+        client = _make_client(mock_query_results=[])
+        anchors = _make_anchors()  # no title, no event_id, no venue
+        result = run_graph_traversal(client, anchors)
+        assert result.error is not None
+
+
+class TestSimilaritySearchConformance:
+    def test_returns_agent_result(self):
+        from ogr.pipelines.p3_agentic.agents.similarity_search import run_similarity_search
+        mock_chunks = [
+            {"chunk_id": "Q1_c0", "doc_id": "Q1", "text": "Some text", "score": 0.9, "vtype": "Chunk"},
+        ]
+        client = TigerGraphClient(config=RunConfig(), mock_chunks=mock_chunks)
+        result = run_similarity_search(
+            client,
+            query="Test query",
+            k=5,
+            triggered_by="scope_coverage_fail",
+        )
+        assert isinstance(result, AgentResult)
+        assert result.strategy_change is True  # always a strategy deviation
+        assert result.chunks_returned >= 0
+        assert isinstance(result.latency_ms, float)
+
+    def test_strategy_change_always_true(self):
+        from ogr.pipelines.p3_agentic.agents.similarity_search import run_similarity_search
+        client = TigerGraphClient(config=RunConfig(), mock_chunks=[])
+        result = run_similarity_search(client, query="test", k=5)
+        assert result.strategy_change is True
+
+
+class TestDocumentRetrievalConformance:
+    def test_returns_agent_result(self):
+        from ogr.pipelines.p3_agentic.agents.document_retrieval import run_document_retrieval
+        mock_chunks = [
+            {"chunk_id": "Q500_c0", "doc_id": "Q500", "text": "Prose text", "vtype": "Chunk"},
+        ]
+        client = TigerGraphClient(config=RunConfig(), mock_chunks=mock_chunks)
+        result = run_document_retrieval(client, doc_ids=["Q500"], triggered_by="groundedness_fail")
+        assert isinstance(result, AgentResult)
+        assert result.strategy_change is True  # prose fallback is always a deviation
+        assert isinstance(result.chunks_returned, int)
+
+    def test_no_doc_ids_returns_error(self):
+        from ogr.pipelines.p3_agentic.agents.document_retrieval import run_document_retrieval
+        client = TigerGraphClient(config=RunConfig(), mock_chunks=[])
+        result = run_document_retrieval(client, doc_ids=None)
+        assert result.error is not None
+
+
+class TestAggregationConformance:
+    def test_count_returns_agent_result(self):
+        from ogr.pipelines.p3_agentic.agents.aggregation import run_aggregation
+        client = _make_client(mock_query_results=[
+            {"attributes": {"count": 26, "doc_id": "Q100"}}
+        ])
+        intent = IntentSchema(
+            operation="COUNT",
+            anchor=Anchor(sport="Sailing", games="2016-Summer"),
+            target_field="nations",
+        )
+        anchors = _make_anchors(sport="Sailing", games="2016-Summer")
+        result = run_aggregation(client, intent, anchors)
+        assert isinstance(result, AgentResult)
+        assert isinstance(result.chunks_returned, int)
+        assert isinstance(result.latency_ms, float)
+
+    def test_count_lists_the_counted_events_so_they_can_be_cited(self):
+        """Q2 prints the count, then its members; the count stays Q2's."""
+        from ogr.pipelines.p3_agentic.agents.aggregation import MAX_COUNT_MEMBERS, run_aggregation
+        members = [
+            {"event_id": f"sailing-2016-e{i:02d}", "event_name": f"Event {i}", "doc_id": f"Q{i}",
+             "title": f"Sailing at the 2016 Summer Olympics – Event {i}"}
+            for i in range(MAX_COUNT_MEMBERS + 5)
+        ]
+        client = _make_client(mock_query_results=[
+            {"count_value": 35, "excluded_count": 0}, {"members": members},
+        ])
+        intent = IntentSchema(operation="COUNT", anchor=Anchor(sport="Sailing", games="2016-Summer"))
+        result = run_aggregation(client, intent, _make_anchors(sport="Sailing", games="2016-Summer"))
+        head, rest = result.evidence[0], result.evidence[1:]
+        assert head["count"] == 35
+        assert head["counted_events_listed"] == f"{MAX_COUNT_MEMBERS} of 35"
+        assert len(rest) == MAX_COUNT_MEMBERS
+        assert rest[0] == {
+            "counted_event": "Event 0", "title": "Sailing at the 2016 Summer Olympics – Event 0",
+            "event_id": "sailing-2016-e00", "doc_id": "Q0", "source": "aggregation_count",
+        }
+
+    def test_count_row_says_what_it_counted_and_members_show_the_filtered_value(self):
+        from ogr.pipelines.p3_agentic.agents.aggregation import run_aggregation
+        client = _make_client(mock_query_results=[
+            {"count_value": 1, "excluded_count": 0},
+            {"members": [{"event_id": "b1", "event_name": "Sprint", "doc_id": "Q9", "title": "T",
+                          "competitors": 90, "nations": 30, "date_year": 2006}]},
+        ])
+        intent = IntentSchema(
+            operation="COUNT", anchor=Anchor(sport="Biathlon", games="2006-Winter"),
+            constraints=[AnchorConstraint(field="competitors", op=">", value=72)],
+        )
+        result = run_aggregation(client, intent, _make_anchors(sport="Biathlon", games="2006-Winter"))
+        assert result.evidence[0]["counted"] == "Olympic events in Biathlon at 2006-Winter with competitors > 72"
+        assert list(result.evidence[1])[:6] == [
+            "counted_event", "title", "competitors", "date_year", "nations", "event_id",
+        ]
+
+    def test_argmax_returns_agent_result(self):
+        from ogr.pipelines.p3_agentic.agents.aggregation import run_aggregation
+        client = _make_client(mock_query_results=[
+            {"v_id": "Q200", "attributes": {"event_id": "Q200", "event_name": "Top Event", "win_value": "USA"}}
+        ])
+        intent = IntentSchema(
+            operation="ARGMAX",
+            anchor=Anchor(sport="Swimming", games="2008-Summer"),
+            target_field="gold_noc",
+        )
+        anchors = _make_anchors(sport="Swimming", games="2008-Summer")
+        result = run_aggregation(client, intent, anchors)
+        assert isinstance(result, AgentResult)
+
+    def test_invalid_operation_returns_error(self):
+        from ogr.pipelines.p3_agentic.agents.aggregation import run_aggregation
+        client = _make_client(mock_query_results=[])
+        intent = IntentSchema(operation="LOOKUP")
+        anchors = _make_anchors()
+        result = run_aggregation(client, intent, anchors)
+        assert result.error is not None
+
+
+class TestMultiHopConformance:
+    def test_returns_agent_result(self):
+        from ogr.pipelines.p3_agentic.agents.multi_hop import run_multi_hop
+        client = _make_client(mock_query_results=[])
+        intent = IntentSchema(
+            operation="TRAVERSE",
+            anchor=Anchor(title="Triathlon at the 2016 Summer Olympics"),
+            target_field="sport_name",
+        )
+        anchors = _make_anchors(title="Triathlon at the 2016 Summer Olympics")
+        result = run_multi_hop(client, intent, anchors)
+        assert isinstance(result, AgentResult)
+        assert isinstance(result.chunks_returned, int)
+        assert isinstance(result.latency_ms, float)
+
+    def test_empty_anchor_returns_error(self):
+        from ogr.pipelines.p3_agentic.agents.multi_hop import run_multi_hop
+        client = _make_client(mock_query_results=[])
+        intent = IntentSchema(operation="TRAVERSE")
+        anchors = _make_anchors()
+        result = run_multi_hop(client, intent, anchors)
+        assert result.error is not None
+
+
+class TestRowsCarryThePageTitle:
+    """Gold answers are page titles; graph rows carry them so the model can answer with one."""
+
+    def test_traverse_rows_keep_the_title(self):
+        from ogr.pipelines.p3_agentic.agents.graph_traversal import _normalize_traverse_results
+        row = _normalize_traverse_results([{
+            "event_id": "e1", "event_name": "Soling", "doc_id": "Q7400327",
+            "title": "Sailing at the 2000 Summer Olympics – Soling",
+        }])[0]
+        assert row["title"] == "Sailing at the 2000 Summer Olympics – Soling"
+
+    def test_argmax_rows_keep_the_title(self):
+        from ogr.pipelines.p3_agentic.agents.aggregation import _normalize_argmax_results
+        row = _normalize_argmax_results([{
+            "event_id": "e1", "event_name": "Fleet/Match", "doc_id": "Q7400327",
+            "title": "Sailing at the 2000 Summer Olympics – Soling", "value": 48,
+        }])[0]
+        assert row["title"] == "Sailing at the 2000 Summer Olympics – Soling"
+
+
+def test_q2_maps_the_parsers_field_names_to_its_own():
+    """r2 pub-070: "participants > 36" was dropped as unsupported."""
+    from ogr.pipelines.p3_agentic.agents.aggregation import run_aggregation
+
+    client = _make_client(mock_query_results=[{"count_value": 3, "excluded_count": 0}])
+    intent = IntentSchema(
+        operation="COUNT", anchor=Anchor(sport="Speed skating", games="2010-Winter"),
+        target_field="participants",
+        constraints=[AnchorConstraint(field="participants", op=">", value=36)],
+    )
+    result = run_aggregation(client, intent, _make_anchors(sport="Speed skating", games="2010-Winter"))
+    params = client._run_query.call_args.args[1]
+    assert json.loads(params["constraints_json"]) == [{"field": "competitors", "op": ">", "value": 36.0}]
+    assert params["field"] == "competitors"
+    assert "ignored" not in result.notes

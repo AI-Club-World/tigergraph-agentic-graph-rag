@@ -1,0 +1,120 @@
+USE GRAPH OlympicGraphRAG
+
+// Q2: count_where(anchor_sport, anchor_games, anchor_venue, constraints_json, field)
+// TECHNICAL-SPEC §3. Widened per the cross-module intent-schema finding to
+// accept a venue anchor and a *list* of constraints (up to 2 here — the
+// five question types this system answers do not produce more than two
+// numeric constraints per question in practice; a third is ignored rather
+// than erroring).
+//
+// `constraints_json` is the exact JSON the intent parser emits:
+// `[{"field": "competitors", "op": ">", "value": 73}, ...]`. Only the
+// attributes that are genuinely numeric on OlympicEvent are constrainable
+// (competitors, nations, date_year) — GSQL is statically typed, so a
+// dynamic "compare vertex.<field-named-by-string>" is not expressible, and
+// this is the fixed, small set DP-2/DP-1 actually produce.
+//
+// Rows with `parse_confidence < 0.9` are excluded from the count and
+// reported separately as `excluded_count` (DP-2 Option A) — the system
+// states what it could not parse rather than silently dropping it.
+//
+// The counted events are printed too (a second block: event_id, event_name,
+// doc_id, title and the constrainable values), so a count answer can cite the events behind it. The first block
+// stays the count: TigerGraphClient._run_query unwraps only a list in the
+// first block, and the aggregation agent reads both.
+
+CREATE OR REPLACE QUERY q2_count_where(
+  STRING anchor_sport = "", STRING anchor_games = "", STRING anchor_venue = "",
+  STRING constraints_json = "[]", STRING field = "competitors"
+) FOR GRAPH OlympicGraphRAG SYNTAX V2 {
+
+  TYPEDEF TUPLE<STRING event_id, STRING event_name, STRING doc_id, STRING title, INT competitors, INT nations, INT date_year> Member;
+  SumAccum<INT> @@count;
+  SumAccum<INT> @@excluded_count;
+  OrAccum @counted;
+  ListAccum<Member> @@members;
+
+  Events = {OlympicEvent.*};
+  IF anchor_sport != "" THEN
+    Events = SELECT e FROM Events:e -(IN_SPORT>)- Sport:s WHERE s.sport_name == anchor_sport;
+  END;
+  IF anchor_games != "" THEN
+    Events = SELECT e FROM Events:e -(AT_GAMES>)- Games:g WHERE g.games_id == anchor_games;
+  END;
+  IF anchor_venue != "" THEN
+    Events = SELECT e FROM Events:e -(HELD_AT>)- Venue:v WHERE v.venue_name == anchor_venue;
+  END;
+
+  // The constraint JSON is decoded once, at query-body scope, into plain
+  // scalars. JSONOBJECT locals declared inside ACCUM cannot call their
+  // accessor methods (TYP-1001), and the decode does not depend on the
+  // vertex anyway.
+  JSONARRAY constraintArray = parse_json_array(constraints_json);
+  INT numConstraints = constraintArray.size();
+  STRING f0 = "";
+  STRING op0 = "";
+  DOUBLE v0 = 0.0;
+  STRING f1 = "";
+  STRING op1 = "";
+  DOUBLE v1 = 0.0;
+
+  IF numConstraints >= 1 THEN
+    JSONOBJECT c0 = constraintArray.getJsonObject(0);
+    f0 = c0.getString("field");
+    op0 = c0.getString("op");
+    v0 = c0.getDouble("value");
+  END;
+  // A third or later constraint is ignored, see header note.
+  IF numConstraints >= 2 THEN
+    JSONOBJECT c1 = constraintArray.getJsonObject(1);
+    f1 = c1.getString("field");
+    op1 = c1.getString("op");
+    v1 = c1.getDouble("value");
+  END;
+
+  Matched = SELECT e FROM Events:e
+    ACCUM
+      BOOL passes = TRUE,
+      DOUBLE actual0 = 0.0,
+      DOUBLE actual1 = 0.0,
+      IF numConstraints >= 1 THEN
+        IF f0 == "competitors" THEN actual0 = e.competitors
+        ELSE IF f0 == "nations" THEN actual0 = e.nations
+        ELSE IF f0 == "date_year" THEN actual0 = e.date_year
+        ELSE passes = FALSE END END END,
+        IF op0 == ">" AND NOT (actual0 > v0) THEN passes = FALSE END,
+        IF op0 == "<" AND NOT (actual0 < v0) THEN passes = FALSE END,
+        IF op0 == ">=" AND NOT (actual0 >= v0) THEN passes = FALSE END,
+        IF op0 == "<=" AND NOT (actual0 <= v0) THEN passes = FALSE END,
+        IF op0 == "=" AND NOT (actual0 == v0) THEN passes = FALSE END
+      END,
+      IF numConstraints >= 2 THEN
+        IF f1 == "competitors" THEN actual1 = e.competitors
+        ELSE IF f1 == "nations" THEN actual1 = e.nations
+        ELSE IF f1 == "date_year" THEN actual1 = e.date_year
+        ELSE passes = FALSE END END END,
+        IF op1 == ">" AND NOT (actual1 > v1) THEN passes = FALSE END,
+        IF op1 == "<" AND NOT (actual1 < v1) THEN passes = FALSE END,
+        IF op1 == ">=" AND NOT (actual1 >= v1) THEN passes = FALSE END,
+        IF op1 == "<=" AND NOT (actual1 <= v1) THEN passes = FALSE END,
+        IF op1 == "=" AND NOT (actual1 == v1) THEN passes = FALSE END
+      END,
+      IF passes THEN
+        IF e.parse_confidence >= 0.9 THEN
+          @@count += 1,
+          e.@counted += TRUE
+        ELSE
+          @@excluded_count += 1
+        END
+      END;
+
+  Members = SELECT e FROM Matched:e -(reverse_DESCRIBES>)- Document:doc
+    WHERE e.@counted
+    ACCUM @@members += Member(e.event_id, e.event_name, doc.doc_id, doc.title, e.competitors, e.nations, e.date_year);
+
+  // `count` is a GSQL reserved word and cannot be a PRINT alias.
+  PRINT @@count AS count_value, @@excluded_count AS excluded_count;
+  PRINT @@members AS members;
+}
+
+INSTALL QUERY q2_count_where

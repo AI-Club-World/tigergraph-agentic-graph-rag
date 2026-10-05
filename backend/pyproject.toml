@@ -1,0 +1,69 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ogr"
+version = "0.1.0"
+description = "Olympic Graph RAG system"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.0.0",
+    "python-dotenv>=1.0.0",
+    # Fixed stack per TECHNICAL-SPEC §1. LangGraph drives the P3
+    # StateGraph; LangChain is the single provider boundary in common/llm.py.
+    "langchain-core>=0.3",
+    "langchain-openai>=0.2",
+    # Native Claude and Gemini clients, selected by LLM_PROVIDER in common/llm.py.
+    "langchain-anthropic>=1.0",
+    "langchain-google-genai>=3.0",
+    "langgraph>=0.2",
+    # Vectors and graph both live in TigerGraph — no external index.
+    # >=2.0: per-thread HTTP sessions, which graph/client.py relies on to share
+    # one connection across concurrently running pipelines.
+    "pyTigerGraph>=2.0",
+    "sentence-transformers>=3.0",
+    # API-01, per TECHNICAL-SPEC §1.
+    "fastapi>=0.110",
+    "sse-starlette>=2.0",
+    "uvicorn>=0.29",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.6",
+]
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = [
+    # Lazy imports inside functions are deliberate: they keep `import ogr.*`
+    # working without the heavy optional stack installed.
+    "E402",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests keep the substantive rules (F, B) but are exempt from the two purely
+# stylistic ones. CI runs a no-test-modified check (ARCHITECTURE-SPEC,
+# Engineering guards) precisely
+# so tests are not edited casually; reformatting them to satisfy a line-length
+# rule is exactly the casual edit that check exists to catch.
+"tests/**" = ["E501", "I001", "F401"]
+# FastAPI's own dependency-injection idiom is `Depends(...)` as a default
+# argument value — that is how the framework is designed to be used, not an
+# accidental mutable-default bug bugbear is otherwise right to catch.
+"src/ogr/api/**" = ["B008"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

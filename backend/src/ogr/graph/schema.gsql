@@ -1,0 +1,150 @@
+// GRAPH-01: schema for OlympicGraphRAG.
+// Source spec: TECHNICAL-SPEC.md §2.1/§2.2, amended by graph decisions
+// (ARCHITECTURE-SPEC, Decision log) DP-1 (date_month/date_day_start/date_day_end/date_year as typed INTs),
+// DP-2 (competitors_text / nations_text retained alongside the typed INT),
+// DP-5 (bronze as a SET<STRING> for third-place ties).
+//
+// Idempotent: drops the graph and every type it owns before recreating them,
+// so re-running this file against a workspace that already has
+// OlympicGraphRAG installed does not error. Run/Step vertices are cut.
+//
+// Embedding layout (config-docs/EMBEDDING-SWITCHING.md): a Chunk is stored
+// once and carries no vector. Each selectable embedding model owns one
+// Embedding_* vertex type — primary id = the chunk_id it embeds, one HNSW
+// index on its `emb` — linked from its Chunk by HAS_EMBEDDING. The five
+// types always exist, so Q5 always compiles; a model that is not stored
+// simply has no vertices (and so an empty index). Keep in step with
+// common/embedding_models.py (test_embedding_schema checks it).
+
+USE GLOBAL
+
+// CASCADE because the installed Q1-Q5 are dependent objects: a plain DROP
+// GRAPH succeeds only while no queries exist, so without this the second
+// install of the schema fails and leaves the old vertex types in place.
+// Re-running this file therefore requires re-running install_queries after.
+DROP GRAPH OlympicGraphRAG CASCADE
+// Edges first: a vertex type that still carries an edge type cannot be
+// dropped ("Please drop the edges first!"), which leaves the second run
+// unable to recreate the vertices it failed to drop.
+DROP EDGE DESCRIBES
+DROP EDGE AT_GAMES
+DROP EDGE IN_SPORT
+DROP EDGE HELD_AT
+DROP EDGE PREV_EDITION
+DROP EDGE NEXT_EDITION
+DROP EDGE HAS_CHUNK
+DROP EDGE HAS_EMBEDDING
+DROP VERTEX Document
+DROP VERTEX OlympicEvent
+DROP VERTEX Games
+DROP VERTEX Sport
+DROP VERTEX Venue
+DROP VERTEX Chunk
+DROP VERTEX Embedding_Qwen
+DROP VERTEX Embedding_EmbeddingGemma
+DROP VERTEX Embedding_GteLarge
+DROP VERTEX Embedding_Mxbai
+DROP VERTEX Embedding_BGELarge
+
+CREATE VERTEX Document (
+  PRIMARY_ID doc_id STRING,
+  title STRING,
+  url STRING,
+  infobox_type STRING,
+  approx_tokens INT,
+  wikipedia_pageid STRING
+) WITH PRIMARY_ID_AS_ATTRIBUTE="true"
+
+CREATE VERTEX OlympicEvent (
+  PRIMARY_ID event_id STRING,
+  event_name STRING,
+  competitors INT,
+  competitors_text STRING,
+  nations INT,
+  nations_text STRING,
+  date_text STRING,
+  date_month INT,
+  date_day_start INT,
+  date_day_end INT,
+  date_year INT,
+  gold LIST<STRING>,
+  silver LIST<STRING>,
+  bronze SET<STRING>,
+  gold_noc STRING,
+  win_value STRING,
+  win_label STRING,
+  parse_confidence FLOAT
+) WITH PRIMARY_ID_AS_ATTRIBUTE="true"
+
+CREATE VERTEX Games (
+  PRIMARY_ID games_id STRING,
+  year INT,
+  season STRING
+) WITH PRIMARY_ID_AS_ATTRIBUTE="true"
+
+CREATE VERTEX Sport (
+  PRIMARY_ID sport_name STRING
+) WITH PRIMARY_ID_AS_ATTRIBUTE="true"
+
+CREATE VERTEX Venue (
+  PRIMARY_ID venue_name STRING
+) WITH PRIMARY_ID_AS_ATTRIBUTE="true"
+
+CREATE VERTEX Chunk (
+  PRIMARY_ID chunk_id STRING,
+  doc_id STRING,
+  text STRING,
+  seq INT,
+  token_count INT
+) WITH PRIMARY_ID_AS_ATTRIBUTE="true"
+
+// One embedding per chunk per model; the vector attribute is added below.
+CREATE VERTEX Embedding_Qwen (PRIMARY_ID chunk_id STRING) WITH PRIMARY_ID_AS_ATTRIBUTE="true"
+CREATE VERTEX Embedding_EmbeddingGemma (PRIMARY_ID chunk_id STRING) WITH PRIMARY_ID_AS_ATTRIBUTE="true"
+CREATE VERTEX Embedding_GteLarge (PRIMARY_ID chunk_id STRING) WITH PRIMARY_ID_AS_ATTRIBUTE="true"
+CREATE VERTEX Embedding_Mxbai (PRIMARY_ID chunk_id STRING) WITH PRIMARY_ID_AS_ATTRIBUTE="true"
+CREATE VERTEX Embedding_BGELarge (PRIMARY_ID chunk_id STRING) WITH PRIMARY_ID_AS_ATTRIBUTE="true"
+
+// All endpoints pinned explicitly (TECHNICAL-SPEC §2.2 note: v0.2 left four
+// undirected, and direction inversion is a named failure mode).
+CREATE DIRECTED EDGE DESCRIBES (FROM Document, TO OlympicEvent) WITH REVERSE_EDGE="reverse_DESCRIBES"
+CREATE DIRECTED EDGE AT_GAMES (FROM OlympicEvent, TO Games)
+CREATE DIRECTED EDGE IN_SPORT (FROM OlympicEvent, TO Sport)
+CREATE DIRECTED EDGE HELD_AT (FROM OlympicEvent, TO Venue, date_text STRING) WITH REVERSE_EDGE="reverse_HELD_AT"
+CREATE DIRECTED EDGE PREV_EDITION (FROM OlympicEvent, TO OlympicEvent)
+CREATE DIRECTED EDGE NEXT_EDITION (FROM OlympicEvent, TO OlympicEvent)
+CREATE DIRECTED EDGE HAS_CHUNK (FROM Document, TO Chunk)
+// Deleting an Embedding_* vertex removes only its own HAS_EMBEDDING edge;
+// the Chunk and every other model's embeddings are untouched.
+CREATE DIRECTED EDGE HAS_EMBEDDING (
+  FROM Chunk, TO Embedding_Qwen |
+  FROM Chunk, TO Embedding_EmbeddingGemma |
+  FROM Chunk, TO Embedding_GteLarge |
+  FROM Chunk, TO Embedding_Mxbai |
+  FROM Chunk, TO Embedding_BGELarge
+) WITH REVERSE_EDGE="reverse_HAS_EMBEDDING"
+
+CREATE GRAPH OlympicGraphRAG (
+  Document, OlympicEvent, Games, Sport, Venue, Chunk,
+  Embedding_Qwen, Embedding_EmbeddingGemma, Embedding_GteLarge, Embedding_Mxbai, Embedding_BGELarge,
+  DESCRIBES, AT_GAMES, IN_SPORT, HELD_AT, PREV_EDITION, NEXT_EDITION, HAS_CHUNK, HAS_EMBEDDING
+)
+
+// Vector attributes can only be added by ALTER VERTEX inside a SCHEMA_CHANGE
+// JOB (GSQL 4.2 vector reference) — a bare ALTER at statement level is a parse
+// error. The job is global because the vertex types are global; CREATE GRAPH
+// leaves the session scoped to that graph, so the scope must be reset first.
+USE GLOBAL
+
+DROP JOB add_vectors
+
+// One HNSW index per model, sized to that model's output.
+CREATE GLOBAL SCHEMA_CHANGE JOB add_vectors {
+  ALTER VERTEX Embedding_Qwen ADD VECTOR ATTRIBUTE emb(DIMENSION=1024, METRIC="COSINE");
+  ALTER VERTEX Embedding_EmbeddingGemma ADD VECTOR ATTRIBUTE emb(DIMENSION=768, METRIC="COSINE");
+  ALTER VERTEX Embedding_GteLarge ADD VECTOR ATTRIBUTE emb(DIMENSION=1024, METRIC="COSINE");
+  ALTER VERTEX Embedding_Mxbai ADD VECTOR ATTRIBUTE emb(DIMENSION=1024, METRIC="COSINE");
+  ALTER VERTEX Embedding_BGELarge ADD VECTOR ATTRIBUTE emb(DIMENSION=1024, METRIC="COSINE");
+}
+
+RUN GLOBAL SCHEMA_CHANGE JOB add_vectors
