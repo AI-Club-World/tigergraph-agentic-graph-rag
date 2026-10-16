@@ -196,34 +196,3 @@ notes on each). The application is open: no sign-in is needed.
 5. **Close** (20 s): the agent is not always better. It pays where
    structure matters (counts, chains), costs less where the router skips
    the loop, and ties RAG on single facts.
-
-## Judges' Q&A: likely questions, short answers
-
-- **Is the comparison fair?** One LLM for all three pipelines, a byte-identical
-  answer prompt, one deterministic scorer. Every graph-side fix runs in
-  GraphRAG too, so Agentic − GraphRAG is the loop and GraphRAG − RAG the graph.
-- **Did you tune on the public set?** No prompt was tuned. Each gain is a named
-  root cause found in the traces (`SCORE-AUDIT.md` §3–§6), and RAG, which no
-  fix touched, stayed at 0.59–0.62 in every run.
-- **Why is the agent's grounding lower than RAG's?** RAG cites long text
-  chunks, so its answer's names are almost always in them. A count answer
-  cites a count row with no prose. The verification step reports graph
-  support separately: 90 of 100 agentic answers.
-- **When is the agent not worth it?** Single-fact lookups and dates: RAG is
-  already exact there. The router keeps those cheap (direct route, one query).
-- **Why is it cheaper than RAG?** 62% of questions take the direct route
-  (median under 2,000 tokens); RAG always sends ten chunks.
-- **What fails?** Two of 100 in r5: an intent parse that put the venue in
-  the event slot (fixed after r5) and a copied evidence field in the answer.
-  The open cases are intent-parse variance and venue days that several
-  events share; the right behaviour there is to ask back.
-- **Hidden set?** Run once, raw outputs in `submission/`. No gold, so cost,
-  routing and grounding only.
-- **How is it secured?** It is an open demo application: no sign-in, and no
-  secret in the browser bundle (the build refuses a `VITE_API_KEY`). Backend
-  credentials stay in the server's `.env`; a public deployment goes behind a
-  proxy with its own authentication.
-- **What is novel?** Necessity routing refined after entity linking, exact
-  event ids derived the way ingest builds them, gazetteer anchor recovery, a
-  zero-token answer-verification step with conflict reporting, per-model
-  HNSW indices, and a grounding score that needs no gold.
