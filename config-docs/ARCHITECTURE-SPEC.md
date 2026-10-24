@@ -253,7 +253,7 @@ One line per decision ID cited in the code. `DP-n` numbers were assigned per are
 | AD-12 | Pluggable LLM behind one boundary, pinned within a run | Followed; runtime switching snapshots config per query and per batch run |
 | AD-13 | Capability probe for tool-calling and usage, with JSON-schema and tokenizer fallbacks | Followed; extended by G-6 downgrade and the `estimated` token label |
 | AD-14 | Two latency modes (`throughput`, `timing`) | Followed |
-| AD-15 | Ambiguous venue → disambiguation request, never a guess | Followed in P3 (`disambiguate` node). P2 puts the candidates into the context instead |
+| AD-15 | Ambiguous venue → disambiguation request, never a guess | Followed in P3 (`disambiguate` node), for an ambiguous venue name and for a venue day whose events give different answers (`entity_linking.ambiguous_events`); the record names the `candidates` and the UI offers them. P2 puts venue candidates into the context instead |
 
 ### Platform decisions (PLAT)
 
@@ -270,7 +270,7 @@ One line per decision ID cited in the code. `DP-n` numbers were assigned per are
 | graph DP-1 | Dates parsed at ingest into typed INT `date_month`, `date_day_start`, `date_day_end`, `date_year`; same normalizer for questions | Followed (`common/dates.py`) |
 | graph DP-2 | Non-integer `competitors`: leading integer, lowered `parse_confidence`, raw text kept; Q2/Q3 exclude rows below 0.9 and return `excluded_count` | Followed |
 | graph DP-3 | Q5 takes a `vtype` parameter to choose Chunk or OlympicEvent vectors | **Superseded**: Q5 takes `emb_type` (which model's `Embedding_*` index); only chunks are embedded |
-| graph DP-4 | Venue disambiguation request when several events remain | Followed (= AD-15) |
+| graph DP-4 | Venue disambiguation request when several events remain | Followed (= AD-15): after narrowing by Games, sport, day and an event name the question states, several events covering the day that differ on the asked attribute end the run with `disambiguation_required` |
 | graph DP-5 | `bronze` is a `SET<STRING>` for third-place ties | Followed |
 
 ### RAG area (RAG DP)

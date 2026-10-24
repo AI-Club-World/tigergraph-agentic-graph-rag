@@ -168,6 +168,7 @@ interface PipelineRecord {
   stop_reason: string | null
   status: 'done' | 'error'
   error_detail: string | null
+  candidates?: string[] | null // with disambiguation_required: shown as buttons that re-ask "<question> — <candidate>"
 }
 
 interface Verdict {

@@ -65,6 +65,7 @@ All directed, endpoints pinned.
 | `doc_id` = wikidata QID | Retrieval scoring against `gold_doc_ids` is a set comparison |
 | `parse_confidence` on OlympicEvent | Partial parses still load; Q2 reports rows below 0.9 as `excluded_count` instead of dropping them silently |
 | `*_text` kept beside the INT (`competitors_text`, `nations_text`) | Some values are non-integer (`23 teams`, `32 (16 pairs)`): leading integer + `parse_confidence < 1.0` |
+| A value not recorded is stored as `0` (`client.MISSING_INT`) | TigerGraph INT has no null, and no event has 0 competitors, 0 nations or year 0. The parser maps a missing or `0` value to None, the loader stores 0, Q2 neither counts nor rules out such an event (`missing_count`), Q3 does not rank it, and `client._run_query` reads it back as None, so `competitors: 0` never reaches the answer prompt |
 | Sport from the title prefix | No infobox carries a `sport` field; `<Sport> at the <Games>` parses the Olympic documents |
 | Date parsed into typed INTs at ingest | Two date fields (`date`, `dates`) in heterogeneous formats; one normalizer (`common/dates.py`) |
 | `bronze` is a SET | Third-place ties (`bronze2`) |
@@ -78,8 +79,8 @@ Source: `backend/src/ogr/graph/queries/*.gsql`, installed by `graph/schema.insta
 | # | Installed query and parameters (defaults) | Idiom | Serves |
 |---|---|---|---|
 | Q1 | `q1_lookup(STRING title = "", STRING event_id = "", STRING target_field = "")` | match on `event_id`, else `event_name == title` **or** the event a Document with that page title `DESCRIBES`; prints `EventRow` tuples (medal lists flattened to `"; "`-joined strings, `doc_id` and page `title` via `reverse_DESCRIBES`). No event match with a title → falls back to Document vertices with that title (different row shape, flattened by `client._flatten_vertex`). Callers go through `entity_linking.lookup_named_event`, which first tries the exact `event_id` ingest derives from sport + Games + event (`ingest.infobox.event_id_from_parts`), then title / event_id narrowed to the Games anchor. `target_field` is accepted but unused — the caller picks the field | LOOKUP |
-| Q2 | `q2_count_where(STRING anchor_sport = "", STRING anchor_games = "", STRING anchor_venue = "", STRING constraints_json = "[]", STRING field = "competitors")` | anchor filters, then up to **two** constraints from the JSON (third+ ignored) on `competitors` / `nations` / `date_year` with `> < >= <= =`; `SumAccum<INT>`. Prints `count_value`, `excluded_count` (`parse_confidence < 0.9`), then a second block `members` (each counted event's `event_id`, `event_name`, `doc_id`, `title`); the aggregation agent keeps the count row first and at most 30 members | COUNT |
-| Q3 | `q3_argmax(STRING anchor_sport = "", STRING anchor_games = "", STRING anchor_venue = "", STRING field = "competitors")` | `HeapAccum<Ranked>(3, value DESC)`; rankable `nations`, anything else ranks `competitors`. Rows: `event_id`, `event_name`, `doc_id`, `title`, `value` | ARGMAX |
+| Q2 | `q2_count_where(STRING anchor_sport = "", STRING anchor_games = "", STRING anchor_venue = "", STRING constraints_json = "[]", STRING field = "competitors")` | anchor filters, then up to **two** constraints from the JSON (third+ ignored) on `competitors` / `nations` / `date_year` with `> < >= <= =`; `SumAccum<INT>`. Prints `count_value`, `excluded_count` (`parse_confidence < 0.9`), `missing_count` (a constrained value not recorded: neither counted nor ruled out; shown to the answer as `not_counted_value_not_recorded`), then a second block `members` (each counted event's `event_id`, `event_name`, `doc_id`, `title`); the aggregation agent keeps the count row first and at most 30 members | COUNT |
+| Q3 | `q3_argmax(STRING anchor_sport = "", STRING anchor_games = "", STRING anchor_venue = "", STRING field = "competitors")` | `HeapAccum<Ranked>(3, value DESC)`; rankable `nations`, anything else ranks `competitors`; a value not recorded (0) is not ranked. Rows: `event_id`, `event_name`, `doc_id`, `title`, `value` | ARGMAX |
 | Q4 | `q4_traverse(STRING anchor = "", STRING edge_type = "PREV_EDITION", INT hops = 1)` | `anchor` = event id or name. `PREV_EDITION`/`NEXT_EDITION`: `hops` steps (capped at 10). `HELD_AT`: event → its venues, or venue name → its events via `reverse_HELD_AT`. Event rows: `event_id`, `event_name`, `doc_id`, `title` | TRAVERSE, multi_hop |
 | Q5 | `q5_hybrid_search(LIST<FLOAT> query_vector, INT k = 10, STRING emb_type = "Embedding_BGELarge", SET<STRING> candidate_set)` | one branch per `Embedding_*` type: `vectorSearch({T.emb}, q, k, {candidate_set?, distance_map: @@distances})`, then `reverse_HAS_EMBEDDING` to the Chunk. Prints `top_chunks` and `distances`. Unknown `emb_type` → empty | P1, P3 similarity fallback |
 
@@ -270,7 +271,8 @@ Verdict (`eval/aggregator.py`, one implementation for API and batch): multiplier
   "strategy_changed": "boolean|null",
   "stop_reason": "string|null",
   "status": "done|error",
-  "error_detail": "string|null"
+  "error_detail": "string|null",
+  "candidates": "string[]|null (with stop_reason disambiguation_required: the venues or events to choose between)"
 }
 ```
 `trace`, `strategy_changed`, `stop_reason` are set for `agentic_graphrag` only.
