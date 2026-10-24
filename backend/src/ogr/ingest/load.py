@@ -27,7 +27,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 
 from ogr.common.embedding_models import resolve_model
-from ogr.graph.client import TigerGraphClient
+from ogr.graph.client import MISSING_INT, TigerGraphClient
 from ogr.ingest.chunk_embed import Chunk
 from ogr.ingest.infobox import ParsedDocument
 
@@ -151,15 +151,15 @@ def load_graph(
         event_id = doc.event_id or doc.doc_id
         v_event.append((event_id, {
             "event_name": doc.event_name or "",
-            "competitors": doc.competitors if doc.competitors is not None else 0,
+            "competitors": doc.competitors if doc.competitors is not None else MISSING_INT,
             "competitors_text": doc.competitors_text or "",
-            "nations": doc.nations if doc.nations is not None else 0,
+            "nations": doc.nations if doc.nations is not None else MISSING_INT,
             "nations_text": doc.nations_text or "",
             "date_text": doc.date_text or "",
-            "date_month": doc.date_month if doc.date_month is not None else 0,
-            "date_day_start": doc.date_day_start if doc.date_day_start is not None else 0,
-            "date_day_end": doc.date_day_end if doc.date_day_end is not None else 0,
-            "date_year": doc.date_year if doc.date_year is not None else 0,
+            "date_month": doc.date_month if doc.date_month is not None else MISSING_INT,
+            "date_day_start": doc.date_day_start if doc.date_day_start is not None else MISSING_INT,
+            "date_day_end": doc.date_day_end if doc.date_day_end is not None else MISSING_INT,
+            "date_year": doc.date_year if doc.date_year is not None else MISSING_INT,
             "gold": doc.gold,
             "silver": doc.silver,
             "bronze": doc.bronze,

@@ -18,6 +18,11 @@ USE GRAPH OlympicGraphRAG
 // reported separately as `excluded_count` (DP-2 Option A) — the system
 // states what it could not parse rather than silently dropping it.
 //
+// A constrained value the infobox does not record is stored as 0
+// (client.MISSING_INT): such an event can be neither counted nor ruled out,
+// so "fewer than 20 competitors" does not count it. It is reported as
+// `missing_count`, the events whose value could not be checked.
+//
 // The counted events are printed too (a second block: event_id, event_name,
 // doc_id, title and the constrainable values), so a count answer can cite the events behind it. The first block
 // stays the count: TigerGraphClient._run_query unwraps only a list in the
@@ -31,6 +36,7 @@ CREATE OR REPLACE QUERY q2_count_where(
   TYPEDEF TUPLE<STRING event_id, STRING event_name, STRING doc_id, STRING title, INT competitors, INT nations, INT date_year> Member;
   SumAccum<INT> @@count;
   SumAccum<INT> @@excluded_count;
+  SumAccum<INT> @@missing_count;
   OrAccum @counted;
   ListAccum<Member> @@members;
 
@@ -75,6 +81,7 @@ CREATE OR REPLACE QUERY q2_count_where(
   Matched = SELECT e FROM Events:e
     ACCUM
       BOOL passes = TRUE,
+      BOOL missing = FALSE,
       DOUBLE actual0 = 0.0,
       DOUBLE actual1 = 0.0,
       IF numConstraints >= 1 THEN
@@ -82,24 +89,35 @@ CREATE OR REPLACE QUERY q2_count_where(
         ELSE IF f0 == "nations" THEN actual0 = e.nations
         ELSE IF f0 == "date_year" THEN actual0 = e.date_year
         ELSE passes = FALSE END END END,
-        IF op0 == ">" AND NOT (actual0 > v0) THEN passes = FALSE END,
-        IF op0 == "<" AND NOT (actual0 < v0) THEN passes = FALSE END,
-        IF op0 == ">=" AND NOT (actual0 >= v0) THEN passes = FALSE END,
-        IF op0 == "<=" AND NOT (actual0 <= v0) THEN passes = FALSE END,
-        IF op0 == "=" AND NOT (actual0 == v0) THEN passes = FALSE END
+        IF actual0 <= 0 THEN
+          missing = TRUE
+        ELSE
+          IF op0 == ">" AND NOT (actual0 > v0) THEN passes = FALSE END,
+          IF op0 == "<" AND NOT (actual0 < v0) THEN passes = FALSE END,
+          IF op0 == ">=" AND NOT (actual0 >= v0) THEN passes = FALSE END,
+          IF op0 == "<=" AND NOT (actual0 <= v0) THEN passes = FALSE END,
+          IF op0 == "=" AND NOT (actual0 == v0) THEN passes = FALSE END
+        END
       END,
       IF numConstraints >= 2 THEN
         IF f1 == "competitors" THEN actual1 = e.competitors
         ELSE IF f1 == "nations" THEN actual1 = e.nations
         ELSE IF f1 == "date_year" THEN actual1 = e.date_year
         ELSE passes = FALSE END END END,
-        IF op1 == ">" AND NOT (actual1 > v1) THEN passes = FALSE END,
-        IF op1 == "<" AND NOT (actual1 < v1) THEN passes = FALSE END,
-        IF op1 == ">=" AND NOT (actual1 >= v1) THEN passes = FALSE END,
-        IF op1 == "<=" AND NOT (actual1 <= v1) THEN passes = FALSE END,
-        IF op1 == "=" AND NOT (actual1 == v1) THEN passes = FALSE END
+        IF actual1 <= 0 THEN
+          missing = TRUE
+        ELSE
+          IF op1 == ">" AND NOT (actual1 > v1) THEN passes = FALSE END,
+          IF op1 == "<" AND NOT (actual1 < v1) THEN passes = FALSE END,
+          IF op1 == ">=" AND NOT (actual1 >= v1) THEN passes = FALSE END,
+          IF op1 == "<=" AND NOT (actual1 <= v1) THEN passes = FALSE END,
+          IF op1 == "=" AND NOT (actual1 == v1) THEN passes = FALSE END
+        END
       END,
-      IF passes THEN
+      IF passes AND missing THEN
+        @@missing_count += 1
+      END,
+      IF passes AND NOT missing THEN
         IF e.parse_confidence >= 0.9 THEN
           @@count += 1,
           e.@counted += TRUE
@@ -113,7 +131,7 @@ CREATE OR REPLACE QUERY q2_count_where(
     ACCUM @@members += Member(e.event_id, e.event_name, doc.doc_id, doc.title, e.competitors, e.nations, e.date_year);
 
   // `count` is a GSQL reserved word and cannot be a PRINT alias.
-  PRINT @@count AS count_value, @@excluded_count AS excluded_count;
+  PRINT @@count AS count_value, @@excluded_count AS excluded_count, @@missing_count AS missing_count;
   PRINT @@members AS members;
 }
 

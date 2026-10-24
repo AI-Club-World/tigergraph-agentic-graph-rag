@@ -24,6 +24,8 @@ corpus rather than assumed:
   values are not integers (`23 teams`, `32 (16 pairs)`), so the leading
   integer is taken and `parse_confidence` drops below 1.0. The row still
   loads — a partial parse is visible to the agent rather than silently wrong.
+  A missing value stays None here; the graph stores it as 0, which Q1-Q3
+  read as "not recorded" (load.MISSING_INT), never as a count.
 - **`bronze` is a set.** Third-place ties appear as `bronze2`/`bronzeNOC2`.
 - **Medallist names arrive concatenated** — `Rudolf DombiRoland Kokeny` is two
   people. They are split with the shared guarded splitter, so `MacLennan` is
@@ -281,6 +283,11 @@ def _coerce_int(raw: str | None) -> tuple[int | None, bool]:
     if not match:
         return None, False
     value = int(match.group(1).replace(",", ""))
+    if value == 0:
+        # No event has 0 competitors or 0 nations: a 0 in an infobox means
+        # the figure was not recorded, and the graph stores "not recorded"
+        # as 0 (load.MISSING_INT), so it must not read as a count.
+        return None, False
     return value, match.group(0).strip() == stripped
 
 

@@ -5,6 +5,8 @@ USE GRAPH OlympicGraphRAG
 // (e.g. "which event had the most competitors"). Only the numeric
 // OlympicEvent attributes are rankable (competitors, nations); anything
 // else falls back to competitors, same reasoning as Q2's field restriction.
+// An event whose value the infobox does not record (stored as 0,
+// client.MISSING_INT) is not ranked.
 
 CREATE OR REPLACE QUERY q3_argmax(
   STRING anchor_sport = "", STRING anchor_games = "", STRING anchor_venue = "",
@@ -33,7 +35,9 @@ CREATE OR REPLACE QUERY q3_argmax(
       ELSE
         rankValue = e.competitors
       END,
-      @@top3 += Ranked(e.event_id, e.event_name, doc.doc_id, doc.title, rankValue);
+      IF rankValue > 0 THEN
+        @@top3 += Ranked(e.event_id, e.event_name, doc.doc_id, doc.title, rankValue)
+      END;
 
   PRINT @@top3 AS results;
 }

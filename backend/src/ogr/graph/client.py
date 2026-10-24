@@ -417,7 +417,7 @@ class TigerGraphClient:
             if isinstance(raw, list) and raw and isinstance(raw[0], dict):
                 for v in raw[0].values():
                     if isinstance(v, list):
-                        return [_flatten_vertex(item) for item in v]
+                        return [_missing_as_none(_flatten_vertex(item)) for item in v]
             return raw if isinstance(raw, list) else []
         except Exception as e:
             logger.error("Error running query '%s': %s", query_name, e)
@@ -526,6 +526,27 @@ def _embedding_type(model: EmbeddingModel) -> str:
     if EMBEDDING_MODELS.get(model.key) != model or not model.vertex_type.startswith("Embedding_"):
         raise ValueError(f"{model.vertex_type!r} is not an embedding vertex type")
     return model.vertex_type
+
+
+# TigerGraph INT attributes have no null. The loader stores a value the
+# infobox does not record as 0, a value none of these fields can really take
+# (no event has 0 competitors, 0 nations or a year 0): Q2/Q3 skip it, and
+# rows read back carry None instead, so "competitors: 0" never reaches the
+# answer prompt as if it were a count.
+MISSING_INT = 0
+MISSING_INT_FIELDS = frozenset({
+    "competitors", "nations", "date_year", "date_month", "date_day_start", "date_day_end",
+})
+
+
+def _missing_as_none(row: Any) -> Any:
+    """A result row with its not-recorded INT attributes as None."""
+    if not isinstance(row, dict):
+        return row
+    return {
+        k: None if k in MISSING_INT_FIELDS and v == MISSING_INT and not isinstance(v, bool) else v
+        for k, v in row.items()
+    }
 
 
 def _flatten_vertex(item: Any) -> Any:

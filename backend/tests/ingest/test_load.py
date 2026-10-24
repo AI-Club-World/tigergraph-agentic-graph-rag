@@ -187,3 +187,16 @@ class TestNoConnection:
         client.config.tg_host = ""
         with pytest.raises(RuntimeError):
             load_graph(client, [])
+
+
+def test_a_count_the_infobox_does_not_record_is_stored_as_the_missing_marker():
+    """TigerGraph INT has no null: a missing count is stored as MISSING_INT,
+    which Q2/Q3 skip and client._run_query reads back as None."""
+    from ogr.graph.client import MISSING_INT
+
+    conn = _FakeConn()
+    doc = parse_document(dict(CANOE, text=CANOE["text"].replace("  competitors: 24\n", "")))
+    assert doc.competitors is None
+    load_graph(_client(conn), [doc])
+    event = next(attrs for vtype, _, attrs in conn.vertices if vtype == "OlympicEvent")
+    assert event["competitors"] == MISSING_INT

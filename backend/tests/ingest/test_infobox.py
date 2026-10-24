@@ -194,6 +194,14 @@ class TestPartialParse:
         record = dict(CANOE, text=CANOE["text"].replace("competitors: 24", "competitors: unknown"))
         assert parse_document(record).competitors is None
 
+    def test_a_zero_count_is_not_recorded_rather_than_a_count(self):
+        """No event has 0 competitors: the graph stores "not recorded" as 0,
+        so a 0 in an infobox must not load as a value Q2 would count."""
+        record = dict(CANOE, text=CANOE["text"].replace("nations: 12", "nations: 0"))
+        doc = parse_document(record)
+        assert doc.nations is None
+        assert doc.nations_text == "0"
+
 
 class TestNonOlympicDocuments:
     def test_kept_but_not_treated_as_an_event(self):

@@ -118,16 +118,22 @@ def _run_count_where(
         return AgentResult(error=str(e), latency_ms=latency_ms, notes=f"Q2 error: {e}")
 
     latency_ms = (time.perf_counter() - t0) * 1000.0
-    evidence, excluded_count = _normalize_count_results(raw)
+    evidence, excluded_count, missing_count = _normalize_count_results(raw)
     if evidence:
         # Say what the number counts: a bare "count: 4" next to a list of
         # events reads as unexplained, and the model then refuses to use it.
         evidence[0]["counted"] = _count_description(anchors, usable)
+        if missing_count:
+            # Events with no recorded value for a constrained field: neither
+            # counted nor ruled out, and said so rather than left silent.
+            evidence[0]["not_counted_value_not_recorded"] = missing_count
     notes = f"Q2 count_where: field={params['field']}"
     if dropped:
         notes += f", constraints not supported by Q2 and ignored: {'; '.join(dropped)}"
     if excluded_count > 0:
         notes += f", excluded_low_confidence={excluded_count}"
+    if missing_count > 0:
+        notes += f", not_counted_value_not_recorded={missing_count}"
     return AgentResult(
         evidence=evidence,
         chunks_returned=len(evidence),
@@ -181,14 +187,16 @@ def _count_description(anchors: ResolvedAnchors, constraints: list[dict[str, Any
     return text
 
 
-def _normalize_count_results(raw: Any) -> tuple[list[dict[str, Any]], int]:
+def _normalize_count_results(raw: Any) -> tuple[list[dict[str, Any]], int, int]:
     """Q2's count row first, then the counted events it names (capped at
     MAX_COUNT_MEMBERS) so the answer can cite them. The count is Q2's, never
-    the number of member rows."""
+    the number of member rows. Also returns Q2's excluded (low parse
+    confidence) and missing (value not recorded) counts."""
     results: list[dict[str, Any]] = []
     excluded_count = 0
+    missing_count = 0
     if not raw or not isinstance(raw, list):
-        return results, excluded_count
+        return results, excluded_count, missing_count
     members: list[dict[str, Any]] = []
     for item in raw:
         attrs = item.get("attributes", item)
@@ -197,6 +205,7 @@ def _normalize_count_results(raw: Any) -> tuple[list[dict[str, Any]], int]:
             continue
         if "excluded_count" in attrs:
             excluded_count = attrs["excluded_count"]
+        missing_count = int(attrs.get("missing_count") or 0)
         results.append({
             "count": attrs.get("count", attrs.get("count_value", attrs.get("value", 0))),
             "doc_id": attrs.get("doc_id", attrs.get("event_id", "")),
@@ -214,7 +223,7 @@ def _normalize_count_results(raw: Any) -> tuple[list[dict[str, Any]], int]:
             "doc_id": m.get("doc_id", ""),
             "source": "aggregation_count",
         })
-    return results, excluded_count
+    return results, excluded_count, missing_count
 
 
 def _normalize_argmax_results(raw: Any) -> list[dict[str, Any]]:
