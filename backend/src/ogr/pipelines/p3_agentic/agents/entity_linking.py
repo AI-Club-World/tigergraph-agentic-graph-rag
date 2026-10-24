@@ -362,20 +362,85 @@ def narrow_to_date(rows: list[dict], anchors: ResolvedAnchors) -> list[dict]:
         return stated
     if not (anchors.date_year or anchors.date_month):
         return rows
-
-    def covers(r: dict) -> bool:
-        if anchors.date_year and r.get("date_year") and int(r["date_year"]) != anchors.date_year:
-            return False
-        if anchors.date_month and r.get("date_month") and int(r["date_month"]) != anchors.date_month:
-            return False
-        if anchors.date_day_start and r.get("date_day_start"):
-            start = int(r["date_day_start"])
-            end = int(r.get("date_day_end") or 0) or start
-            return start <= anchors.date_day_start <= end
-        return True
-
-    kept = [r for r in rows if covers(r)]
+    kept = [r for r in rows if _covers(r, anchors)]
     return kept or rows
+
+
+def _covers(r: dict, anchors: ResolvedAnchors) -> bool:
+    """The row's date is consistent with the anchored year, month and day."""
+    if anchors.date_year and r.get("date_year") and int(r["date_year"]) != anchors.date_year:
+        return False
+    if anchors.date_month and r.get("date_month") and int(r["date_month"]) != anchors.date_month:
+        return False
+    if anchors.date_day_start and r.get("date_day_start"):
+        start = int(r["date_day_start"])
+        end = int(r.get("date_day_end") or 0) or start
+        return start <= anchors.date_day_start <= end
+    return True
+
+
+def narrow_to_named(rows: list[dict], anchors: ResolvedAnchors) -> list[dict]:
+    """Keep the rows whose event name the question states in full ("the
+    men's team pursuit held at London Velopark on 3 August"): the intent
+    parse can leave the event name out, and the question still names it.
+    Whole words, punctuation ignored; when several names appear ("singles"
+    and "women's singles"), the longest wins. Falls back to all rows when
+    the question names none of them."""
+    question = f" {_date_words(anchors.question or '')} "
+    named = [
+        (len(name), r) for r in rows
+        if (name := _date_words(str(r.get("event_name") or "")))
+        and f" {name} " in question
+    ]
+    if not named:
+        return rows
+    longest = max(length for length, _ in named)
+    return [r for length, r in named if length == longest]
+
+
+# Fields that name the event rather than describe it: when the question asks
+# for one of these, every event held that day is part of the answer.
+NAMING_FIELDS = frozenset({"event_name", "event", "events", "title", "name", "event_id"})
+
+
+def ambiguous_events(rows: list[dict], anchors: ResolvedAnchors, target_field: str) -> list[dict]:
+    """The events a venue-and-day question could mean, when the answer depends
+    on which one is meant; [] when it does not.
+
+    After narrowing by Games, sport, day and stated event name, several
+    events can still remain (a venue hosts several finals on one day). The
+    agent used to pick one by the order the rows came back. Instead, when
+    the question asks for an attribute of one event, every one of those
+    events covers the anchored day, and they do not all agree on the
+    attribute, the run asks which event was meant (AD-15). One row per
+    event, in the order given."""
+    if anchors.title or anchors.event_id or not anchors.date_day_start:
+        return []
+    if (target_field or "").strip().lower() in NAMING_FIELDS:
+        return []
+    by_event: dict[str, dict] = {}
+    for r in rows:
+        key = str(r.get("event_id") or r.get("title") or "")
+        if key:
+            by_event.setdefault(key, r)
+    if len(by_event) < 2:
+        return []
+    # narrow_to_date keeps every row when none covers the day: those are not
+    # candidates for that day, and the question is not asked.
+    if not all(_covers(r, anchors) for r in by_event.values()):
+        return []
+    values = {_date_words(str(r.get("value") or "")) for r in by_event.values()}
+    if len(values) == 1 and "" not in values:
+        return []  # every candidate gives the same answer
+    return list(by_event.values())
+
+
+def event_label(row: dict) -> str:
+    """How a candidate event is named to the user: its page title, and the
+    date the graph records for it."""
+    name = row.get("title") or row.get("event_name") or row.get("event_id") or ""
+    date = str(row.get("date_text") or "").strip()
+    return f"{name} ({date})" if date else str(name)
 
 
 def edition_of(event_id: str) -> str:

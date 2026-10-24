@@ -245,13 +245,23 @@ def build_p3_graph(
         return {"resolved_anchors": anchors, "route_initial": refined}
 
     def node_disambiguate(state: dict) -> dict:
-        """AD-15: an ambiguous venue with no sport/event discriminator ends the
-        run with the candidates named. Deterministic — no retrieval and no
-        generation call, because no model output can pick the right venue."""
+        """AD-15: the run ends by asking which one was meant, with the
+        candidates named, when no model output could pick the right one:
+
+          venue: the venue in the question matches several, and no sport or
+                 event tells them apart (decided at entity linking);
+          event: several events at the venue that day give different answers
+                 (decided by the venue expansion, multi_hop.run_venue_events).
+
+        Deterministic, and no generation call."""
         anchors = state.get("resolved_anchors")
         recorder: TraceRecorder = _state_store.get("recorder")
-        candidates = anchors.disambiguation_candidates.get("venue", [])
-        shown = ", ".join(candidates[:10])
+        ask_back = _state_store.get("ask_back")
+        if ask_back:
+            kind, candidates = ask_back
+        else:
+            kind, candidates = "venue", anchors.disambiguation_candidates.get("venue", [])
+        shown = "; ".join(candidates[:10])
         if len(candidates) > 10:
             shown += f" (+{len(candidates) - 10} more)"
 
@@ -261,9 +271,9 @@ def build_p3_graph(
                 scope_coverage_pass=False,
                 groundedness_pass=False,
                 fallback_trigger="none",
-                notes="not evaluated: anchor ambiguous",
+                notes=f"not evaluated: {kind} ambiguous",
             ),
-            step_count=0,
+            step_count=len(state.get("path_taken", [])),
             tokens_used=state.get("tokens_used", 0),
             has_disambiguation_candidates=True,
         )
@@ -271,31 +281,42 @@ def build_p3_graph(
             recorder.record(
                 "entity_linking",
                 "entity_linker",
-                AgentResult(notes=f"venue ambiguous: {len(candidates)} candidates"),
+                AgentResult(notes=f"{kind} ambiguous: {len(candidates)} candidates"),
             )
         trace_steps = recorder.finalize() if recorder else []
         tokens = recorder.cumulative_tokens() if recorder else TokenUsage()
         if recorder:
             recorder.reconcile_assert(tokens.total)
 
-        _state_store["pipeline_record"] = PipelineRecord(
-            pipeline="agentic_graphrag",
-            answer=f"Which venue did you mean: {shown}?",
-            explanation=(
+        if kind == "event":
+            explanation = (
+                f"{len(candidates)} events were held there that day and they give different answers; "
+                "the question does not say which one, so no answer was guessed (AD-15)."
+            )
+        else:
+            explanation = (
                 f"The venue in the question matches {len(candidates)} venues and the question names "
                 "no sport or event to tell them apart, so no answer was guessed (AD-15)."
-            ),
+            )
+        strategy_changed, _ = detect_strategy_change(
+            state.get("route_initial", "loop"), state.get("path_taken", [])
+        )
+        _state_store["pipeline_record"] = PipelineRecord(
+            pipeline="agentic_graphrag",
+            answer=f"Which {kind} did you mean: {shown}?",
+            explanation=explanation,
             citations=[],
-            chunks_returned=0,
+            chunks_returned=len(state.get("evidence", [])),
             citations_count=0,
             tokens=TokenUsage(input=tokens.input, output=tokens.output, total=tokens.total),
             token_source=getattr(intent_parser, "last_token_source", "provider"),
             latency_ms=0.0,
             trace=trace_steps,
-            strategy_changed=False,
+            strategy_changed=strategy_changed or any(s.strategy_change for s in trace_steps),
             stop_reason=stop_reason,
             status="done",
-            error_detail=None,
+            error_detail=graph_error_detail(recorder.graph_errors if recorder else []),
+            candidates=list(candidates),
         )
         return {"stop_reason": stop_reason}
 
@@ -403,6 +424,8 @@ def build_p3_graph(
         if recorder:
             agent = "multi_hop_reasoning" if tool in ("multi_hop", "venue") else "graph_traversal"
             recorder.record(agent, q_name, result, path_name=tool_name)
+        if result.ask_back:
+            _state_store["ask_back"] = ("event", result.ask_back)
 
         # evidence and path_taken accumulate through the reducer — return only
         # what this step added.
@@ -670,6 +693,11 @@ def build_p3_graph(
         logger.debug("route_after_parse: → %s", decision)
         return decision
 
+    def route_after_loop_step(state: dict) -> str:
+        """A loop step that found several events the answer could be about
+        ends the run with a question back, not an evidence check."""
+        return "disambiguate" if _state_store.get("ask_back") else "evaluate_evidence"
+
     def route_after_evaluate(state: dict) -> str:
         """Conditional edge from evaluate_evidence to continue or generate."""
         last_eval = _state_store.get("last_eval")
@@ -741,7 +769,11 @@ def build_p3_graph(
     graph.add_edge("scoped_aggregate", "generate")
 
     # Loop: traversal → evaluate → continue | generate
-    graph.add_edge("loop_traversal", "evaluate_evidence")
+    graph.add_conditional_edges(
+        "loop_traversal",
+        route_after_loop_step,
+        {"evaluate_evidence": "evaluate_evidence", "disambiguate": "disambiguate"},
+    )
     graph.add_conditional_edges(
         "evaluate_evidence",
         route_after_evaluate,

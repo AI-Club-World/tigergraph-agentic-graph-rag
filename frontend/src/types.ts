@@ -82,6 +82,8 @@ export interface PipelineRecord {
   stop_reason: string | null
   status: 'done' | 'error'
   error_detail: string | null
+  /** With stop_reason "disambiguation_required": the venues or events to choose between. */
+  candidates?: string[] | null
 }
 
 export interface Verdict {

@@ -26,3 +26,6 @@ class AgentResult:
     strategy_change: bool = False
     notes: str = ""
     error: str | None = None
+    # Candidates to ask the user to choose between, when the answer depends
+    # on which of them the question means (AD-15). Empty: nothing to ask.
+    ask_back: list[str] = field(default_factory=list)

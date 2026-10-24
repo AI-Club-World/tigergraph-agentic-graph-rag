@@ -154,4 +154,37 @@ describe('SearchView embedding mismatch', () => {
     expect(screen.queryByRole('alertdialog')).toBeNull()
     expect(mocked.submitQuery).toHaveBeenCalledTimes(1)
   })
+
+  it('offers the candidates the agent asked back with, and re-asks about the one picked', async () => {
+    await submit()
+    const candidates = ['Fencing – Men’s sabre (6 August)', 'Fencing – Women’s épée (6 August)']
+    await act(async () => {
+      handlers.onPipeline({
+        ...pipelineRecord('agentic_graphrag', `Which event did you mean: ${candidates.join('; ')}?`),
+        stop_reason: 'disambiguation_required',
+        candidates,
+      })
+      handlers.onDone()
+    })
+
+    const agentic = document.querySelector('[data-pipeline="agentic_graphrag"]') as HTMLElement
+    const group = within(agentic).getByRole('group', { name: 'Which one did you mean?' })
+    expect(within(group).getAllByRole('button').map((b) => b.textContent)).toEqual(candidates)
+    // Pickable once the run has settled.
+    await waitFor(() => expect(within(group).getByRole('button', { name: candidates[1] })).toBeEnabled())
+
+    await act(async () => {
+      fireEvent.click(within(group).getByRole('button', { name: candidates[1] }))
+    })
+    expect(mocked.submitQuery).toHaveBeenLastCalledWith(`who won gold in Rio? — ${candidates[1]}`, undefined)
+    expect(screen.getByLabelText('Query')).toHaveValue(`who won gold in Rio? — ${candidates[1]}`)
+  })
+
+  it('shows no candidates for an ordinary answer', async () => {
+    await submit()
+    await act(async () => {
+      handlers.onPipeline(pipelineRecord('agentic_graphrag', 'Usain Bolt'))
+    })
+    expect(screen.queryByRole('group', { name: 'Which one did you mean?' })).toBeNull()
+  })
 })

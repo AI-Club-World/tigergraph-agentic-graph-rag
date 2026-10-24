@@ -49,6 +49,9 @@ export function SearchView() {
   const [result, setResult] = useState<QueryLevelRecord | null>(null)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [inFlight, setInFlight] = useState(false)
+  // The question last asked, so a candidate the agent asked back with can be
+  // asked about by name.
+  const [lastQuery, setLastQuery] = useState<string | undefined>(undefined)
   // A query the server blocked: its selected embedding model has no complete
   // embeddings. It runs again only with a model the user picks from the list.
   const [mismatch, setMismatch] = useState<{ query: string; detail: EmbeddingMismatch } | null>(null)
@@ -68,6 +71,7 @@ export function SearchView() {
     setResult(null)
     setSubmitError(null)
     setInFlight(true)
+    setLastQuery(query)
 
     setMismatch(null)
     let accepted
@@ -173,7 +177,7 @@ export function SearchView() {
               {consoleLabel}
             </span>
           </header>
-          <QueryInput onSubmit={(query) => void runQuery(query)} disabled={inFlight} />
+          <QueryInput onSubmit={(query) => void runQuery(query)} disabled={inFlight} query={lastQuery} />
           {inFlight && (
             <button type="button" className="secondary stop-waiting" onClick={stopWaiting}>
               Stop waiting
@@ -214,7 +218,14 @@ export function SearchView() {
 
         <div className="columns">
           {PIPELINE_IDS.map((pipeline) => (
-            <ResultColumn key={pipeline} pipeline={pipeline} state={columns[pipeline]} />
+            <ResultColumn
+              key={pipeline}
+              pipeline={pipeline}
+              state={columns[pipeline]}
+              onPickCandidate={
+                inFlight || !lastQuery ? undefined : (candidate) => void runQuery(`${lastQuery} — ${candidate}`)
+              }
+            />
           ))}
         </div>
 

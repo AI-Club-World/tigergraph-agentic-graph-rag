@@ -25,10 +25,13 @@ from ogr.ingest.infobox import event_id_from_parts
 from ogr.pipelines.p3_agentic.agents.agent_result import AgentResult
 from ogr.pipelines.p3_agentic.agents.entity_linking import (
     ResolvedAnchors,
+    ambiguous_events,
     edition_of,
+    event_label,
     lookup_named_event,
     narrow_to_date,
     narrow_to_games,
+    narrow_to_named,
 )
 from ogr.pipelines.p3_agentic.intent import IntentSchema
 
@@ -111,13 +114,20 @@ def run_venue_events(
     except Exception as e:
         logger.error("Venue expansion failed: %s", e)
         return AgentResult(error=str(e), latency_ms=(time.perf_counter() - t0) * 1000.0)
-    evidence = narrow_to_date(narrow_to_games(rows, anchors.games), anchors)
+    evidence = narrow_to_named(narrow_to_date(narrow_to_games(rows, anchors.games), anchors), anchors)
+    # Several events left that day, and the answer depends on which one is
+    # meant: ask, rather than answer from whichever row came first.
+    candidates = [event_label(r) for r in ambiguous_events(evidence, anchors, target_field)]
+    notes = f"Q4(HELD_AT)→Q1: venue={anchors.venue}, events={len(events or [])}, kept={len(evidence)}"
+    if candidates:
+        notes += f"; {len(candidates)} events that day differ on {target_field}: asking which one"
     return AgentResult(
         evidence=evidence,
         chunks_returned=len(evidence),
         citations_count=len(evidence),
         latency_ms=(time.perf_counter() - t0) * 1000.0,
-        notes=f"Q4(HELD_AT)→Q1: venue={anchors.venue}, events={len(events or [])}, kept={len(evidence)}",
+        notes=notes,
+        ask_back=candidates,
     )
 
 

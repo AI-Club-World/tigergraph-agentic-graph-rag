@@ -26,7 +26,14 @@ function Stat({ label, value, sub, title }: { label: string; value: string; sub?
   )
 }
 
-export function ResultColumn({ pipeline, state }: { pipeline: PipelineId; state: ColumnState }) {
+interface Props {
+  pipeline: PipelineId
+  state: ColumnState
+  /** Re-ask the question about one of the candidates the pipeline asked back with. */
+  onPickCandidate?: (candidate: string) => void
+}
+
+export function ResultColumn({ pipeline, state, onPickCandidate }: Props) {
   const { record } = state
   const index = String(PIPELINE_IDS.indexOf(pipeline) + 1).padStart(2, '0')
 
@@ -74,6 +81,23 @@ export function ResultColumn({ pipeline, state }: { pipeline: PipelineId; state:
               <span className="output-label">Synthesized output</span>
               <p className="answer-text">{record.answer}</p>
               <p className="explanation">{record.explanation}</p>
+
+              {record.stop_reason === 'disambiguation_required' && record.candidates?.length ? (
+                <div className="candidates" role="group" aria-label="Which one did you mean?">
+                  <span className="presets-label">Ask about:</span>
+                  {record.candidates.map((candidate) => (
+                    <button
+                      key={candidate}
+                      type="button"
+                      className="preset"
+                      disabled={!onPickCandidate}
+                      onClick={() => onPickCandidate?.(candidate)}
+                    >
+                      {candidate}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
 
               {record.token_source === 'local_tokenizer' && (
                 <p className="callout warn">

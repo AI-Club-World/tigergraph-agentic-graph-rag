@@ -730,6 +730,15 @@ button.preset:not(:disabled):hover { color: var(--text); border-color: var(--bor
 button.preset.active { color: var(--accent); background: var(--accent-bg-strong); border-color: var(--accent-border); }
 button.preset.active::before { content: '● '; }
 
+/* A pipeline that asked back: the candidates, each one a re-ask. */
+.candidates {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.6rem;
+}
+
 /* ── Search: verdict ───────────────────────────────────────── */
 
 .verdict.placeholder .panel-x-head { margin-bottom: 0.4rem; }

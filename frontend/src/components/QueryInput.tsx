@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { Icon } from './Icon'
 
 const EXAMPLES = [
@@ -10,10 +10,16 @@ const EXAMPLES = [
 interface Props {
   onSubmit: (query: string) => void
   disabled: boolean
+  /** A query submitted from elsewhere (a picked candidate), shown in the field. */
+  query?: string
 }
 
-export function QueryInput({ onSubmit, disabled }: Props) {
-  const [value, setValue] = useState('')
+export function QueryInput({ onSubmit, disabled, query }: Props) {
+  const [value, setValue] = useState(query ?? '')
+
+  useEffect(() => {
+    if (query !== undefined) setValue(query)
+  }, [query])
 
   function submit(event: FormEvent) {
     event.preventDefault()

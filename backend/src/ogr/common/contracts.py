@@ -65,6 +65,9 @@ class PipelineRecord(BaseModel):
     stop_reason: str | None = None
     status: Literal["done", "error"] = "done"
     error_detail: str | None = None
+    # With stop_reason "disambiguation_required": what the user can choose
+    # between (venues or events), so the UI can offer them. None otherwise.
+    candidates: list[str] | None = None
 
 
 class Verdict(BaseModel):
