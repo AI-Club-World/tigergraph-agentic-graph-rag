@@ -316,6 +316,12 @@ One line per decision ID cited in the code. `DP-n` numbers were assigned per are
 | G-4 | Runtime-selectable LLM provider with live model lists (`gemini`, `nvidia_nim`, `groq`) | Done (`PROVIDER_PRESETS`, `GET /settings/providers`, `GET /settings/models`, `PATCH /settings`) |
 | G-5 | Rate-limit error names provider, model and reason | Done (`LLMRateLimitError`) |
 | G-6 | A provider rejecting tool-calling downgrades the intent parser to the JSON-schema path, same model | Done (`intent.py`, `test_intent_tool_downgrade.py`) |
+| R2-G1 | Round-2 fact layer in the same graph, scoped by dataset (Option A), additive types, Q1–Q5 untouched | Decided by the user 2026-10-24 (`ROUND2-INTERVIEW-LOG.md`) |
+| R2-G2 | Answer confidence computed by the agent from the claims (P3 only); shared answer prompt unchanged | Decided 2026-10-24 |
+| R2-G3 | Optional LLM temporal field in the intent parse, only if the dev split shows the deterministic detector falls short | Allowed 2026-10-24; not built |
+| R2-G4 | LLM claim extraction at ingest, Round-2 datasets only, only if needed | Allowed 2026-10-24; not built |
+| R2-5 | Conflict resolution is deterministic and inspectable; the LLM phrases the answer; when the model answers a value the resolution ranked lower, the resolved value stands (logged on the trace) | Followed (`orchestrator.node_generate`) |
+| R2-6 | One corroborating search when the resolved value's share is below `MARGIN` (0.6); then commit (answer policy: always answer, with confidence and cited losers) | Followed |
 
 ## Engineering guards
 
@@ -399,3 +405,34 @@ One line per decision ID cited in the code. `DP-n` numbers were assigned per are
 - **Timing-mode latency includes the shared rate limiter.** `latency_ms` is measured around the model call, which waits on the per-client `InMemoryRateLimiter` shared by all pipelines (and on retry backoff).
 - **Graph errors are silent.** `TigerGraphClient._run_query` returns `[]` on a connection failure or query error (logged), so a pipeline can finish with `status = done` and an empty or "no evidence" answer.
 - **In-memory API state.** Query and build state live in the process; a restart loses in-flight queries (a running re-embed job is marked failed and is resumable).
+
+## Round 2: reasoning over evolving, conflicting and uncertain facts
+
+Full design in `ROUND2-DESIGN.md`; results in `ROUND2-RESULTS.md`.
+
+```
+question ─► intent parse (LLM) ─► entity linking ─► temporal scope (rules) ─► claim probe (Q6, 0 tokens)
+                                                                                │
+                      claims matter (time-scoped, disagreeing or hedged)? ─────┤
+                      no  ─► Round-1 route, unchanged                           │
+                      yes ─► loop: claims tool ─► resolution (scope → supersession → score → confidence)
+                                     │ share < MARGIN ─► one corroborating Q5 search
+                                     ▼
+                     shared answer prompt (context = labelled candidate values, chosen first)
+                                     ▼
+                     answer kept to the resolved value · confidence · conflicts · conflict_resolved
+```
+
+- **Dataset adapter layer** (`datasets/`): a new dataset needs a new
+  adapter; the reasoning code reads only `ClaimRecord`/`SourceRecord`.
+- **Fact layer** in the graph (`Dataset, Source, Entity, Claim` and
+  `IN_DATASET, ASSERTS, FROM_SOURCE, ABOUT, SUPERSEDES, CONTRADICTS`), next
+  to the unchanged Round-1 types.
+- **Where the LLM is used in Round 2:** nowhere new. Temporal scope,
+  relations, reliability, resolution and confidence are deterministic; the
+  existing intent parse and answer generation are unchanged.
+- **Known limitations:** see `ROUND2-RESULTS.md` §4 (synthetic harness, the
+  evolving subset is easy once parsed, a coordinated false majority without
+  reliability information, per-subset calibration, block-only claim
+  extraction, GSQL not yet installed on Savanna).
+

@@ -133,3 +133,24 @@ These targets have not yet been measured against a live TigerGraph and LLM.
 | Ground-truth scoring method | **Resolved** — deterministic EM/F1 (SQuAD-style normalization), no LLM judge |
 | Persisted query history | **Resolved** — implemented (FR-23); batch records additionally replay every scored question |
 | Multi-person answer scoring | **Resolved** — split on lowercase→uppercase boundaries with a prefix guard (`Mc`, `Mac`, `O'`, `Di`, `De`, `Van`, `Le`, `La`); the unguarded rule mis-splits `Rosannagh MacLennan` (pub-067). Genuine concatenations are pub-015 and pub-099 |
+
+## 10. Round 2 requirements (statement: "Extend your agent to reason over evolving, conflicting, and uncertain facts on a harder dataset")
+
+EARS notation; status as of `ROUND2-RESULTS.md`.
+
+| Id | Requirement | Status |
+|---|---|---|
+| R2-FR-1 | When a question puts a time scope on a fact ("as of", "originally", "latest", before/after a revision), the agent shall answer with the value known and valid in that scope. | Built; offline evolving 1.00 (oracle parse); not measured live |
+| R2-FR-2 | When sources state different values, the agent shall choose one by an inspectable score (reliability, corroboration, recency, extraction, hedging) and cite the losing values. | Built; offline conflicting 0.83–1.00 depending on difficulty and reliability information |
+| R2-FR-3 | The agent shall give a confidence with each claims-based answer, calibrated on held-out questions; it shall not abstain by default. | Built (P3 only, gate G2); offline overall ECE 0.01–0.09 after fitting |
+| R2-FR-4 | When a later statement revises an earlier one, the earlier one shall be kept as superseded evidence, not deleted; a hedged statement shall not supersede a firm one. | Built |
+| R2-FR-5 | A new dataset shall plug in through an adapter without changes to the reasoning code. | Built (`datasets/`); real Round-2 format unknown |
+| R2-NFR-1 | Round-1 behaviour shall not regress: unchanged routes when no claims matter, unchanged shared answer prompt, unchanged Q1–Q5. | Offline suite passes; live baseline not yet re-run |
+| R2-NFR-2 | Same LLM and embedding model in all three pipelines; tokens per question reported; agent loops bounded (`RUN_MAX_STEPS`, `RUN_MAX_TOKENS_PER_QUERY`, one corroborating search). | Built; tokens not yet measured |
+| R2-NFR-3 | No schema change, re-ingest or provider change without the user's confirmation. | Gates logged in `ROUND2-INTERVIEW-LOG.md` |
+
+Success criterion for Round 2 (judged): the relative accuracy gain of
+Agentic GraphRAG over RAG on the evolving, conflicting and uncertain
+subsets, at a reported token cost. **Not yet measured** (needs credentials;
+commands in `ROUND2-RESULTS.md` §3).
+

@@ -5,6 +5,27 @@ work can ship at any stopping point. **SAFE** = additive, no schema change,
 no re-ingest, no change to the Round-1 answer path. **GATED** = needs the
 user's decision recorded in `ROUND2-INTERVIEW-LOG.md`.
 
+**Status (2026-10-24):** steps 1–9 and 11 (offline part) are done on
+`round-2`; G2 and G3 are not needed so far; G4 is allowed and not built.
+Steps 0, 10, 12 and the live part of 11 need credentials (gate G5: offline
+first). The commands are in `ROUND2-RESULTS.md` §3.
+
+| # | Status |
+|---|---|
+| 0 | not run (no credentials) |
+| 1 | done (`pipelines/temporal.py`) |
+| 2 | done (`datasets/`) |
+| 3 | done (`harness/`) |
+| 4 | done (`reasoning/`, `eval/calibration.py`) |
+| 5 | done in code (`graph/schema_round2.gsql`, `ingest/load_claims.backfill`); **not yet applied** to the workspace |
+| 6 | done in code (`q6_claims`, `q5s_search`, `load_claims`); not yet installed |
+| 7 | done through the data: harness records state source and date in their text; no chunker change needed |
+| 8 | done (`agents/claims.py`, router, orchestrator, `conflict_resolved`) |
+| 9 | done (record/trace fields, result column) |
+| 10 | ready (`<name>-dryrun-questions.jsonl`); not run |
+| 11 | offline fit and test done (`harness --offline`); live run not done |
+| 12 | offline suite passes; live run not done |
+
 Each step is followed by: offline suite (`make check`). From step 4 on,
 also the Round-1 live baseline (public-100, three pipelines) and the harness
 dev split, once credentials are available.

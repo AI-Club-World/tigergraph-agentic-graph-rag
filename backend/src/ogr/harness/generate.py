@@ -309,8 +309,14 @@ def generate(corpus: str | Path, cfg: HarnessConfig | None = None) -> HarnessOut
     return out
 
 
+DRY_RUN = {"evolving": 4, "conflicting": 3, "uncertain": 3}
+
+
 def write_output(out: HarnessOutput, directory: str | Path, name: str | None = None) -> dict[str, Path]:
-    """`<name>.jsonl` (records, a corpus), `<name>-questions.jsonl`, `<name>.manifest.json`."""
+    """`<name>.jsonl` (records, a corpus), `<name>-questions.jsonl` (all),
+    `-dev-` / `-test-questions.jsonl` (the splits), `-dryrun-questions.jsonl`
+    (10 dev questions across the subsets: run these through the three
+    pipelines before any full run), and `<name>.manifest.json`."""
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
     name = name or out.manifest.get("config", {}).get("dataset_id", "r2-injected")
@@ -318,11 +324,19 @@ def write_output(out: HarnessOutput, directory: str | Path, name: str | None = N
         "corpus": directory / f"{name}.jsonl",
         "questions": directory / f"{name}-questions.jsonl",
         "manifest": directory / f"{name}.manifest.json",
+        "dev": directory / f"{name}-dev-questions.jsonl",
+        "test": directory / f"{name}-test-questions.jsonl",
+        "dryrun": directory / f"{name}-dryrun-questions.jsonl",
     }
     def jsonl(rows: list[dict[str, Any]]) -> str:
         return "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows)
 
     paths["corpus"].write_text(jsonl(out.records), "utf-8")
     paths["questions"].write_text(jsonl(out.questions), "utf-8")
+    for split in ("dev", "test"):
+        paths[split].write_text(jsonl([q for q in out.questions if q["split"] == split]), "utf-8")
+    dry = [q for subset, n in DRY_RUN.items()
+           for q in [q for q in out.questions if q["split"] == "dev" and q["qtype"] == subset][:n]]
+    paths["dryrun"].write_text(jsonl(dry), "utf-8")
     paths["manifest"].write_text(json.dumps(out.manifest, indent=2), "utf-8")
     return paths

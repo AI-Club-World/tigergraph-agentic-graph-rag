@@ -166,8 +166,9 @@ def _table(results: dict[str, Any]) -> list[str]:
     return lines
 
 
-def run_offline(round1_corpus: str | Path, paths: dict[str, Path], out: Any) -> str:
-    """Fit on dev, evaluate on test (defaults and fitted), as Markdown."""
+def run_offline(round1_corpus: str | Path, paths: dict[str, Path], out: Any) -> tuple[str, Weights]:
+    """Fit on dev, evaluate on test (defaults and fitted): the Markdown
+    report and the fitted weights."""
     index = build_index(round1_corpus, paths["corpus"], out.manifest["config"]["dataset_id"])
     dev = [q for q in out.questions if q["split"] == "dev"]
     test = [q for q in out.questions if q["split"] == "test"]
@@ -194,4 +195,4 @@ def run_offline(round1_corpus: str | Path, paths: dict[str, Path], out: Any) -> 
         f"Fitted: `{fitted}`",
         "",
     ]
-    return "\n".join(lines)
+    return "\n".join(lines), fitted

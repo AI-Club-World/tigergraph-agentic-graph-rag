@@ -92,6 +92,9 @@ def test_claims_do_not_depend_on_the_prose_template(out):
 
 def test_output_files_load_as_an_eval_set(out, tmp_path):
     paths = write_output(out, tmp_path)
+    dry = load_questions(paths["dryrun"])
+    assert len(dry) == 10 and {q.qtype for q in dry} == {"evolving", "conflicting", "uncertain"}
+    assert len(load_questions(paths["dev"])) + len(load_questions(paths["test"])) == 90
     questions = load_questions(paths["questions"])
     assert len(questions) == 90 and {q.qtype for q in questions} == {"evolving", "conflicting", "uncertain"}
     assert all(q.answer for q in questions)
@@ -99,3 +102,19 @@ def test_output_files_load_as_an_eval_set(out, tmp_path):
     docs = list(adapter.documents(paths["corpus"]))
     assert len(docs) == out.manifest["records"]
     assert all(list(adapter.claims(d)) for d in docs)
+
+
+def test_fitted_weights_load_into_the_agent(out, tmp_path, monkeypatch):
+    import json
+    from dataclasses import asdict
+
+    from ogr.pipelines.p3_agentic.agents.claims import load_weights
+    from ogr.reasoning.resolve import Weights
+
+    path = tmp_path / "w.json"
+    path.write_text(json.dumps(asdict(Weights(reliability=2.0, platt_b=1.5))), encoding="utf-8")
+    monkeypatch.setenv("OGR_ROUND2_WEIGHTS", str(path))
+    assert load_weights() == Weights(reliability=2.0, platt_b=1.5)
+    monkeypatch.setenv("OGR_ROUND2_WEIGHTS", str(tmp_path / "missing.json"))
+    assert load_weights() == Weights()
+

@@ -302,13 +302,18 @@ def main(argv=None) -> int:
         print(f"Wrote {paths['corpus']} ({out.manifest['records']} records), "
               f"{paths['questions']} ({n_questions} questions), {paths['manifest']}")
         if args.offline:
+            from dataclasses import asdict
+
             from ogr.harness.offline import run_offline
 
-            report = run_offline(args.corpus, paths, out)
+            report, weights = run_offline(args.corpus, paths, out)
             stem = paths["manifest"].name.removesuffix(".manifest.json")
             report_path = paths["manifest"].with_name(f"{stem}-offline.md")
             report_path.write_text(report, encoding="utf-8")
-            print(f"Offline report: {report_path}")
+            weights_path = paths["manifest"].with_name(f"{stem}-weights.json")
+            weights_path.write_text(json.dumps(asdict(weights), indent=2), encoding="utf-8")
+            print(f"Offline report: {report_path}; fitted weights: {weights_path} "
+                  f"(set OGR_ROUND2_WEIGHTS to use them)")
         return 0
 
     if args.command == "verify":

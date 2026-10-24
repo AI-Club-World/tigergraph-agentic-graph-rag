@@ -1,6 +1,7 @@
 # Round 2 — Design: evolving, conflicting and uncertain facts
 
-Status: proposed design, not implemented. Gated items are marked **[GATE Gn]**
+Status: implemented offline on `round-2` (see "As built" below and
+`ROUND2-RESULTS.md`); not yet run live. Gated items are marked **[GATE Gn]**
 and listed in `ROUND2-INTERVIEW-LOG.md`. Assumptions about the unknown Round-2
 dataset are marked **[ASSUMPTION]** and must be reconciled when it arrives.
 
@@ -9,6 +10,19 @@ Principles carried over from Round 1:
 - Deterministic first; the LLM only where it measurably improves quality.
 - No question templates, no qtype read, nothing tuned on the scored set.
 - Round-1 records, trace and stop vocabulary stay valid; every new field is optional.
+
+## As built: where the implementation differs from this design
+
+| Section | Design said | Built |
+|---|---|---|
+| §1 | `generic_jsonl.py`, `injected.py`, `registry.py` | `block_records.py` (also the harness format, so no separate injected adapter); lookup in `datasets/__init__.py` (`adapter_for`, `detect_adapter`) |
+| §2 | `SAME_AS(Entity -> OlympicEvent)` | dropped: a claim about an event points `ABOUT` it directly |
+| §2 | supersession: later + revision or same source | the same, and **a hedged statement never supersedes a firm one** (found by the harness: a later hedged estimate overrode a firm figure) |
+| §3.2 | `q6_claims(subject_ids, predicate, dataset_id, t1, t2, mode)` | `q6_claims(subject_ids, predicate, dataset_ids)`; the time scope is applied in Python by the same code that is tested offline |
+| §4.4 | confidence = softmax over scores, temperature-calibrated | softmax share × noisy-or absolute support (so one hedged blog post is not certain), then Platt scaling with Platt's smoothed targets, both fitted on dev |
+| §5 | tools `claims`, `corroborate` (≤ 2 calls), `resolve` | one `claims` tool (Q6 + resolution); corroboration is the existing Q5 similarity search, once, when the chosen value's share is below `MARGIN` (0.6) |
+| §5 | — | P2 runs the same claim probe and takes the claims query as its one query, so P3 − P2 is still the loop alone |
+| §8 | parameters seed, n, difficulty, conflict rate, reliable share, hedge rate, noise | also `hedge_error` (a lone hedged report is wrong, with the truth stated nowhere), `rumour_rate` (an unconfirmed revision rumour) and `reliability_info` (`exact`/`class`/`none`); evolving revisions are neutral result reviews, never an accusation against a real person |
 
 ---
 

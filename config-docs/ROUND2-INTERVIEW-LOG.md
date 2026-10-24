@@ -11,7 +11,7 @@ is recorded here.
 | G3 | Temporal field in the LLM intent parse | **Allowed**, only if the dev split shows the deterministic detector falls short; re-baseline Round 1 if applied | 2026-10-24 |
 | G4 | LLM claim extraction at ingest | **Allowed**, same condition; Round-2 datasets only, cached | 2026-10-24 |
 | G5 | Credentials and run budget for measurement | **Build offline first**; live runs when credentials are added | 2026-10-24 |
-| R1 | Reconcile "TG Multihop30" with the repo's eval sets | pending | |
+| R1 | Reconcile "TG Multihop30" with the repo's eval sets | pending: question open to the user | |
 
 ## G1 — Schema strategy
 
