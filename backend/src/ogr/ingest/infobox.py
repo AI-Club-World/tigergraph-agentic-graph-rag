@@ -56,6 +56,7 @@ __all__ = [
     "derive_sport",
     "normalise_games_id",
     "parse_document",
+    "event_id_for_title",
     "parse_corpus",
 ]
 
@@ -250,6 +251,18 @@ def event_id_from_parts(sport: str, games_id: str, event: str) -> str:
     return f"{_slug(sport)}-{games_id}-{_slug(match.group(1) if match else event)}"
 
 
+def event_id_for_title(title: str | None) -> str | None:
+    """The event_id ingest gives the event page with this title (sport, Games
+    and event all from the title), or None when the title is not an event
+    page title. Round-2 adapters use it to link a claim to its event."""
+    sport = derive_sport(title or "")
+    title_games = normalise_games_id(title)
+    title_event = _TITLE_EVENT.search(title or "")
+    if sport and title_games and title_event:
+        return event_id_from_parts(sport, title_games, title_event.group(1))
+    return None
+
+
 def games_year(games_id: str | None) -> int | None:
     """`2012-Summer` -> 2012. The Games year, not the date parser's year."""
     if not games_id:
@@ -385,12 +398,7 @@ def parse_document(record: dict[str, Any]) -> ParsedDocument:
     #   - some infoboxes omit the `+` in `event` even though the title has it.
     # The infobox values still populate event_name/games_id as attributes —
     # only the identity is taken from the title.
-    title_games = normalise_games_id(doc.title)
-    title_event = _TITLE_EVENT.search(doc.title or "")
-    if doc.sport_name and title_games and title_event:
-        doc.event_id = event_id_from_parts(doc.sport_name, title_games, title_event.group(1))
-    else:
-        doc.event_id = doc.doc_id
+    doc.event_id = event_id_for_title(doc.title) or doc.doc_id
 
     doc.parse_confidence = round(max(0.0, 1.0 - penalties), 2)
     return doc

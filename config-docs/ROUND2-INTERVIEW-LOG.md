@@ -6,11 +6,11 @@ is recorded here.
 
 | Gate | Topic | Decision | Date |
 |---|---|---|---|
-| G1 | Schema strategy and additive Round-2 types | pending | |
-| G2 | Where the answer confidence comes from | pending | |
-| G3 | Temporal field in the LLM intent parse | pending | |
-| G4 | LLM claim extraction at ingest | pending | |
-| G5 | Credentials and run budget for measurement | pending | |
+| G1 | Schema strategy and additive Round-2 types | **Option A, additive** (as proposed) | 2026-10-24 |
+| G2 | Where the answer confidence comes from | **(a) agent-computed, P3 only**; shared prompt unchanged | 2026-10-24 |
+| G3 | Temporal field in the LLM intent parse | **Allowed**, only if the dev split shows the deterministic detector falls short; re-baseline Round 1 if applied | 2026-10-24 |
+| G4 | LLM claim extraction at ingest | **Allowed**, same condition; Round-2 datasets only, cached | 2026-10-24 |
+| G5 | Credentials and run budget for measurement | **Build offline first**; live runs when credentials are added | 2026-10-24 |
 | R1 | Reconcile "TG Multihop30" with the repo's eval sets | pending | |
 
 ## G1 — Schema strategy
