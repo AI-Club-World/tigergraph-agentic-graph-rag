@@ -87,6 +87,7 @@ class TigerGraphClient:
         # reading as "no evidence". Per thread: concurrent questions share
         # one client, and each drains in the thread that ran its query.
         self._errors = threading.local()
+        self._source_reliability: dict[str, float] | None = None
 
     def _note_error(self, message: str) -> None:
         if not hasattr(self._errors, "items"):
@@ -188,8 +189,12 @@ class TigerGraphClient:
         vtype: str = "Chunk",
         candidate_set: list[str] | None = None,
         embedding_model: str | None = None,
+        dataset_ids: list[str] | None = None,
     ) -> list[dict[str, Any]]:
         """Q5: vector search over the chunks, in `embedding_model`'s own index.
+
+        With `dataset_ids` (Round 2), Q5S searches only those datasets'
+        chunks; without it Q5 runs exactly as in Round 1.
 
         `query_vector` must come from that same model: callers embed the query
         and pass the model key from one config value, and the index searched
@@ -205,6 +210,7 @@ class TigerGraphClient:
             "candidate_set": candidate_set,
             "embedding_model": model.key,
             "emb_type": model.vertex_type,
+            "dataset_ids": dataset_ids,
         }
 
         # If mock chunks are provided (for testing or offline evaluation)
@@ -216,6 +222,8 @@ class TigerGraphClient:
                     continue
                 # If candidate_set is specified, filter by candidate_set
                 if candidate_set is not None and chunk.get("chunk_id") not in candidate_set:
+                    continue
+                if dataset_ids and chunk.get("dataset_id") not in dataset_ids:
                     continue
                 results.append(chunk)
             return results[:k]
@@ -234,14 +242,21 @@ class TigerGraphClient:
                 f"Query vector has {len(query_vector)} dims; {model.label} embeddings have {model.dim}"
             )
         try:
-            params = {
-                "query_vector": query_vector,
-                "k": k,
-                "emb_type": model.vertex_type,
-                "candidate_set": candidate_set or [],
-            }
-            # Execute installed query q5_hybrid_search
-            raw_res = _read_with_retry(self.conn.runInstalledQuery, "q5_hybrid_search", params)
+            if dataset_ids:
+                query = "q5s_search"
+                params = {
+                    "query_vector": query_vector, "k": k, "emb_type": model.vertex_type,
+                    "dataset_ids": list(dataset_ids),
+                }
+            else:
+                query = "q5_hybrid_search"
+                params = {
+                    "query_vector": query_vector,
+                    "k": k,
+                    "emb_type": model.vertex_type,
+                    "candidate_set": candidate_set or [],
+                }
+            raw_res = _read_with_retry(self.conn.runInstalledQuery, query, params)
             # Normalize returned records
             return self._normalize_q5_results(raw_res)
         except Exception as e:
@@ -423,6 +438,58 @@ class TigerGraphClient:
             logger.error("Error running query '%s': %s", query_name, e)
             self._note_error(f"{query_name}: {e}")
             return []
+
+    def claims(
+        self, subject_ids: list[str], predicate: str = "", dataset_ids: list[str] | None = None
+    ) -> list[Any]:
+        """Q6 (Round 2): every claim about these subjects, as ClaimRecords.
+        [] offline, on failure (recorded like any query error), or when the
+        graph has no Round-2 types."""
+        from ogr.datasets.base import ClaimRecord
+
+        if not subject_ids:
+            return []
+        rows = self._run_query("q6_claims", {
+            "subject_ids": list(subject_ids), "predicate": predicate, "dataset_ids": list(dataset_ids or []),
+        })
+        claims = []
+        for row in rows:
+            if not isinstance(row, dict) or not row.get("claim_id"):
+                continue
+            claims.append(ClaimRecord(
+                claim_id=row["claim_id"], doc_id=row.get("doc_id", ""), dataset_id=row.get("dataset_id", ""),
+                subject_id=row.get("subject_id", ""), subject_name=row.get("subject_name", ""),
+                predicate=row.get("predicate", ""), value_text=row.get("value_text", ""),
+                value_num=float(row["value_num"]) if row.get("has_num") else None,
+                valid_from=row.get("valid_from") or None, valid_to=row.get("valid_to") or None,
+                observed_at=row.get("observed_at") or None, source_id=row.get("source_id", ""),
+                extraction_conf=float(row.get("extraction_conf", 1.0)),
+                hedged=bool(row.get("hedged")),
+                hedge_terms=[t for t in str(row.get("hedge_terms") or "").split("; ") if t],
+                revision=bool(row.get("revision")),
+            ))
+        return claims
+
+    def source_reliability(self) -> dict[str, float]:
+        """Reliability per source (Round 2), as estimated at the last claim
+        load. Cached for the client's life; the claim loader clears it."""
+        if self._source_reliability is not None:
+            return self._source_reliability
+        if self.mock_chunks is not None:
+            return {}
+        self._ensure_connection()
+        if self.conn is None:
+            return {}
+        try:
+            vertices = _read_with_retry(self.conn.getVertices, "Source")
+        except Exception as e:  # the type may not exist on a Round-1 graph
+            logger.warning("Source reliability unavailable: %s", e)
+            return {}
+        self._source_reliability = {
+            v.get("v_id", ""): float(v.get("attributes", {}).get("reliability_est", 0.0))
+            for v in vertices or [] if v.get("v_id")
+        }
+        return self._source_reliability
 
     def _expand_has_chunk(self, doc_ids: list[str]) -> list[dict[str, Any]]:
         """Expand Document vertices to their Chunks via the HAS_CHUNK edge.

@@ -1,0 +1,49 @@
+USE GRAPH OlympicGraphRAG
+
+// Q5S: q5_hybrid_search restricted to the chunks of some datasets — Round 2
+// (ROUND2-DESIGN.md §3.2, gate G1). Same result shape as Q5 (top_chunks,
+// distances), so client._normalize_q5_results reads both. Q5 itself is not
+// touched: a run with no dataset scope still calls Q5, exactly as Round 1.
+// Seeds are the scoped chunks' embedding vertices of the query's own model,
+// so a query vector only ever meets its own model's index.
+
+CREATE OR REPLACE QUERY q5s_search(
+  LIST<FLOAT> query_vector, INT k = 10, STRING emb_type = "Embedding_BGELarge", SET<STRING> dataset_ids
+) FOR GRAPH OlympicGraphRAG SYNTAX V2 {
+
+  MapAccum<VERTEX, FLOAT> @@distances;
+  SetAccum<VERTEX> @@hits;
+
+  Ds = SELECT d FROM Dataset:d WHERE dataset_ids.contains(d.dataset_id);
+  InScope = SELECT c FROM Ds:d -(reverse_IN_DATASET>)- Chunk:c;
+
+  IF emb_type == "Embedding_Qwen" THEN
+    Seeds = SELECT e FROM InScope:c -(HAS_EMBEDDING>)- Embedding_Qwen:e;
+    Top = vectorSearch({Embedding_Qwen.emb}, query_vector, k, {candidate_set: Seeds, distance_map: @@distances});
+    Top = SELECT e FROM Top:e ACCUM @@hits += e;
+  ELSE IF emb_type == "Embedding_EmbeddingGemma" THEN
+    Seeds = SELECT e FROM InScope:c -(HAS_EMBEDDING>)- Embedding_EmbeddingGemma:e;
+    Top = vectorSearch({Embedding_EmbeddingGemma.emb}, query_vector, k, {candidate_set: Seeds, distance_map: @@distances});
+    Top = SELECT e FROM Top:e ACCUM @@hits += e;
+  ELSE IF emb_type == "Embedding_GteLarge" THEN
+    Seeds = SELECT e FROM InScope:c -(HAS_EMBEDDING>)- Embedding_GteLarge:e;
+    Top = vectorSearch({Embedding_GteLarge.emb}, query_vector, k, {candidate_set: Seeds, distance_map: @@distances});
+    Top = SELECT e FROM Top:e ACCUM @@hits += e;
+  ELSE IF emb_type == "Embedding_Mxbai" THEN
+    Seeds = SELECT e FROM InScope:c -(HAS_EMBEDDING>)- Embedding_Mxbai:e;
+    Top = vectorSearch({Embedding_Mxbai.emb}, query_vector, k, {candidate_set: Seeds, distance_map: @@distances});
+    Top = SELECT e FROM Top:e ACCUM @@hits += e;
+  ELSE IF emb_type == "Embedding_BGELarge" THEN
+    Seeds = SELECT e FROM InScope:c -(HAS_EMBEDDING>)- Embedding_BGELarge:e;
+    Top = vectorSearch({Embedding_BGELarge.emb}, query_vector, k, {candidate_set: Seeds, distance_map: @@distances});
+    Top = SELECT e FROM Top:e ACCUM @@hits += e;
+  END;
+
+  Hits = {@@hits};
+  TopChunks = SELECT c FROM Hits:e -(reverse_HAS_EMBEDDING>)- Chunk:c;
+
+  PRINT TopChunks AS top_chunks;
+  PRINT @@distances AS distances;
+}
+
+INSTALL QUERY q5s_search

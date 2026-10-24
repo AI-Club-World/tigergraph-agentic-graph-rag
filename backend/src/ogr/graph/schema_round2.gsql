@@ -1,0 +1,52 @@
+// Round 2 (config-docs/ROUND2-DESIGN.md §2, gate G1 = Option A, additive).
+//
+// Adds the fact layer to the existing graph WITHOUT dropping it: a local
+// SCHEMA_CHANGE JOB on OlympicGraphRAG. No existing vertex or edge type is
+// altered, and Q1-Q5 are not touched. Run once after schema.gsql (a reset,
+// which drops the graph, needs it again); graph/schema.py skips it when the
+// Claim type already exists.
+//
+// [TO VERIFY ON SAVANNA] local types with edges to the graph's global types
+// (Document, Chunk, OlympicEvent), and whether installed queries need a
+// reinstall after the job. Nothing here has been run against a live
+// workspace yet.
+//
+// Dates are ISO strings ("" = unknown): ISO order is date order, and
+// DATETIME has no null. value_num is meaningful only when has_num.
+
+USE GRAPH OlympicGraphRAG
+
+DROP JOB add_round2_types
+
+CREATE SCHEMA_CHANGE JOB add_round2_types FOR GRAPH OlympicGraphRAG {
+  ADD VERTEX Dataset (
+    PRIMARY_ID dataset_id STRING, title STRING, adapter STRING
+  ) WITH PRIMARY_ID_AS_ATTRIBUTE="true";
+  ADD VERTEX Source (
+    PRIMARY_ID source_id STRING, name STRING, source_class STRING,
+    reliability_prior DOUBLE, has_prior BOOL, reliability_est DOUBLE
+  ) WITH PRIMARY_ID_AS_ATTRIBUTE="true";
+  ADD VERTEX Entity (
+    PRIMARY_ID entity_id STRING, name STRING, entity_type STRING
+  ) WITH PRIMARY_ID_AS_ATTRIBUTE="true";
+  ADD VERTEX Claim (
+    PRIMARY_ID claim_id STRING, dataset_id STRING, doc_id STRING, subject_id STRING,
+    subject_name STRING, predicate STRING, value_text STRING, value_num DOUBLE, has_num BOOL,
+    valid_from STRING, valid_to STRING, observed_at STRING, source_id STRING,
+    extraction_conf DOUBLE, hedged BOOL, hedge_terms STRING, revision BOOL
+  ) WITH PRIMARY_ID_AS_ATTRIBUTE="true";
+
+  ADD DIRECTED EDGE IN_DATASET (
+    FROM Document, TO Dataset | FROM Chunk, TO Dataset | FROM Claim, TO Dataset |
+    FROM Source, TO Dataset | FROM Entity, TO Dataset
+  ) WITH REVERSE_EDGE="reverse_IN_DATASET";
+  ADD DIRECTED EDGE ASSERTS (FROM Document, TO Claim) WITH REVERSE_EDGE="reverse_ASSERTS";
+  ADD DIRECTED EDGE FROM_SOURCE (FROM Document, TO Source) WITH REVERSE_EDGE="reverse_FROM_SOURCE";
+  ADD DIRECTED EDGE ABOUT (
+    FROM Claim, TO OlympicEvent | FROM Claim, TO Entity
+  ) WITH REVERSE_EDGE="reverse_ABOUT";
+  ADD DIRECTED EDGE SUPERSEDES (FROM Claim, TO Claim, reason STRING) WITH REVERSE_EDGE="reverse_SUPERSEDES";
+  ADD UNDIRECTED EDGE CONTRADICTS (FROM Claim, TO Claim, reason STRING);
+}
+
+RUN SCHEMA_CHANGE JOB add_round2_types

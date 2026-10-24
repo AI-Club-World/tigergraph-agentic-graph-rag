@@ -63,6 +63,7 @@ from ogr.ingest.chunk_embed import chunk_and_embed_corpus
 from ogr.ingest.embedding_index import EmbeddingStore, SwitchRefused, run_job
 from ogr.ingest.infobox import parse_corpus
 from ogr.ingest.load import load_graph
+from ogr.ingest.load_claims import load_claims_for_build
 from ogr.ingest.progress import BuildEvent, BuildProgress
 from ogr.ingest.registry import DatasetRegistry
 from ogr.pipelines.p1_rag import run_p1_rag
@@ -1251,7 +1252,12 @@ async def _run_build(build_id: str, queue: asyncio.Queue, config: RunConfig, req
         begin("install_graph_queries", everyone, items_total=5)
         await asyncio.to_thread(install_queries, client)
         client._vocab_cache.clear()  # the reload may have changed Games/Sport/Venue
-        progress.finish(stage, affected, items_done=5)
+        # Round 2: the dataset's fact layer, when the graph has its types.
+        claims_note = await asyncio.to_thread(
+            load_claims_for_build, client, corpus, request.dataset, [c.chunk_id for c in chunks],
+            sorted({e for d in registry.read()["datasets"].values() for e in d.get("event_ids", [])}),
+        )
+        progress.finish(stage, affected, items_done=5, note=claims_note)
         # GraphRAG needs no vectors: answerable once the graph and Q1-Q4 are in.
         progress.ready(["graphrag"])
         ready_ms["graphrag"] = round((time.monotonic() - started) * 1000)

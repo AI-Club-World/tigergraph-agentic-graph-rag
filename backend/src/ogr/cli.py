@@ -110,6 +110,16 @@ def build_parser() -> argparse.ArgumentParser:
         "(oracle subject/predicate; not a pipeline result)",
     )
 
+    round2_parser = subparsers.add_parser(
+        "round2",
+        help="Round 2 (gate G1): add the fact layer to the existing graph (no drop, no re-ingest), "
+        "install Q5S/Q6 and load claims for every dataset already built",
+    )
+    round2_parser.add_argument("--corpus-dir", type=str, default="data/corpus")
+    round2_parser.add_argument(
+        "--skip-install", action="store_true", help="Only (re)load claims; the types and queries exist"
+    )
+
     return parser
 
 
@@ -193,6 +203,7 @@ def _build(corpus: str, vector_timeout_s: float) -> int:
     if not store.active():
         store.set_active(model.key)
     print("Build complete; vector index Ready_for_query.")
+    print("Round 2: the reset removed the fact layer; add it back with `python -m ogr.cli round2`.")
     return 0
 
 
@@ -252,6 +263,29 @@ def main(argv=None) -> int:
 
         count = write_export(Path(args.run), Path(args.out))
         print(f"Exported {count} question(s) to {args.out}")
+        return 0
+
+    if args.command == "round2":
+        from ogr.datasets import detect_adapter
+        from ogr.graph.schema import install_round2
+        from ogr.ingest.load_claims import backfill
+        from ogr.ingest.registry import DatasetRegistry
+
+        client = TigerGraphClient(get_default_config())
+        if not args.skip_install:
+            install_round2(client)
+            print("Round-2 types and queries installed")
+        registry = DatasetRegistry(OUT_DIR / "datasets.json")
+        corpora = {
+            name: Path(args.corpus_dir) / f"{name}.jsonl"
+            for name in registry.read()["datasets"]
+            if (Path(args.corpus_dir) / f"{name}.jsonl").exists()
+        }
+        adapters = {name: detect_adapter(path) for name, path in corpora.items()}
+        for report in backfill(client, registry, corpora, adapters):
+            print(f"  {report.dataset_id}: {report.claims} claims, {report.sources} sources, "
+                  f"{report.chunks} chunks scoped, {report.supersedes} SUPERSEDES, "
+                  f"{report.contradicts} CONTRADICTS")
         return 0
 
     if args.command == "harness":

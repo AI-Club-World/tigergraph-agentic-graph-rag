@@ -1,0 +1,38 @@
+USE GRAPH OlympicGraphRAG
+
+// Q6: claims(subject_ids, predicate, dataset_ids) — Round 2 (ROUND2-DESIGN.md §3.2).
+// Every claim about the given subjects (an OlympicEvent event_id or an Entity
+// id), optionally for one predicate and within some datasets, with its
+// provenance, time and confidence fields. Temporal scoping, supersession and
+// conflict resolution run on these rows in Python (reasoning/resolve.py),
+// with the same deterministic code that wrote SUPERSEDES/CONTRADICTS at
+// ingest, so the edges are for inspection and traversal, and the answer
+// path never depends on two implementations agreeing.
+
+CREATE OR REPLACE QUERY q6_claims(
+  SET<STRING> subject_ids, STRING predicate = "", SET<STRING> dataset_ids
+) FOR GRAPH OlympicGraphRAG SYNTAX V2 {
+
+  TYPEDEF TUPLE<
+    STRING claim_id, STRING dataset_id, STRING doc_id, STRING subject_id, STRING subject_name,
+    STRING predicate, STRING value_text, DOUBLE value_num, BOOL has_num,
+    STRING valid_from, STRING valid_to, STRING observed_at, STRING source_id,
+    DOUBLE extraction_conf, BOOL hedged, STRING hedge_terms, BOOL revision
+  > ClaimRow;
+  ListAccum<ClaimRow> @@rows;
+
+  Claims = SELECT c FROM Claim:c
+           WHERE subject_ids.contains(c.subject_id)
+             AND (predicate == "" OR c.predicate == predicate)
+             AND (dataset_ids.size() == 0 OR dataset_ids.contains(c.dataset_id))
+           ACCUM @@rows += ClaimRow(
+             c.claim_id, c.dataset_id, c.doc_id, c.subject_id, c.subject_name,
+             c.predicate, c.value_text, c.value_num, c.has_num,
+             c.valid_from, c.valid_to, c.observed_at, c.source_id,
+             c.extraction_conf, c.hedged, c.hedge_terms, c.revision
+           );
+
+  PRINT @@rows AS results;
+}
+
+INSTALL QUERY q6_claims

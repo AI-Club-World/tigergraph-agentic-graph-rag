@@ -27,7 +27,17 @@ QUERY_FILES = (
     "q5_hybrid_search.gsql",
 )
 
-__all__ = ["SCHEMA_PATH", "QUERIES_DIR", "QUERY_FILES", "install_schema", "install_queries"]
+# Round 2 (config-docs/ROUND2-DESIGN.md, gate G1): the fact layer, added to
+# the existing graph by a schema change job, and its two queries. Installed
+# separately, so a Round-1 build is unchanged.
+ROUND2_SCHEMA_PATH = _GRAPH_DIR / "schema_round2.gsql"
+ROUND2_QUERY_FILES = ("q5s_search.gsql", "q6_claims.gsql")
+ROUND2_VERTEX_TYPES = frozenset({"Dataset", "Source", "Entity", "Claim"})
+
+__all__ = [
+    "SCHEMA_PATH", "QUERIES_DIR", "QUERY_FILES", "ROUND2_SCHEMA_PATH", "ROUND2_QUERY_FILES",
+    "has_round2_schema", "install_schema", "install_queries", "install_round2",
+]
 
 EXPECTED_VERTEX_TYPES = frozenset(
     {"Document", "OlympicEvent", "Games", "Sport", "Venue", "Chunk"}
@@ -85,3 +95,35 @@ def install_queries(client: TigerGraphClient) -> list[str]:
     if failed:
         raise RuntimeError("GSQL queries not installed — " + " | ".join(failed))
     return results
+
+
+def has_round2_schema(client: TigerGraphClient) -> bool:
+    """Whether the Round-2 types exist on the graph (False offline)."""
+    client._ensure_connection()
+    conn = client.conn
+    if conn is None or not hasattr(conn, "getVertexTypes"):
+        return False
+    types = conn.getVertexTypes()
+    return isinstance(types, list) and ROUND2_VERTEX_TYPES <= set(types)
+
+
+def install_round2(client: TigerGraphClient) -> list[str]:
+    """Add the Round-2 types (once) and install Q5S and Q6. Never drops the
+    graph; a graph that already has the types only gets the queries."""
+    client._ensure_connection()
+    if client.conn is None:
+        raise RuntimeError("No TigerGraph connection available; cannot install the Round-2 schema")
+    results = []
+    if not has_round2_schema(client):
+        results.append(client.conn.gsql(ROUND2_SCHEMA_PATH.read_text(encoding="utf-8")))
+        if hasattr(client.conn, "getVertexTypes") and not has_round2_schema(client):
+            raise RuntimeError(f"Round-2 schema not installed: {str(results[-1])[-300:]}")
+    for filename in ROUND2_QUERY_FILES:
+        results.append(client.conn.gsql((QUERIES_DIR / filename).read_text(encoding="utf-8")))
+    installed = client.conn.getInstalledQueries()
+    names = {n.rsplit("/", 1)[-1] for n in installed}
+    missing = [f for f in ROUND2_QUERY_FILES if f.removesuffix(".gsql") not in names]
+    if missing:
+        raise RuntimeError("Round-2 queries not installed: " + ", ".join(missing))
+    return results
+
