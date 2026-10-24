@@ -2,7 +2,13 @@ import { CitationList } from './CitationList'
 import { Icon } from './Icon'
 import { StatusBadge } from './StatusBadge'
 import { ms, num } from '../format'
-import { PIPELINE_IDS, PIPELINE_LABELS, type PipelineId, type PipelineRecord } from '../types'
+import { PIPELINE_IDS, PIPELINE_LABELS, type PipelineId, type PipelineRecord, type TemporalScope } from '../types'
+
+function scopeLabel(scope: TemporalScope): string {
+  const label = scope.mode.replace('_', ' ')
+  if (scope.mode === 'between') return `${label} ${scope.t1} and ${scope.t2}`
+  return scope.t1 ? `${label} ${scope.t1}` : label
+}
 
 export interface ColumnState {
   status: 'idle' | 'running' | 'done' | 'error'
@@ -114,6 +120,46 @@ export function ResultColumn({ pipeline, state, onPickCandidate }: Props) {
                   </span>
                 </p>
               )}
+
+              {record.confidence != null || record.temporal_scope ? (
+                <p className="callout accent round2">
+                  <Icon name="flag" size={13} />
+                  <span>
+                    {record.confidence != null && <>Confidence: <code>{record.confidence.toFixed(2)}</code></>}
+                    {record.confidence != null && record.temporal_scope ? ' · ' : null}
+                    {record.temporal_scope && (
+                      <>
+                        Answered for: <code>{scopeLabel(record.temporal_scope)}</code>
+                      </>
+                    )}
+                  </span>
+                </p>
+              ) : null}
+
+              {record.conflicts?.map((conflict) => (
+                <div key={`${conflict.subject}-${conflict.predicate}`} className="conflicts" aria-label="Conflicting values">
+                  <span className="section-label">Values weighed for {conflict.predicate}</span>
+                  <ul>
+                    {conflict.chosen && (
+                      <li className="chosen">
+                        <strong>{conflict.chosen.value}</strong> chosen · p {conflict.chosen.probability.toFixed(2)} ·{' '}
+                        {conflict.chosen.sources.join(', ')}
+                      </li>
+                    )}
+                    {conflict.alternatives.map((alt) => (
+                      <li key={alt.value}>
+                        {alt.value} · p {alt.probability.toFixed(2)} · {alt.sources.join(', ')}
+                      </li>
+                    ))}
+                    {conflict.superseded.map((old) => (
+                      <li key={`${old.value}-${old.doc_id}`} className="superseded">
+                        {old.value} · superseded · {old.source}
+                        {old.observed_at ? ` (${old.observed_at})` : ''}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
 
               {record.stop_reason && (
                 <p className="callout accent">

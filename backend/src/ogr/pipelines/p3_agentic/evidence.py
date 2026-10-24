@@ -45,12 +45,16 @@ FallbackTrigger = Literal[
     "scope_coverage_fail",
     "groundedness_fail",
     "empty_anchor",
+    # Round 2: claims resolved with a low margin; one corroborating search.
+    "low_margin",
     "none",
 ]
 
 
 # Evidence produced by exact graph queries rather than retrieved prose.
-STRUCTURED_SOURCES = frozenset({"graph_traversal", "multi_hop", "aggregation_count", "aggregation_argmax"})
+STRUCTURED_SOURCES = frozenset({
+    "graph_traversal", "multi_hop", "aggregation_count", "aggregation_argmax", "claims",
+})
 
 
 @dataclass

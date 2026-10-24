@@ -76,6 +76,7 @@ class TraceRecorder:
         path_name: str | None = None,
         extra_tokens_input: int = 0,
         extra_tokens_output: int = 0,
+        details: dict | None = None,
     ) -> TraceStep:
         """Record a single agent execution as a TraceStep.
 
@@ -91,6 +92,8 @@ class TraceRecorder:
                 deviations merely for not being tools.
             extra_tokens_input: Any additional input tokens (e.g. from LLM calls within agent).
             extra_tokens_output: Any additional output tokens.
+            details: Round 2, optional structured working for the step
+                (a conflict resolution's candidates and score terms).
         """
         step_n = len(self._steps) + 1
 
@@ -134,6 +137,7 @@ class TraceRecorder:
             latency_ms=result.latency_ms,
             strategy_change=this_step_changed,
             notes=notes,
+            details=details,
         )
         self._emit(step)
         logger.debug(

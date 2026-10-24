@@ -26,7 +26,7 @@ from ogr.pipelines.p3_agentic.intent import IntentSchema
 logger = logging.getLogger(__name__)
 
 RouteDecision = Literal["lookup_direct", "scoped_aggregate", "loop"]
-LoopTool = Literal["lookup", "multi_hop", "venue", "traversal"]
+LoopTool = Literal["lookup", "multi_hop", "venue", "traversal", "claims"]
 
 
 def is_fully_specified(intent: IntentSchema) -> bool:
@@ -92,7 +92,7 @@ def refine_route(decision: RouteDecision, intent: IntentSchema, anchors) -> Rout
     return decision
 
 
-def first_loop_tool(intent: IntentSchema, anchors) -> LoopTool:
+def first_loop_tool(intent: IntentSchema, anchors, claims: bool = False) -> LoopTool:
     """The tool a `loop` route starts with — shared by P3 (every iteration)
     and P2 (its single step), so the two differ only by the loop.
 
@@ -101,7 +101,12 @@ def first_loop_tool(intent: IntentSchema, anchors) -> LoopTool:
       named event, TRAVERSE     -> multi_hop  (resolve event, Q4, Q1)
       venue only                -> venue      (Q4 HELD_AT; a venue matches no event name)
       otherwise                 -> traversal  (Q4 on whatever anchor exists)
+
+    Round 2: `claims` (the claim probe found the claims matter: a time-scoped
+    question or disagreeing claims) -> claims (Q6 + conflict resolution).
     """
+    if claims:
+        return "claims"
     if getattr(anchors, "title", None) or getattr(anchors, "event_id", None):
         return "multi_hop" if intent.operation == "TRAVERSE" else "lookup"
     if getattr(anchors, "venue", None):
@@ -109,11 +114,11 @@ def first_loop_tool(intent: IntentSchema, anchors) -> LoopTool:
     return "traversal"
 
 
-def loop_tool_candidates(intent: IntentSchema, anchors) -> list[LoopTool]:
+def loop_tool_candidates(intent: IntentSchema, anchors, claims: bool = False) -> list[LoopTool]:
     """Every loop tool that applies to these anchors, first choice first.
     The loop runs the first one not yet tried, so a pass that found too
     little moves on to another retrieval method instead of repeating itself."""
-    first = first_loop_tool(intent, anchors)
+    first = first_loop_tool(intent, anchors, claims)
     options: list[LoopTool] = [first]
     if getattr(anchors, "title", None) or getattr(anchors, "event_id", None):
         options += ["lookup", "multi_hop"]

@@ -123,11 +123,20 @@ def build_p3_graph(
         invoke_llm_with_answer_contract,
         resolve_tool_calling_support,
     )
+    from ogr.common.names import normalized_name_set
     from ogr.common.rerank import rerank
     from ogr.graph.client import drain_graph_errors, graph_error_detail
     from ogr.pipelines.p3_agentic.agents.agent_result import AgentResult
     from ogr.pipelines.p3_agentic.agents.aggregation import run_aggregation
     from ogr.pipelines.p3_agentic.agents.answer_resolution import resolve_answer
+    from ogr.pipelines.p3_agentic.agents.claims import (
+        MARGIN,
+        ClaimProbe,
+        claims_enabled,
+        load_weights,
+        probe_claims,
+        run_claims,
+    )
     from ogr.pipelines.p3_agentic.agents.document_retrieval import run_document_retrieval
     from ogr.pipelines.p3_agentic.agents.entity_linking import (
         ResolvedAnchors,
@@ -142,10 +151,15 @@ def build_p3_graph(
     from ogr.pipelines.p3_agentic.stopping import should_stop
     from ogr.pipelines.p3_agentic.strategy import detect_strategy_change
     from ogr.pipelines.p3_agentic.trace import TraceRecorder
+    from ogr.pipelines.temporal import TemporalScope, detect_temporal_scope
 
     # Use a mutable wrapper so the recorder persists across node calls within a run.
     # `actions`: (tool, args) already run, so no action repeats with the same inputs.
     _state_store: dict[str, Any] = {"actions": set()}
+    # Round 2: conflict-resolution weights (fitted on the harness dev split
+    # when $OGR_ROUND2_WEIGHTS names them), and whether the graph has claims.
+    round2_weights = load_weights()
+    has_claims = claims_enabled(tg_client)
 
     # Capability probe: 'auto' inspects the model, true/false force it (PLAT-08).
     supports_tool_calling = resolve_tool_calling_support(
@@ -213,6 +227,15 @@ def build_p3_graph(
         recorder: TraceRecorder = _state_store.get("recorder")
         initial = state.get("route_initial") or "loop"
         refined = refine_route(initial, intent, anchors)
+        # Round 2: which version of the fact is asked for (0 tokens), and
+        # whether the graph's claims about the subject matter (one Q6 call,
+        # only on a graph with the fact layer). When they do, the loop
+        # starts with the claims tool; otherwise the Round-1 route stands.
+        scope = detect_temporal_scope(state.get("question", ""))
+        probe = probe_claims(tg_client, intent, anchors, scope) if has_claims else ClaimProbe()
+        if probe.relevant and refined in ("lookup_direct", "loop"):
+            refined = "loop"
+        _state_store["scope"], _state_store["claims_probe"] = scope, probe
         if recorder and refined != initial:
             # The planned route, not a deviation from it: strategy_changed
             # is judged against this one.
@@ -236,8 +259,11 @@ def build_p3_graph(
                         f"; recovered from the question text: {', '.join(anchors.recovered)}"
                         if getattr(anchors, "recovered", None) else ""
                     )
+                    + (f"; time scope {scope.mode} ({scope.cue})" if scope.scoped else "")
+                    + (f"; claims: {probe.reason}" if has_claims else "")
                     + (
-                        f"; route {initial} → {refined} (one named event's attribute)"
+                        f"; route {initial} → {refined} "
+                        + ("(claims to weigh)" if probe.relevant else "(one named event's attribute)")
                         if refined != initial else ""
                     ),
                 ),
@@ -397,13 +423,23 @@ def build_p3_graph(
         # the next applicable tool not yet run, because re-running one with
         # the same anchors returns the same rows. None left: nothing to do.
         tried = {a[0] for a in _state_store["actions"]}
-        candidates = loop_tool_candidates(intent, anchors) if intent else ["traversal"]
+        probe = _state_store.get("claims_probe") or ClaimProbe()
+        candidates = loop_tool_candidates(intent, anchors, claims=probe.relevant) if intent else ["traversal"]
         tool = next((t for t in candidates if t not in tried), None)
         if tool is None:
             _state_store["primary_exhausted"] = True
             return {}
         _state_store["actions"].add((tool,))
-        if tool == "lookup":
+        details = None
+        if tool == "claims":
+            reliability = tg_client.source_reliability() if hasattr(tg_client, "source_reliability") else {}
+            result, resolution = run_claims(
+                probe, _state_store.get("scope") or TemporalScope(), reliability, round2_weights
+            )
+            _state_store["resolution"] = resolution
+            details = resolution.to_dict()
+            tool_name, q_name = "claims", "Q6"
+        elif tool == "lookup":
             t0 = time.perf_counter()
             rows = lookup_named_event(tg_client, anchors, intent.target_field or "")
             result = AgentResult(
@@ -422,8 +458,9 @@ def build_p3_graph(
             tool_name, q_name = "traversal", "Q4"
 
         if recorder:
-            agent = "multi_hop_reasoning" if tool in ("multi_hop", "venue") else "graph_traversal"
-            recorder.record(agent, q_name, result, path_name=tool_name)
+            agent = {"multi_hop": "multi_hop_reasoning", "venue": "multi_hop_reasoning",
+                     "claims": "conflict_resolution"}.get(tool, "graph_traversal")
+            recorder.record(agent, q_name, result, path_name=tool_name, details=details)
         if result.ask_back:
             _state_store["ask_back"] = ("event", result.ask_back)
 
@@ -450,7 +487,29 @@ def build_p3_graph(
         previous = _state_store.get("last_eval")
         unchanged = previous is not None and _state_store.get("last_eval_key") == evidence_key
         t0 = time.perf_counter()
-        if unchanged:
+        resolution = _state_store.get("resolution")
+        if resolution is not None and resolution.chosen is not None:
+            # Round 2: the claims were weighed deterministically; no LLM
+            # groundedness call. A narrow margin earns one corroborating
+            # search; after it, the best value stands (answer policy: always
+            # commit, with its confidence and the losing values cited).
+            corroborated = ("similarity_search",) in _state_store["actions"]
+            settled = (
+                not resolution.alternatives or resolution.chosen.probability >= MARGIN or corroborated
+            )
+            eval_result = EvidenceEvaluation(
+                is_sufficient=settled,
+                scope_coverage_pass=True,
+                groundedness_pass=settled,
+                fallback_trigger="none" if settled else "low_margin",
+                notes=(
+                    f"claims resolved: '{resolution.chosen.value}' with p {resolution.chosen.probability:.2f}"
+                    + (f" of {1 + len(resolution.alternatives)} values" if resolution.alternatives else "")
+                    + ("" if settled else f" (< {MARGIN}): corroborate")
+                    + ("; corroborated" if corroborated else "")
+                ),
+            )
+        elif unchanged:
             reused = "; evidence unchanged, verdict reused"
             eval_result = replace(
                 previous,
@@ -497,7 +556,9 @@ def build_p3_graph(
         if not eval_result.is_sufficient:
             doc_ids = sorted({e.get("doc_id", "") for e in evidence if e.get("doc_id")})
             actions = _state_store["actions"]
-            if eval_result.fallback_trigger == "scope_coverage_fail" and ("similarity_search",) in actions:
+            if eval_result.fallback_trigger in ("scope_coverage_fail", "low_margin") and (
+                ("similarity_search",) in actions
+            ):
                 # Already searched the same question: only document retrieval is new.
                 trigger = "groundedness_fail" if doc_ids else None
             else:
@@ -505,7 +566,7 @@ def build_p3_graph(
             already = ("document_retrieval", tuple(doc_ids)) in actions
             if trigger in ("groundedness_fail", "empty_anchor") and already:
                 trigger = None  # these documents' chunks are already in the evidence
-            if trigger == "scope_coverage_fail":
+            if trigger in ("scope_coverage_fail", "low_margin"):
                 _state_store["actions"].add(("similarity_search",))
                 acted = True
                 sim_result = run_similarity_search(
@@ -514,7 +575,7 @@ def build_p3_graph(
                     k=run_config.k,
                     embedding_model=run_config.embedding_model,
                     embedding_dim=run_config.embedding_dim,
-                    triggered_by="scope_coverage_fail",
+                    triggered_by=trigger,
                 )
                 if recorder:
                     recorder.record("similarity_search", "Q5", sim_result, path_name="similarity_search")
@@ -604,10 +665,26 @@ def build_p3_graph(
         # Answer verification (agents/answer_resolution.py, shared with P2):
         # check the answer against the graph rows shown, and name an event by
         # its page title. Deterministic, 0 tokens.
+        claims_resolution = _state_store.get("resolution")
         if status == "done":
             t_verify = time.perf_counter()
             resolution = resolve_answer(answer, shown)
             answer = resolution.answer
+            # Round 2: the conflict resolution decided the value; the model
+            # phrases it. When the model answered with a value the
+            # resolution ranked lower (or nothing), the resolved value stands.
+            overruled = ""
+            if claims_resolution is not None and claims_resolution.chosen is not None:
+                chosen = claims_resolution.chosen.value
+                lower = [a.value for a in claims_resolution.alternatives] + [
+                    c.value_text for c in claims_resolution.superseded + claims_resolution.out_of_scope
+                ]
+                given = normalized_name_set(answer)
+                if given != normalized_name_set(chosen) and (
+                    not answer or any(given == normalized_name_set(v) for v in lower)
+                ):
+                    overruled = f"; answer set to the resolved value '{chosen}' (model answered '{answer}')"
+                    answer = chosen
             if recorder:
                 recorder.record(
                     "answer_verification",
@@ -617,7 +694,7 @@ def build_p3_graph(
                         notes=resolution.note + (
                             "; conflicting evidence: " + "; ".join(resolution.conflicts)
                             if resolution.conflicts else ""
-                        ),
+                        ) + overruled,
                     ),
                 )
 
@@ -677,6 +754,7 @@ def build_p3_graph(
             # status stays what the answer earned.
             error_detail=error_detail
             or graph_error_detail(recorder.graph_errors if recorder else []),
+            **_round2_fields(_state_store.get("scope"), claims_resolution),
         )
         return {}
 
@@ -718,6 +796,9 @@ def build_p3_graph(
         )
         if not stop and _state_store.get("idle") and _state_store.get("primary_exhausted"):
             stop, reason = True, "no_further_action_available"
+        resolution = _state_store.get("resolution")
+        if stop and reason == "sufficient_evidence" and resolution is not None and resolution.conflicted:
+            reason = "conflict_resolved"
         if stop:
             _state_store["stop_reason"] = reason
             _state_store["stop_after_step"] = len(path_taken)
@@ -787,6 +868,20 @@ def build_p3_graph(
     graph.add_edge("disambiguate", END)
 
     return graph.compile(), _state_store
+
+
+def _round2_fields(scope: Any, resolution: Any) -> dict[str, Any]:
+    """The optional Round-2 record fields: confidence when the claims were
+    weighed, the time scope when the question had one, and the weighed
+    values when they disagreed. Empty for a Round-1 run."""
+    fields: dict[str, Any] = {}
+    if scope is not None and scope.scoped:
+        fields["temporal_scope"] = scope.to_dict()
+    if resolution is not None and resolution.chosen is not None:
+        fields["confidence"] = round(resolution.confidence, 4)
+        if resolution.conflicted:
+            fields["conflicts"] = [resolution.to_dict()]
+    return fields
 
 
 def _prepare_run(

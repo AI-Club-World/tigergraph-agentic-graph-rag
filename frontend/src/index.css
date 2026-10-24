@@ -730,6 +730,12 @@ button.preset:not(:disabled):hover { color: var(--text); border-color: var(--bor
 button.preset.active { color: var(--accent); background: var(--accent-bg-strong); border-color: var(--accent-border); }
 button.preset.active::before { content: '● '; }
 
+/* Round 2: the values the agent weighed (chosen first, losers kept). */
+.conflicts { margin-top: 0.6rem; }
+.conflicts ul { margin: 0.3rem 0 0; padding-left: 1.1rem; font-family: var(--font-mono); font-size: 0.74rem; }
+.conflicts li.chosen { color: var(--accent); }
+.conflicts li.superseded { color: var(--text-muted); }
+
 /* A pipeline that asked back: the candidates, each one a re-ask. */
 .candidates {
   display: flex;

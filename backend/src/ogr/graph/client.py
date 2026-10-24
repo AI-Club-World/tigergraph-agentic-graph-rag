@@ -88,6 +88,7 @@ class TigerGraphClient:
         # one client, and each drains in the thread that ran its query.
         self._errors = threading.local()
         self._source_reliability: dict[str, float] | None = None
+        self._has_claims: bool | None = None
 
     def _note_error(self, message: str) -> None:
         if not hasattr(self._errors, "items"):
@@ -469,6 +470,20 @@ class TigerGraphClient:
                 revision=bool(row.get("revision")),
             ))
         return claims
+
+    def has_claims(self) -> bool:
+        """Whether the graph has the Round-2 fact layer (graph/schema_round2.gsql).
+        Asked once per client; False offline and for mock clients."""
+        if self._has_claims is None:
+            if self.mock_chunks is not None:
+                return False
+            from ogr.graph.schema import has_round2_schema
+
+            enabled = has_round2_schema(self)
+            if self.conn is None:
+                return False  # not cached: the connection may come back
+            self._has_claims = enabled
+        return self._has_claims
 
     def source_reliability(self) -> dict[str, float]:
         """Reliability per source (Round 2), as estimated at the last claim

@@ -44,6 +44,9 @@ class TraceStep(BaseModel):
     latency_ms: float = 0.0
     strategy_change: bool = False
     notes: str = ""
+    # Round 2 (optional): the step's structured working, e.g. a conflict
+    # resolution's candidate values and score terms. None in Round-1 steps.
+    details: dict | None = None
 
 
 class PipelineRecord(BaseModel):
@@ -68,6 +71,13 @@ class PipelineRecord(BaseModel):
     # With stop_reason "disambiguation_required": what the user can choose
     # between (venues or events), so the UI can offer them. None otherwise.
     candidates: list[str] | None = None
+    # Round 2 (optional, additive; None in Round-1 runs and for P1/P2):
+    # the agent's calibrated confidence in its answer (gate G2: computed
+    # from the claims, not stated by the model), the time scope it answered
+    # for, and the conflicting values it weighed (losers kept as evidence).
+    confidence: float | None = None
+    temporal_scope: dict | None = None
+    conflicts: list[dict] | None = None
 
 
 class Verdict(BaseModel):

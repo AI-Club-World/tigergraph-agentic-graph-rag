@@ -20,6 +20,8 @@ DP-3 Option A — closed stop_reason vocabulary:
   error                    : Unrecoverable error in agent execution
   direct_route             : A one-query route (lookup/aggregation) answered without the
                              loop, so no evidence evaluation was run
+  conflict_resolved        : (Round 2) the claims disagreed or changed over time, and
+                             conflict resolution settled on one value (losers cited)
 
 AD-3: A fixed step count is NOT the stopping criterion — sufficiency is.
 The budget exists as a safety valve, not as the primary stop signal.
@@ -43,6 +45,7 @@ StopReason = Literal[
     "disambiguation_required",
     "error",
     "direct_route",
+    "conflict_resolved",
 ]
 
 # Default budgets — sourced from RunConfig at runtime (env: RUN_MAX_STEPS, RUN_MAX_TOKENS_PER_QUERY)

@@ -47,10 +47,12 @@ from ogr.graph.client import TigerGraphClient, drain_graph_errors, graph_error_d
 from ogr.pipelines.p3_agentic.agents.agent_result import AgentResult
 from ogr.pipelines.p3_agentic.agents.aggregation import run_aggregation
 from ogr.pipelines.p3_agentic.agents.answer_resolution import resolve_answer
+from ogr.pipelines.p3_agentic.agents.claims import claims_enabled, load_weights, probe_claims, run_claims
 from ogr.pipelines.p3_agentic.agents.entity_linking import EntityLinker, ResolvedAnchors, lookup_named_event
 from ogr.pipelines.p3_agentic.agents.graph_traversal import run_graph_traversal
 from ogr.pipelines.p3_agentic.intent import IntentParser, IntentSchema
 from ogr.pipelines.p3_agentic.router import first_loop_tool, refine_route, route
+from ogr.pipelines.temporal import detect_temporal_scope
 
 logger = logging.getLogger(__name__)
 
@@ -154,7 +156,17 @@ def run_p2_graphrag(
     # (router.first_loop_tool): Q1 for a named non-TRAVERSE event, Q4 HELD_AT
     # for a venue, Q4 PREV_EDITION otherwise. P3 chains further; P2 stops.
     first = first_loop_tool(intent, anchors) if selected == "traverse" else None
-    if selected == "lookup" or first == "lookup":
+    # Round 2: the same claim probe P3 runs. When the claims matter, the one
+    # query is the claims query (Q6, weighed by the same deterministic
+    # resolution), so P3 still differs from P2 by the loop alone. P2 reports
+    # no confidence (gate G2: the agent's).
+    probe = None
+    scope = detect_temporal_scope(query)
+    if selected in ("lookup", "traverse") and claims_enabled(tg_client):
+        probe = probe_claims(tg_client, intent, anchors, scope)
+    if probe is not None and probe.relevant:
+        result, _ = run_claims(probe, scope, tg_client.source_reliability(), load_weights())
+    elif selected == "lookup" or first == "lookup":
         result = _run_lookup(tg_client, intent, anchors)
     elif selected == "aggregate":
         result = run_aggregation(tg_client, intent, anchors)

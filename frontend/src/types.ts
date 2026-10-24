@@ -46,6 +46,7 @@ export type AgentType =
   | 'evidence_evaluation'
   | 'answer_generation'
   | 'answer_verification'
+  | 'conflict_resolution'
 
 export interface TokenUsage {
   input: number
@@ -73,6 +74,37 @@ export interface TraceStep {
   latency_ms: number
   strategy_change: boolean
   notes: string
+  /** Round 2: structured working of the step (a conflict resolution's candidates). */
+  details?: Record<string, unknown> | null
+}
+
+/** Round 2: the time scope a question puts on the fact it asks for. */
+export interface TemporalScope {
+  mode: 'none' | 'as_of' | 'before' | 'after' | 'between' | 'latest' | 'original'
+  t1: string | null
+  t2: string | null
+  cue: string
+  ambiguous: boolean
+}
+
+export interface ResolvedValue {
+  value: string
+  score: number
+  probability: number
+  support: number
+  sources: string[]
+  observed_at: string[]
+  doc_ids: string[]
+}
+
+/** Round 2: the values the agent weighed for one attribute; losers stay as cited evidence. */
+export interface ConflictResolution {
+  subject: string
+  predicate: string
+  chosen: ResolvedValue | null
+  alternatives: ResolvedValue[]
+  superseded: { value: string; source: string; observed_at: string | null; doc_id: string }[]
+  confidence: number
 }
 
 export interface PipelineRecord {
@@ -94,6 +126,10 @@ export interface PipelineRecord {
   error_detail: string | null
   /** With stop_reason "disambiguation_required": the venues or events to choose between. */
   candidates?: string[] | null
+  /** Round 2 (agentic only): calibrated confidence computed from the weighed claims. */
+  confidence?: number | null
+  temporal_scope?: TemporalScope | null
+  conflicts?: ConflictResolution[] | null
 }
 
 export interface Verdict {
