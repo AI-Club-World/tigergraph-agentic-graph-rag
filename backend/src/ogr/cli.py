@@ -88,6 +88,28 @@ def build_parser() -> argparse.ArgumentParser:
         "--vector-timeout", type=float, default=600.0, help="Seconds to wait for Ready_for_query"
     )
 
+    harness_parser = subparsers.add_parser(
+        "harness",
+        help="Round 2: generate the injection harness (evolving/conflicting/uncertain facts) "
+        "and optionally evaluate the reasoning layer offline (no LLM, no TigerGraph)",
+    )
+    harness_parser.add_argument("--corpus", type=str, default="data/corpus/corpus.jsonl")
+    harness_parser.add_argument("--out-dir", type=str, default="out/harness")
+    harness_parser.add_argument("--name", type=str, default=None, help="File stem (default: r2-injected)")
+    harness_parser.add_argument("--seed", type=int, default=2026)
+    harness_parser.add_argument("--n", type=int, default=40, help="Questions per subset")
+    harness_parser.add_argument("--difficulty", type=int, choices=[1, 2, 3], default=2)
+    harness_parser.add_argument("--conflict-rate", type=float, default=0.7)
+    harness_parser.add_argument("--reliable-share", type=float, default=0.3)
+    harness_parser.add_argument("--hedge-rate", type=float, default=0.5)
+    harness_parser.add_argument("--noise", type=float, default=0.5)
+    harness_parser.add_argument("--reliability-info", choices=["exact", "class", "none"], default="exact")
+    harness_parser.add_argument(
+        "--offline", action="store_true",
+        help="Also fit weights on dev and report the reasoning layer's test accuracy and calibration "
+        "(oracle subject/predicate; not a pipeline result)",
+    )
+
     return parser
 
 
@@ -230,6 +252,29 @@ def main(argv=None) -> int:
 
         count = write_export(Path(args.run), Path(args.out))
         print(f"Exported {count} question(s) to {args.out}")
+        return 0
+
+    if args.command == "harness":
+        from ogr.harness.generate import HarnessConfig, generate, write_output
+
+        cfg = HarnessConfig(
+            seed=args.seed, n_per_subset=args.n, difficulty=args.difficulty,
+            conflict_rate=args.conflict_rate, reliable_share=args.reliable_share,
+            hedge_rate=args.hedge_rate, noise=args.noise, reliability_info=args.reliability_info,
+        )
+        out = generate(args.corpus, cfg)
+        paths = write_output(out, args.out_dir, args.name)
+        n_questions = sum(out.manifest["questions"].values())
+        print(f"Wrote {paths['corpus']} ({out.manifest['records']} records), "
+              f"{paths['questions']} ({n_questions} questions), {paths['manifest']}")
+        if args.offline:
+            from ogr.harness.offline import run_offline
+
+            report = run_offline(args.corpus, paths, out)
+            stem = paths["manifest"].name.removesuffix(".manifest.json")
+            report_path = paths["manifest"].with_name(f"{stem}-offline.md")
+            report_path.write_text(report, encoding="utf-8")
+            print(f"Offline report: {report_path}")
         return 0
 
     if args.command == "verify":

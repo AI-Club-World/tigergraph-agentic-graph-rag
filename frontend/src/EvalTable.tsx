@@ -8,7 +8,7 @@ import { useBatchRecords } from './useBatchRecords'
 import {
   PIPELINE_IDS,
   PIPELINE_LABELS,
-  QTYPES,
+  qtypesShown,
   type BatchRecord,
   type PipelineId,
   type QType,
@@ -91,7 +91,7 @@ export function EvalTable() {
               Question type
               <select value={qtypeFilter} onChange={(e) => setQtypeFilter(e.target.value as QType | 'all')}>
                 <option value="all">All</option>
-                {QTYPES.map((qtype) => (
+                {qtypesShown(records).map((qtype) => (
                   <option key={qtype} value={qtype}>
                     {titleCase(qtype)}
                   </option>

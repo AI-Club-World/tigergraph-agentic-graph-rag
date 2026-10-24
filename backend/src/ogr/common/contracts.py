@@ -131,7 +131,11 @@ class Question(BaseModel):
     """
     qid: str
     question: str
-    qtype: Literal["lookup", "multi_hop", "temporal", "aggregation", "superlative"] | None = None
+    # The five Round-1 types, plus the Round-2 harness subsets (ROUND2-DESIGN.md §8).
+    qtype: Literal[
+        "lookup", "multi_hop", "temporal", "aggregation", "superlative",
+        "evolving", "conflicting", "uncertain",
+    ] | None = None
     answer: list[str] = Field(default_factory=list)
     gold_doc_ids: list[str] = Field(default_factory=list)
 

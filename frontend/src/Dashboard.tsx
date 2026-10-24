@@ -8,7 +8,7 @@ import { useBatchRecords } from './useBatchRecords'
 import {
   PIPELINE_IDS,
   PIPELINE_LABELS,
-  QTYPES,
+  qtypesShown,
   type BatchRecord,
   type PipelineId,
   type PipelineScores,
@@ -106,7 +106,7 @@ export function Dashboard() {
   }, [records])
 
   const perQtype = useMemo(() => {
-    return QTYPES.map((qtype) => {
+    return qtypesShown(scored).map((qtype) => {
       const rows = scored.filter((r) => r.qtype === qtype)
       const emGap =
         mean(scoresBy(rows, 'agentic_graphrag', 'em')) - mean(scoresBy(rows, 'rag', 'em'))
@@ -272,7 +272,7 @@ export function Dashboard() {
                   <thead>
                     <tr>
                       <th>Metric</th>
-                      {QTYPES.map((qtype) => (
+                      {qtypesShown(scored).map((qtype) => (
                         <th key={qtype} colSpan={3}>
                           {titleCase(qtype)}
                         </th>
@@ -280,7 +280,7 @@ export function Dashboard() {
                     </tr>
                     <tr>
                       <th />
-                      {QTYPES.flatMap((qtype) =>
+                      {qtypesShown(scored).flatMap((qtype) =>
                         PIPELINE_IDS.map((pipeline) => (
                           <th key={`${qtype}-${pipeline}`} className="sub">
                             <i className="swatch" style={{ background: PIPELINE_COLORS[pipeline] }} />
@@ -297,7 +297,7 @@ export function Dashboard() {
                           {metric.label}
                           {metric.note && <sup>*</sup>}
                         </th>
-                        {QTYPES.flatMap((qtype) => {
+                        {qtypesShown(scored).flatMap((qtype) => {
                           const rows = scored.filter((r) => r.qtype === qtype)
                           return PIPELINE_IDS.map((pipeline) => (
                             <td key={`${metric.key}-${qtype}-${pipeline}`}>

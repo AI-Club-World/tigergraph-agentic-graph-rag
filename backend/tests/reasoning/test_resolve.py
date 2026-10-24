@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 import pytest
 
 from ogr.datasets.base import ClaimRecord, claim_id
@@ -43,6 +45,17 @@ class TestRelations:
         new = claim("Runner B", "src:feed", "2012-08-10")
         [rel] = build_relations([old, new])
         assert rel.kind == "SUPERSEDES" and rel.reason.startswith("same source")
+
+    def test_a_hedged_revision_rumour_does_not_supersede_the_result(self):
+        rumour = claim("Runner C", "src:blog", "2018-01-01", revision=True, hedged=True)
+        r = resolve([ORIGINAL, rumour], TemporalScope("latest"), reliability={"src:wiki": 0.8, "src:blog": 0.3})
+        assert r.chosen.value == "Runner A" and not r.superseded
+
+    def test_a_hedged_restatement_does_not_supersede_a_firm_one(self):
+        firm = claim("25,210", "src:feed", "2017-04-12", num=25210.0)
+        hedged = claim("about 24,600", "src:feed", "2017-05-05", num=24600.0, hedged=True)
+        assert [r.kind for r in build_relations([firm, hedged])] == ["CONTRADICTS"]
+        assert resolve([firm, hedged]).chosen.value == "25210"
 
     def test_the_same_value_is_corroboration_not_a_relation(self):
         assert build_relations([claim("Runner A", "src:a"), claim("runner a", "src:b", "2014-01-01")]) == []
@@ -106,6 +119,10 @@ class TestResolve:
         d = first.to_dict()
         assert set(d["chosen"]["terms"]) == {"reliability", "corroboration", "recency", "extraction", "hedged_share"}
 
+    def test_a_number_is_answered_without_its_qualifier(self):
+        r = resolve([claim("about 17,140", "src:a", num=17140.0, hedged=True)])
+        assert r.chosen.value == "17140"
+
     def test_no_claims_resolves_to_nothing(self):
         assert resolve([]).chosen is None
 
@@ -125,10 +142,12 @@ class TestCalibration:
         conf = [0.95] * 20 + [0.9] * 20
         correct = [1] * 12 + [0] * 8 + [1] * 10 + [0] * 10
         a, b = fit_platt(conf, correct)
-        import math
         fitted = [1 / (1 + math.exp(-(a * math.log(p / (1 - p)) + b))) for p in conf]
         assert expected_calibration_error(fitted, correct) < expected_calibration_error(conf, correct)
-        assert fit_platt([0.5], [1]) == (1.0, 0.0)
+        assert fit_platt([], []) == (1.0, 0.0)
+        a, b = fit_platt([0.6] * 20, [1] * 20)  # no errors: confident, not certain
+        p = 1 / (1 + math.exp(-(a * math.log(0.6 / 0.4) + b)))
+        assert 0.8 < p < 1.0
 
     def test_weights_carry_the_platt_parameters(self):
         r = resolve([claim("A", "src:a")], weights=Weights(platt_a=0.0, platt_b=0.0))

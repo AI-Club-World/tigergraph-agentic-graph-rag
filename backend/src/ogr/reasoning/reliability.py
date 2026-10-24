@@ -11,15 +11,28 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 
-from ogr.datasets.base import ClaimRecord
+from ogr.datasets.base import ClaimRecord, SourceRecord
 from ogr.reasoning.relations import group_claims, value_key
 
-__all__ = ["DEFAULT_RELIABILITY", "estimate_reliability"]
+__all__ = ["CLASS_PRIORS", "DEFAULT_RELIABILITY", "estimate_reliability", "prior_for"]
 
 DEFAULT_RELIABILITY = 0.6
+# [ASSUMPTION] A prior per source class, for datasets that name the kind of
+# source but give no reliability. General, not fitted; replace with the real
+# dataset's own when it has one.
+CLASS_PRIORS = {
+    "official": 0.9, "encyclopedia": 0.8, "news": 0.75, "blog": 0.4, "forum": 0.3, "social": 0.3,
+}
 ITERATIONS = 10
 # With a prior, the estimate moves it by at most this share.
 PRIOR_WEIGHT = 0.5
+
+
+def prior_for(doc: SourceRecord) -> float | None:
+    """The dataset's own prior, else the class prior, else None (estimated)."""
+    if doc.reliability_prior is not None:
+        return doc.reliability_prior
+    return CLASS_PRIORS.get((doc.source_class or "").lower())
 
 
 def estimate_reliability(

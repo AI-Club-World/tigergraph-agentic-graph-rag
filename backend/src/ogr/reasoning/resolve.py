@@ -118,6 +118,15 @@ def in_scope(c: ClaimRecord, scope: TemporalScope) -> bool:
     return True
 
 
+def _display(claim: ClaimRecord) -> str:
+    """The value as an answer: a number without its qualifier ("about
+    17,140" -> "17140"), else the stated text."""
+    if claim.value_num is not None:
+        number = float(claim.value_num)
+        return str(int(number)) if number.is_integer() else f"{number:g}"
+    return claim.value_text
+
+
 def resolve(
     claims: Iterable[ClaimRecord],
     scope: TemporalScope | None = None,
@@ -184,7 +193,7 @@ def resolve(
             miss *= 1.0 - best * reliability.get(s, DEFAULT_RELIABILITY)
         representative = max(group, key=lambda c: (c.observed_at or "", c.claim_id))
         candidates.append(
-            Candidate(representative.value_text, group, sources, terms, score, support=1 - miss)
+            Candidate(_display(representative), group, sources, terms, score, support=1 - miss)
         )
 
     top = max(c.score for c in candidates)

@@ -13,15 +13,25 @@ export const PIPELINE_LABELS: Record<PipelineId, string> = {
   agentic_graphrag: 'Agentic GraphRAG',
 }
 
-export type QType = 'lookup' | 'multi_hop' | 'temporal' | 'aggregation' | 'superlative'
+export type Round1QType = 'lookup' | 'multi_hop' | 'temporal' | 'aggregation' | 'superlative'
+/** Round-2 harness subsets (config-docs/ROUND2-DESIGN.md §8). */
+export type Round2QType = 'evolving' | 'conflicting' | 'uncertain'
+export type QType = Round1QType | Round2QType
 
-export const QTYPES: readonly QType[] = [
+export const ROUND1_QTYPES: readonly QType[] = [
   'lookup',
   'multi_hop',
   'temporal',
   'aggregation',
   'superlative',
 ]
+
+export const QTYPES: readonly QType[] = [...ROUND1_QTYPES, 'evolving', 'conflicting', 'uncertain']
+
+/** The Round-1 types always, a Round-2 type only when some row has it. */
+export function qtypesShown(rows: readonly { qtype?: string | null }[]): QType[] {
+  return QTYPES.filter((q) => ROUND1_QTYPES.includes(q) || rows.some((r) => r.qtype === q))
+}
 
 export type PipelineStatus = 'running' | 'done' | 'error'
 

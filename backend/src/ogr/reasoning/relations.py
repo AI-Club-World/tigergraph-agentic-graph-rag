@@ -5,7 +5,8 @@ reason, so every relation the agent relies on can be inspected.
 
 - SUPERSEDES(new -> old): same subject and predicate, different values, and
   `new` is later *and* either says it revises an earlier statement
-  (`revision`) or comes from the same source. "Later" compares observed
+  (`revision`) or comes from the same source. A hedged statement never
+  supersedes a firm one. "Later" compares observed
   times, then validity starts. A claim with no observed time (an
   encyclopedia page) is earlier than a dated revision.
 - CONTRADICTS(a <-> b): same subject and predicate, different values,
@@ -74,7 +75,9 @@ def build_relations(claims: Iterable[ClaimRecord]) -> list[Relation]:
                 if new is old or value_key(new) == value_key(old):
                     continue
                 later = _later(new, old)
-                if not later:
+                # A hedged statement ("reportedly to be upgraded") does not
+                # override a firm one, whether or not it claims to revise it.
+                if not later or (new.hedged and not old.hedged):
                     continue
                 if new.revision:
                     reason = f"revision, {later}"

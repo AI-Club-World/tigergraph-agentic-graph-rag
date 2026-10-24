@@ -86,14 +86,19 @@ def _loss(a: float, b: float, xs: Sequence[float], ys: Sequence[float]) -> float
 def fit_platt(
     confidences: Sequence[float], correct: Sequence[float], iterations: int = 100
 ) -> tuple[float, float]:
-    """(a, b) minimising log loss of sigmoid(a * logit(p) + b), by damped
-    Newton steps with a small ridge towards the identity. Returns the
-    identity (1, 0) when there is nothing to fit."""
+    """(a, b) minimising log loss of sigmoid(a * logit(p) + b) against
+    Platt's smoothed targets, by damped Newton steps with a small ridge
+    towards the identity. Returns the identity (1, 0) for no data."""
     _check(confidences, correct)
-    if not confidences or len(set(correct)) < 2:
+    if not confidences:
         return 1.0, 0.0
     xs = [_logit(p) for p in confidences]
-    ys = [float(y) for y in correct]
+    # Platt's smoothed targets: a split with no errors (or no successes) still
+    # fits, towards (n+1)/(n+2) rather than certainty.
+    positives = sum(1 for y in correct if y)
+    negatives = len(correct) - positives
+    hi, lo = (positives + 1) / (positives + 2), 1 / (negatives + 2)
+    ys = [hi if y else lo for y in correct]
     a, b = 1.0, 0.0
     loss = _loss(a, b, xs, ys)
     for _ in range(iterations):

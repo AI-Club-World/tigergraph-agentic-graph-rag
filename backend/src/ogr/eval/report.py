@@ -27,6 +27,8 @@ __all__ = ["build_report", "export_run", "WORTH_IT", "OVERKILL"]
 PIPELINES = ("rag", "graphrag", "agentic_graphrag")
 LABELS = {"rag": "RAG", "graphrag": "GraphRAG", "agentic_graphrag": "Agentic GraphRAG"}
 QTYPES = ("lookup", "aggregation", "superlative", "temporal", "multi_hop")
+# Round-2 harness subsets: reported only when the run has them.
+ROUND2_QTYPES = ("evolving", "conflicting", "uncertain")
 # Same thresholds as the dashboard's worth-it table (frontend/src/Dashboard.tsx).
 WORTH_IT = 0.5
 OVERKILL = 0.05
@@ -120,7 +122,8 @@ def build_report(path: Path) -> str:
         out("| Type | n | RAG EM | GraphRAG EM | Agentic EM | Agentic − RAG "
             "| Agentic ÷ RAG tokens | Verdict |")
         out("|---|---|---|---|---|---|---|---|")
-        for qtype in QTYPES:
+        present = {v.get("qtype") for v in scored}
+        for qtype in QTYPES + tuple(q for q in ROUND2_QTYPES if q in present):
             rows = [v for v in scored if v.get("qtype") == qtype]
             em = {
                 p: _mean([v["scores"][p]["em"] for v in rows if p in v["scores"]]) for p in PIPELINES
