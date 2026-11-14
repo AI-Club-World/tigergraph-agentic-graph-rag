@@ -396,11 +396,11 @@ One line per decision ID cited in the code. `DP-n` numbers were assigned per are
 
 ## Known limitations
 
-- **Round 2 is only started.** Answer verification reports conflicting figures between a page's infobox and its prose; there is no fact versioning, supersession or source-authority model.
+- **Round 2 is built but not measured live.** Fact versioning, supersession, source reliability and confidence exist (section "Round 2" below); no live pipeline run has used them yet (`ROUND2-RESULTS.md`).
 - **Open access.** There is no sign-in (TECHNICAL-SPEC §4.5): anyone who can reach the API can build, reset and start benchmarks.
 - **GSQL is tested live by the benchmark runs, statically in CI.** The schema and Q1–Q5 are installed and run against a TigerGraph Savanna workspace by every build and benchmark; CI checks them only statically (`tests/graph/test_schema.py`).
 - **Traversal follows `PREV_EDITION` only.** Multi-hop and traversal agents use PREV_EDITION or HELD_AT; `NEXT_EDITION` exists in the schema and Q4 but no agent calls it (the dataset has no "next edition" questions).
-- **Q2 treats a missing value as 0.** The loader writes `competitors` / `nations` as 0 when the infobox has none, so a constraint such as `competitors < 10` counts those events.
+- **A missing count is stored as 0.** TigerGraph INT has no null; Q2 and Q3 read 0 as "not recorded" and neither count nor rank it (TECHNICAL-SPEC §2). The edited Q2/Q3 must be reinstalled on the workspace.
 - **Datasets sharing doc ids overwrite each other's chunks.** Chunk ids derive from `doc_id`; a second dataset with the same doc ids rewrites the first one's chunks (a rebuild keeps ids another dataset also wrote).
 - **Timing-mode latency includes the shared rate limiter.** `latency_ms` is measured around the model call, which waits on the per-client `InMemoryRateLimiter` shared by all pipelines (and on retry backoff).
 - **Graph errors are silent.** `TigerGraphClient._run_query` returns `[]` on a connection failure or query error (logged), so a pipeline can finish with `status = done` and an empty or "no evidence" answer.
