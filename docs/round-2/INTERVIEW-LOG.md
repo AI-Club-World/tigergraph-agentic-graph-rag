@@ -12,6 +12,19 @@ is recorded here.
 | G4 | LLM claim extraction at ingest | **Allowed**, same condition; Round-2 datasets only, cached | 2026-10-24 |
 | G5 | Credentials and run budget for measurement | **Build offline first**; live runs when credentials are added | 2026-10-24 |
 | R1 | Reconcile "TG Multihop30" with the repo's eval sets | pending: question open to the user | |
+| D1 | Answer policy | **(b) allow `partial` and `not_in_corpus`**, driven by structured evidence; supersedes "always commit" | 2026-11-23 |
+| D2 | Three-pipeline comparison | **(b) demo only**, not in `run.sh` | 2026-11-23 |
+| D3 | Schema additions | **(c) Athlete/WON plus generic Entity/Claim for every infobox type** | 2026-11-23 |
+| D4 | Claim extraction from prose at ingest | **(a) as recommended, then changed in implementation**: no LLM at build (see "Deviation from D4") | 2026-11-23 |
+| D5 | LLM and model for the run | **Decide after a measured baseline**; not decided | 2026-11-23 |
+| D6 | Credentials timing | **Obtain TigerGraph and LLM credentials immediately** | 2026-11-23 |
+| D7 | Dev set versus held-out check | **Split the public 50 by style; freeze `check` until the end** | 2026-11-23 |
+
+D1-D7 come from [BRIEF-ANALYSIS.md](BRIEF-ANALYSIS.md) section 6 and were
+accepted as recommended on 2026-11-23, with the one implementation deviation
+recorded under D4 below. The gates above (G1-G5, 2026-10-24) were made for the
+speculative Round 2 and are kept as history; where they conflict with D1-D7,
+D1-D7 apply.
 
 ## G1 — Schema strategy
 
@@ -73,3 +86,82 @@ is recorded here.
 The brief says the Round-1 trace/output schema was built against "TG
 Multihop30". The repository's Round-1 sets are `eval_public.jsonl` (100) and
 `eval_hidden.jsonl` (50); nothing named Multihop30 exists here.
+
+
+## Round-2 decisions on the real brief (2026-11-23)
+
+Context: the real brief ([PROBLEM-STATEMENT.md](PROBLEM-STATEMENT.md),
+[data/README.md](data/README.md)) scores one system's hidden-set answers fact by
+fact, with statuses `answered`, `partial` and `not_in_corpus`. The gap analysis
+is [BRIEF-ANALYSIS.md](BRIEF-ANALYSIS.md); the resulting build contract is
+[SOLUTION-DESIGN.md](SOLUTION-DESIGN.md). The owner accepted D1-D7 as
+recommended.
+
+**Superseded answer policy.** The earlier policy, "always commit to one best
+answer with a confidence and the conflicting values cited; no abstention"
+(recorded in `DESIGN.md` and the old `APPLICATION-SPEC.md`), is superseded by
+D1. The system now answers `not_in_corpus` when the corpus does not answer, and
+`partial` when part is missing.
+
+### D1 - Answer policy
+Allow `partial` and `not_in_corpus`, decided from structured evidence rather
+than from a score threshold. Reason: the brief scores both statuses plus 10%
+honesty, and an invented answer to an unanswerable question scores 0; "always
+commit" gives up the 4 `not_in_corpus` public questions and the honesty weight.
+Consequence: the answer contract gains a `status` field. Risk: over-abstention
+lowers accuracy; the abstention rules in the prompt are general, and the
+`check` split (D7) is where that is looked at.
+
+### D2 - Three-pipeline comparison
+Keep it as a demo aid only; it is not part of `run.sh` and not a judged
+criterion. The relative-gain targets of the earlier application spec are
+dropped.
+
+### D3 - Schema additions
+Option (c): add `Athlete` and `WON` edges, plus a generic `Entity`/`Claim` for
+every non-Olympic infobox (film, office holder, person), reusing the Entity and
+Claim types of the earlier fact layer. One schema change on the workspace, in
+`schema_r2_answer.gsql`. Not yet installed on a live workspace.
+
+### D4 - Claim extraction from prose at ingest
+Accepted: LLM extraction for the 39 source records and the 127 LA 2028 articles,
+cached in a committed file, deterministic parsing for the rest.
+
+**Deviation from D4 (implementation, 2026-11-23).** Source records are not
+LLM-extracted at build. Their authority class and publication time are computed
+deterministically from their `Source:` and `Published:` lines (a general lexicon
+over the source name; `ogr.r2.corpus_model`). Each record is stored as a
+`SourceRecord` vertex and linked to the LA 2028 events it mentions by
+`REPORTS_ON`. The answering LLM reads the records through the `source_records`
+tool and weighs them using the authority and time fields. Reason: a cheaper
+build and a reproducible one (no LLM at `build.sh`, no cache to commit, nothing
+to drift between builds). Cost: reliability judgements happen at answer time, so
+they are repeated per question and their quality depends on the model. The 127
+LA 2028 articles are read as text (`text_search`, `read_document`), not
+extracted. This deviation needs the owner's confirmation; it is recorded here so
+the log matches the code.
+
+### D5 - LLM and model for the run
+Decide after the first measured baseline (tokens per question with the default
+model); not chosen by assumption. Open. `.env.example` still carries the
+Round-1 default model; no Round-2 model has been measured.
+
+### D6 - Credentials timing
+Obtain TigerGraph and LLM credentials immediately. Nothing about accuracy,
+tokens, latency or the query log can be measured without them. At the time of
+writing they are not available in the build environment.
+
+### D7 - Dev set versus held-out check
+Split the public 50 by answer shape and status (not question wording) into `dev`
+and `check`; develop on `dev`, freeze `check` until the end, and report both in
+`accuracy_method`. Implemented as `ogr.r2.split`; the split is committed in
+`data/public_split.json` (36 dev, 14 check). Final public accuracy is still
+reported on all 50, as the brief requires. The hidden questions are not read by
+anyone working on the system.
+
+### Still open
+- **R1 - "TG Multihop30"**: still pending. Nothing by that name exists in this
+  repository; the Round-1 sets are public-100 and hidden-50.
+- D5 (model choice) and the owner's confirmation of the D4 deviation.
+- Questions to the organisers (BRIEF-ANALYSIS section 8), notably how list/JSON
+  answers are scored and what query log is acceptable on a managed workspace.

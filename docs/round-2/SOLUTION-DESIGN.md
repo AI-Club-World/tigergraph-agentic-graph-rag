@@ -21,7 +21,7 @@ The binding contract for the Round-2 submission. Owner decisions D1–D7 of
   therefore needs only TigerGraph and the corpus; the LLM is used only by `run.sh`.
 - Deterministic where possible: temperature 0, fixed tool order, stable sorting.
 
-## 2. Graph (additive to Round 1, `graph/schema_r2_answer.gsql`, run after `schema.gsql` + `schema_round2.gsql`)
+## 2. Graph (additive to Round 1, `backend/src/ogr/graph/schema_r2_answer.gsql`, run after `schema.gsql` + `schema_round2.gsql`)
 
 Round-1 types (Document, OlympicEvent, Games, Sport, Venue, Chunk, embedding
 types) and the Round-2 fact layer (Dataset, Source, Entity, Claim, …) are
@@ -30,8 +30,8 @@ reused. Added by one local SCHEMA_CHANGE JOB:
 | Type | Key / attributes | From |
 |---|---|---|
 | `Athlete` vertex | `athlete_id` (normalised name), `name` | every medallist name in Olympic infoboxes (gold/silver/bronze incl. ties) |
-| `WON` edge Athlete→OlympicEvent | `medal` (gold/silver/bronze), `noc` | infobox `goldNOC`/`silverNOC`/`bronzeNOC` (parser extended) |
-| `SourceRecord` vertex | `doc_id`, `title`, `source_name`, `authority`, `published_at` (ISO with offset), `text` | the 39 LA 2028 source records |
+| `WON` edge Athlete→OlympicEvent | `medal` (gold/silver/bronze), `noc`, `place`, `event_key` (normalised event part of the page title, used to group editions) | infobox `goldNOC`/`silverNOC`/`bronzeNOC` (parser extended) |
+| `SourceRecord` vertex | `doc_id`, `title`, `source_name`, `authority`, `published_at` (ISO with offset), `published_text` (as written), `text` | the 39 LA 2028 source records |
 | `REPORTS_ON` edge SourceRecord→OlympicEvent | `score` | deterministic link: sport + event name of an LA 2028 event found in the record's title/text |
 
 Infobox facts for every non-Olympic infobox (film, officeholder, person, …):
@@ -46,7 +46,7 @@ numbered keys kept: `predecessor1`, `office2`, …), `ASSERTS` from the Document
 `secondary` (news / newsletter / bulletin / headlines / media feed / delegation media desk),
 `unreliable` (blog / fan / spectator / voice note / volunteer notebook / tourism / ticket email / aggregator / legacy feed / coaching memo).
 
-## 3. Tools (one installed GSQL query each; names are the trace `query`)
+## 3. Tools (one installed GSQL query each, in `backend/src/ogr/graph/queries/`; names are the trace `query`)
 
 | Tool | GSQL query | Params | Returns (rows) |
 |---|---|---|---|

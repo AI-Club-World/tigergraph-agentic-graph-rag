@@ -1,4 +1,65 @@
-# Round 2 — Implementation plan
+# Round 2 - Plan
+
+Current plan for the real brief, through the submission deadline
+(**29 Nov 2026, 23:59 IST**). Written 2026-11-23. Contract:
+[SOLUTION-DESIGN.md](SOLUTION-DESIGN.md); requirements:
+[APPLICATION-SPEC.md](APPLICATION-SPEC.md); decisions:
+[INTERVIEW-LOG.md](INTERVIEW-LOG.md); what is measured: [RESULTS.md](RESULTS.md);
+submission checklist: [SUBMISSION.md](SUBMISSION.md).
+
+Status words: **done offline** = implemented and unit-tested without TigerGraph or
+an LLM; **needs credentials** = cannot be done or measured without them;
+**not started**.
+
+## 1. Ordered plan
+
+| # | Step | Status | Needs credentials? |
+|---|---|---|---|
+| 1 | Answer contract, trace recorder, query log, metrics, validator (`ogr.r2.output`, `trace`, `querylog`, `metrics`) | done offline | no |
+| 2 | Corpus model: events, medallists, athletes, entities/facts, source records, REPORTS_ON, chunks (`corpus_model`) | done offline | no |
+| 3 | GSQL: `schema_r2_answer.gsql` and ten `r2_*` queries; Python parity tools (`LocalR2Graph`) and the TigerGraph backend (`TigerGraphR2`) | done offline; GSQL never installed | install: yes |
+| 4 | Agent loop, tool specs, guards (`agent`, `tools`) | done offline with a scripted model | live: yes |
+| 5 | Build and run scripts: `build.sh`, `run.sh`, `r2-build`, `r2-run`, `r2-score`, `r2-metrics`; `.env.example`; `requirements.lock` | done offline | no |
+| 6 | Public scorer and dev/check split (`score`, `split`, `data/public_split.json`) | done offline | no |
+| 7 | Tool-level dev checks: `LocalR2Graph` reproduces 32 public answers (`tests/r2/test_dev_checks.py`) | done offline | no |
+| 8 | README "Round 2 architecture" and "build, run, submit" | done | no |
+| 9 | Obtain TigerGraph and LLM credentials (D6) | **blocked: not yet available** | - |
+| 10 | `./build.sh corpus.jsonl`: first install of the GSQL; fix syntax and semantics errors; compare `graph_counts.json` with the offline model counts | needs credentials | yes |
+| 11 | Parity check: run the ten tools on TigerGraph and on `LocalR2Graph` for the same parameters (a handful of calls per tool) and compare rows; fix differences | not started | yes |
+| 12 | Smoke run: `r2-run --limit 5` on public, read the traces and the query log, check token sums | needs credentials | yes |
+| 13 | Baseline on `dev` (measure tokens, latency, accuracy); decide the model (D5) | needs credentials | yes |
+| 14 | Error analysis on `dev` only; fix general causes in the prompt or tools (no question-specific rules) | not started | yes |
+| 15 | Run `check` once; record the result; no tuning on it after | not started | yes |
+| 16 | Extend the anti-overfitting scan to `r2/`; read the code once for question wording, qids and built-in answers (rule 4) | not started | no |
+| 17 | Freeze code; clean `build.sh`; `run.sh` public, then hidden, once each; `metrics.json`, query log, graph counts | not started | yes |
+| 18 | Verify: validator on both answer files, query-log timestamps against traces, README accurate; tag `round2-submission`; push | not started | yes |
+| 19 | Rehearse the live call: five new questions, two reproduced hidden answers | not started | yes |
+| 20 | Submit the seven items by 29 Nov 23:59 IST (buffer day) | not started | - |
+
+Suggested dates (a plan, not a record): credentials and steps 10-12 on 23-24 Nov;
+13-14 on 25-26 Nov; 15-16 on 27 Nov; freeze and final runs on 28 Nov; 29 Nov is
+buffer. If credentials arrive after 25 Nov the plan shrinks to steps 10-12, one
+fix cycle, and the final runs; the repeatability risk then is high.
+
+## 2. Cut order if time runs out
+
+Lowest value per effort first: demo-only extras (three-pipeline UI, query-embedding
+cache), step 14 beyond one cycle, parallel workers (keep `workers=1`). Do not cut:
+step 10 (nothing runs without it), 17-18 (the deliverables), and the query log.
+
+## 3. Open items
+
+D5 (model), the D4 deviation confirmation, R1 ("TG Multihop30"), and the questions
+to the organisers: see [INTERVIEW-LOG.md](INTERVIEW-LOG.md).
+
+---
+
+## Earlier plan (speculative Round 2, superseded)
+
+Kept as history. It was written when the judged metric was assumed to be the
+Agentic-vs-RAG relative gain. The code it describes (`reasoning/`, `harness/`,
+`datasets/`, the P3 claim tools) exists but is not on the Round-2 answering path
+(see [TECHNICAL-SPEC.md](TECHNICAL-SPEC.md) section 6).
 
 Ordered by expected relative-accuracy gain (Agentic vs RAG) first, so the
 work can ship at any stopping point. **SAFE** = additive, no schema change,
@@ -49,7 +110,7 @@ dev split, once credentials are available.
 | G3 | Optional `temporal` field in the intent tool call (ambiguous cases) | `intent.py` | **GATED G3**, re-baseline | 1 |
 | G4 | LLM claim extraction at ingest (one-time, cached) | `datasets/extract_llm.py` | **GATED G4** | 2 |
 
-## Phase 6 — other enhancements, ranked
+### Phase 6 — other enhancements, ranked
 
 Priority order of the brief: (1) relative accuracy gain Agentic vs RAG,
 (2) agent reasoning/design quality, (3) token efficiency, (4) engineering and

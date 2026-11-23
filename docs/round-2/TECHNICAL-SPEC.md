@@ -1,4 +1,101 @@
-# Round 2 — Technical spec
+# Round 2 - Technical spec
+
+How the Round-2 answering system is built. Contract:
+[SOLUTION-DESIGN.md](SOLUTION-DESIGN.md); overview:
+[ARCHITECTURE-SPEC.md](ARCHITECTURE-SPEC.md); requirements:
+[APPLICATION-SPEC.md](APPLICATION-SPEC.md); results:
+[RESULTS.md](RESULTS.md). Round-1 stack and schema:
+[../round-1/TECHNICAL-SPEC.md](../round-1/TECHNICAL-SPEC.md). Offline tested
+only; GSQL not installed on any server yet.
+
+## 1. Code map (`backend/src/ogr/r2/`)
+
+| Module | Content |
+|---|---|
+| `corpus_model` | Parser and in-memory model; `classify_authority`, `build_model` |
+| `build` | `build(corpus, client, counts_path)`, `load_r2_layer`, `graph_counts` |
+| `graph_backend` | `R2Graph` protocol, `QueryResult`, `TigerGraphR2`, `QUERY_NAMES`, `series_extremes` |
+| `local_graph` | `LocalR2Graph`, same rows in Python (dev and tests) |
+| `tools` | Tool specs for the LLM, `run_tool`, `rank_rows`, `ToolContext` (doc_ids seen) |
+| `agent` | `SYSTEM_PROMPT` (`PROMPT_VERSION` r2-agent-v1), `answer_question` |
+| `run` | `run_questions` (resumable, optional threads), model and graph factories |
+| `output`, `trace`, `querylog`, `metrics` | Record and validator, recorder, log, metrics |
+| `score`, `split` | Public scorer, dev/check split |
+| `cmds` | CLI subcommands `r2-build`, `r2-run`, `r2-score`, `r2-metrics` (wired in `ogr.cli`) |
+
+GSQL: `backend/src/ogr/graph/schema_r2_answer.gsql` and
+`backend/src/ogr/graph/queries/r2_*.gsql`, installed by `ogr.graph.schema`
+(`install_r2_answer`).
+
+## 2. Tools
+
+One installed query each; the query name is the trace `query`. Matching is
+case-insensitive; `*_contains` matches at a word boundary of the normalised text.
+Counts are per medal awarded (a relay is one medal).
+
+| Tool / query | Parameters | Rows |
+|---|---|---|
+| `find_events` / `r2_find_events` | sport, year (0 = any), season, event_contains | event: ids, title, event name, sport, games, year, date, venue, competitors, nations, gold/silver/bronze with NOCs, synthetic |
+| `medals_by_nation` / `r2_medals_by_nation` | sport, year, season, medal | noc, count, events |
+| `event_series` / `r2_event_series` | event_contains, sport, season | one row per edition; wrapper adds max and min |
+| `athlete_medals` / `r2_athlete_medals` | name | medal, NOC, event, year, doc_id |
+| `repeat_winners` / `r2_repeat_winners` | sport, medal, season | athlete, event, years, doc_ids (same event, 2+ Games) |
+| `entity_facts` / `r2_entity_facts` | name_contains, entity_type | entity, type, doc_id, facts {key: value} |
+| `find_entities` / `r2_find_entities` | entity_type, predicate, value_contains | entities with all facts |
+| `source_records` / `r2_source_records` | event_contains, year | doc_id, title, source name, authority, published_at, text |
+| `text_search` / `r2_text_search` | terms (all must occur), limit | chunks: doc_id, title, chunk_id, text |
+| `read_document` / `r2_read_document` | doc_id | title and chunks in order |
+
+`rank_rows` and `series_extremes` are local, deterministic and recorded as
+`tigergraph: false`. The GSQL compares lower-cased raw text; `LocalR2Graph`
+compares normalised text, so accents and apostrophes can differ (apostrophes
+are straightened before the query).
+
+## 3. Agent loop
+
+Native tool calling through `ogr.common.llm`, temperature 0, answer budget at
+least 4096 tokens. Loop: model call (`plan` for the first, then `llm_step`),
+execute its tool calls (each recorded), append results, repeat until `finish`
+or `R2_MAX_STEPS` (default 8); then one forced `finish` (`llm_answer`). Rate
+limits are retried with bounded backoff by `invoke_and_count`. Guards: see
+[ARCHITECTURE-SPEC.md](ARCHITECTURE-SPEC.md) section 5. No qid, no question
+wording and no answer is used in code.
+
+## 4. Output formats
+
+- **Answer line:** `qid, status, answer, explanation, citations, input_tokens,
+  output_tokens, latency_ms, trace`.
+- **Trace step:** `step, tool, tigergraph, ms`; TigerGraph steps add `query,
+  params, rows`; LLM steps add `input_tokens, output_tokens`; optional `note`.
+- **Query log** (`out/r2/tg_query_log.jsonl`, `R2_QUERY_LOG`): `ts, run_id, qid,
+  step, query, params, rows, ms, ok, error`; `ts` is the call's start. Append-only.
+- **`metrics.json`:** per set the fields of the brief's example; percentiles by
+  nearest rank; cost from `R2_LLM_INPUT_USD_PER_M` and `R2_LLM_OUTPUT_USD_PER_M`
+  (0 if unset, noted in `metrics_notes.json`).
+- **`graph_counts.json`:** server `getVertexCount('*')` and `getEdgeCount('*')`.
+- **`out/r2/score_public.json`:** per-question scores and the method.
+
+## 5. Scripts and configuration
+
+`build.sh corpus.jsonl` runs `ogr.cli r2-build`. `run.sh questions answers`
+runs `r2-run`, then for a questions file with gold answers `r2-score` and
+`r2-metrics`; the set name comes from the file name. Dependencies:
+`backend/requirements.lock`. Keys: `.env.example` (TigerGraph, LLM, `R2_MAX_STEPS`,
+`R2_LLM_*_USD_PER_M`, `R2_QUERY_LOG`). `r2-run` is resumable (skips qids already
+in the output file); `--backend local` is dev only.
+
+## 6. Earlier work, not on the answering path
+
+The claim-resolution layer built before the real brief: dataset adapters
+(`datasets/`), temporal scope (`pipelines/temporal.py`), relations,
+reliability, resolution and calibration (`reasoning/`, `eval/calibration.py`),
+the synthetic harness (`harness/`), the P3 claim tools. `ogr.r2` does not
+import any of them (checked 2026-11-23 by searching its imports), except that
+`ogr.r2.build` imports `ogr.ingest.load_claims` and `ogr.datasets.base`
+(`ClaimRecord`), and `load_claims` imports `ogr.reasoning` at load time without
+the build calling it. The graph types Entity and Claim (from
+`graph/schema_round2.gsql`) are shared. Earlier spec, unchanged except
+heading levels:
 
 Extends [../round-1/TECHNICAL-SPEC.md](../round-1/TECHNICAL-SPEC.md) (stack,
 Round-1 schema, Q1–Q5, record contracts, evaluation), which still applies.

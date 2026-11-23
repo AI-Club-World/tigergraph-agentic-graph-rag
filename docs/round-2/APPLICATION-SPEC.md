@@ -1,138 +1,127 @@
-# Round 2 — Application spec
+# Round 2 - Application spec
 
-Round-2 statement (verbatim): *"Extend your agent to reason over evolving,
-conflicting, and uncertain facts on a harder dataset."*
+Round-2 brief: build an agentic GraphRAG system on TigerGraph that reasons across
+many documents, weighs sources that disagree, and says honestly what cannot be
+established. Brief: [PROBLEM-STATEMENT.md](PROBLEM-STATEMENT.md),
+[data/README.md](data/README.md). Gap analysis: [BRIEF-ANALYSIS.md](BRIEF-ANALYSIS.md).
+Build contract: [SOLUTION-DESIGN.md](SOLUTION-DESIGN.md). Owner decisions D1-D7:
+[INTERVIEW-LOG.md](INTERVIEW-LOG.md). Companion documents:
+[ARCHITECTURE-SPEC.md](ARCHITECTURE-SPEC.md), [TECHNICAL-SPEC.md](TECHNICAL-SPEC.md),
+[PLAN.md](PLAN.md), [RESULTS.md](RESULTS.md), [SUBMISSION.md](SUBMISSION.md).
+Round-1 requirements ([../round-1/APPLICATION-SPEC.md](../round-1/APPLICATION-SPEC.md))
+still apply to the Round-1 code, which Round 2 does not change.
 
-This extends the Round-1 application spec
-([../round-1/APPLICATION-SPEC.md](../round-1/APPLICATION-SPEC.md)), whose
-FR/NFR still hold. Companion documents in this folder:
-[ANALYSIS.md](ANALYSIS.md), [DESIGN.md](DESIGN.md), [PLAN.md](PLAN.md),
-[INTERVIEW-LOG.md](INTERVIEW-LOG.md), [RESULTS.md](RESULTS.md),
-[ARCHITECTURE-SPEC.md](ARCHITECTURE-SPEC.md),
-[TECHNICAL-SPEC.md](TECHNICAL-SPEC.md).
+Status (2026-11-23): the system is built on branch `round-2` and tested offline.
+**Nothing has run against TigerGraph or an LLM**, so there is no measured
+accuracy, token, latency or cost figure. Every number in section 5 is a target.
 
-Status: built and tested offline on `round-2`; **not measured live**. The
-Round-2 problem statement and dataset have not been released yet; every
-statement about them below is an assumption until they are.
-
-| Field | Value |
-|---|---|
-| Research thesis (to be measured) | When facts change, sources disagree or statements are hedged, top-k retrieval hands the model several values and no rule for choosing. An agent that stores each statement as a claim (who said it, when, how firmly) can choose by an inspectable rule, keep the losing values as evidence, and say how sure it is. The extra work is a graph query and arithmetic, not extra LLM calls |
-| Judged (as known) | Relative accuracy improvement of Agentic GraphRAG over plain RAG, architecture, agent design, token efficiency, engineering quality |
+**Superseded.** The earlier version of this spec assumed the judged metric was the
+relative gain of Agentic GraphRAG over plain RAG, with an "always answer, never
+abstain" policy, and tested on a synthetic harness. The real brief scores one
+system's absolute hidden-set answers and scores `not_in_corpus` and `partial`
+explicitly, so the relative-gain targets and the no-abstention policy are dropped
+(decisions D1 and D2). The synthetic-harness requirements (R2-FR-1 to R2-FR-12,
+R2-NFR-1 to R2-NFR-6 of that version) are superseded; that work is kept as
+earlier work in [RESULTS.md](RESULTS.md) section 5 and
+[TECHNICAL-SPEC.md](TECHNICAL-SPEC.md) section 6, and is not on the answering path.
 
 ## 1. Judging criteria and the evidence for each
 
-"Measured" means a recorded live run. "Offline" means tests or the
-component-level harness, without TigerGraph or an LLM. Nothing in the
-Round-2 column is a live pipeline result yet.
+"Evidence" is what we will be able to show; "Status" says whether it exists.
 
-| Criterion | Round-1 evidence (measured, run `r5-public`) | Round-2 evidence | Gap to close |
-|---|---|---|---|
-| Relative accuracy, Agentic vs RAG | EM 0.98 vs 0.59 (+0.39); right on 39 questions RAG misses, wrong on none RAG gets right | Offline only: the resolver picks the true value on 0.89–0.94 of harness test questions (oracle parse); no RAG comparison | **Live harness run, three pipelines** (§12 step 5). This is the judged number and it does not exist yet |
-| Architecture | One graph holds entities, chunks and vectors; five installed GSQL queries; shared dispatcher for UI and batch | Additive fact layer (`Dataset, Source, Entity, Claim`), dataset-scoped search, adapters per dataset; Round-1 types and queries untouched | First install on Savanna (§12 step 2) |
-| Agent design | Deterministic router, evidence check, fallbacks, closed stop vocabulary, answer verification | Claim probe decides whether claims matter; temporal scope, supersession and conflict resolution are deterministic and written to the trace; one corroborating search on a narrow margin; ask-back when the question is ambiguous | Show it on the trace panel in the demo (§4, US-R2-1 to US-R2-4) |
-| Token efficiency | Median 2,550 tokens vs RAG 6,453; 62 of 100 questions take the direct route | No new LLM calls: the claims route replaces the groundedness call with arithmetic | Tokens per question on the harness (§12 step 5) |
-| Engineering quality | `make reproduce`; deterministic scorer; anti-overfitting tests | 693 backend and 63 frontend tests; dev/test split with weights frozen before test; gate log for every schema or model decision | Round-1 regression re-run on `round-2` (§12 steps 1 and 6) |
-| Honesty of claims | A question type reported where the agent is not worth it (lookup) | Limits listed in [RESULTS.md](RESULTS.md) §4, including where the resolver stops working | Keep every Round-2 number tied to a run file |
+| Criterion (weight) | Evidence / plan | Status |
+|---|---|---|
+| Hidden-set accuracy (40%, organisers' key, fact by fact) | Structured answers (text or JSON, complete lists); ten graph tools; own fact-level scorer on the public 50 as a proxy (`ogr.r2.score`); `check` split held out | Tool-level checks pass offline (32 public answers reproduced by `LocalR2Graph`); accuracy not measured |
+| Honesty (10%) | Three statuses; `not_in_corpus` forces a null answer; prompt rules: unknown is not negative, never guess | Built; not measured |
+| Evidence (10%) | `citations` limited to doc_ids that tools returned; prompt asks for the doc_ids that support each fact | Built; citation precision not measured (public `gold_doc_ids` allow it) |
+| Repeatability (15%) | `build.sh` / `run.sh`, `backend/requirements.lock`, `.env.example`, traces written as the code runs, query log, token-sum and step-time checks, graph counts, git tag | Scripts and writers built; no live run, so no log to compare with traces yet |
+| Efficiency (10%) | Per-question tokens, latency, LLM calls and TigerGraph queries in `metrics.json`; `R2_MAX_STEPS` bounds tool calls; no embeddings at answer time | Counters built; values unknown until the first run (model choice D5 open) |
+| Live judging (15%) | README "Round 2 architecture"; the trace of every answer; a prepared live-call kit in [SUBMISSION.md](SUBMISSION.md) | README written; demo not rehearsed on a live system |
 
 ## 2. Scope decisions
 
 | Decision | Resolution | Basis |
 |---|---|---|
-| Round-2 schema | One graph, additive fact layer, datasets scoped by `IN_DATASET` (gate G1, owner's decision 2026-10-24) | A separate graph per dataset would duplicate the embedding types and break the max-two-models design |
-| Round-2 confidence | Computed by the agent from the weighed claims, for Agentic GraphRAG only; the shared answer prompt is unchanged (gate G2) | Round-1 results stay comparable; a model's stated confidence is usually poorly calibrated |
-| Round-2 answer policy | Always commit to one best answer, with a confidence and the conflicting values cited; no abstention | Owner's decision |
+| Answer policy | `answered`, `partial` or `not_in_corpus`, from structured evidence; never an invented answer | D1 (replaces "always commit") |
+| Three-pipeline comparison | Demo only; not in `run.sh`, not a criterion | D2 |
+| Schema | Additive: Athlete, WON, SourceRecord, REPORTS_ON, Entity/Claim infobox facts | D3 |
+| Source records | Authority and publication time computed deterministically at build; the answering LLM weighs them (deviation from D4) | INTERVIEW-LOG |
+| Model for the run | Not chosen; decide after a measured baseline | D5 |
+| Dev/check split | Public 50 split by answer shape; `check` frozen until the end | D7 |
 
-## 3. Requirements (statement: "Extend your agent to reason over evolving, conflicting, and uncertain facts on a harder dataset")
+## 3. Requirements
 
-EARS notation. "Built" means implemented and tested offline; see
-[RESULTS.md](RESULTS.md) for the offline figures and their limits.
+EARS notation. Ids R2B-* are the requirements for the real brief. "Built" means
+implemented and unit-tested offline.
 
 | Id | Requirement | Status |
 |---|---|---|
-| R2-FR-1 | When a question puts a time scope on a fact ("as of", "originally", "latest", before/after a revision), the agent shall answer with the value known and valid in that scope. Edition-relative wording ("the Games before 2016") shall not count as a time scope | Built; offline evolving 1.00 (oracle parse); no Round-1 question is time-scoped |
-| R2-FR-2 | When sources state different values, the agent shall choose one by an inspectable score (reliability, corroboration, recency, extraction, hedging) and cite the losing values | Built; offline conflicting 0.83–1.00 by difficulty and by what is known about the sources |
-| R2-FR-3 | The agent shall give a confidence with each claims-based answer, calibrated on held-out questions; it shall not abstain by default | Built (Agentic only, gate G2) |
-| R2-FR-4 | When a later statement revises an earlier one, the earlier one shall be kept as superseded evidence, not deleted; a hedged statement shall not supersede a firm one | Built |
-| R2-FR-5 | A new dataset shall plug in through an adapter without changes to the reasoning code | Built (`datasets/`); real format unknown |
-| R2-FR-6 | Where several datasets are loaded, a run shall be able to restrict retrieval to named datasets, so that test or Round-2 data cannot change Round-1 results | Built in code (`IN_DATASET`, Q5S, Q6 dataset filter); **not yet exposed** as a run or UI setting |
-| R2-FR-7 | The system shall generate a validation set of evolving, conflicting and uncertain facts with known ground truth, parameterised by difficulty, conflict rate, hedging, noise and source information, deterministic for a seed, split by event into dev and test | Built (`ogr.cli harness`) |
-| R2-FR-8 | For every claims-based answer the record shall carry the time scope, the chosen value, each alternative with its score terms and sources, and the superseded values; the UI shall show them | Built (`confidence`, `temporal_scope`, `conflicts`, `TraceStep.details`) |
-| R2-FR-9 | When the chosen value's share of the weight is below the margin, the agent shall run one corroborating search and then commit | Built (margin 0.6, one search) |
-| R2-FR-10 | When the model's answer names a value the resolution ranked lower, the resolved value shall stand and the trace shall say so | Built |
-| R2-FR-11 | Where a dataset states facts only in prose, the system shall extract claims at ingest, once, with the result cached | **Not built** (allowed by gate G4). Until then such a dataset reaches only RAG and the prose fallbacks |
-| R2-FR-12 | The dashboard shall report the Round-2 subsets beside the Round-1 types, and show confidence calibration for the agentic pipeline | Subsets: built. Calibration view: **not built** (figures are in the CLI report) |
-| R2-NFR-1 | Round-1 behaviour shall not regress: unchanged routes when no claims matter, unchanged shared answer prompt, unchanged Q1–Q5 | Offline suite passes; live baseline not yet re-run |
-| R2-NFR-2 | Same LLM and embedding model in all three pipelines; tokens per question reported; agent loops bounded (`RUN_MAX_STEPS`, `RUN_MAX_TOKENS_PER_QUERY`, one corroborating search); no LLM call added by Round 2 | Built; tokens not yet measured |
-| R2-NFR-3 | No schema change, re-ingest or provider change without the owner's confirmation | Gates logged in [INTERVIEW-LOG.md](INTERVIEW-LOG.md) |
-| R2-NFR-4 | Weights, calibration and thresholds shall be fitted on the dev split only and frozen before the test split is run; nothing shall be derived from questions or gold answers | Built (`harness --offline`, `OGR_ROUND2_WEIGHTS`) |
-| R2-NFR-5 | The validation set shall not weaken RAG artificially, and generated statements about real people shall be neutral | Built; a test rejects accusatory wording |
-| R2-NFR-6 | Conflict resolution shall be deterministic: the same claims give the same answer, confidence and trace | Built and tested |
+| R2B-FR-1 | The system shall answer a natural-language question by planning its own steps, calling graph tools and returning one answer record per question | Built (`ogr.r2.agent`) |
+| R2B-FR-2 | The answer record shall carry `status` in {`answered`, `partial`, `not_in_corpus`}. When the status is `not_in_corpus` the answer shall be null | Built (guard in `_finalize`; validated in `ogr.r2.output`) |
+| R2B-FR-3 | When part of a question is not in the corpus, the system shall give status `partial`, answer what the corpus supports and say what is missing | Built (prompt); not measured |
+| R2B-FR-4 | The `answer` shall be text or JSON; lists shall be complete | Built (prompt asks for it); not measured |
+| R2B-FR-5 | `citations` shall contain only doc_ids returned by a tool during that question | Built (guard) |
+| R2B-FR-6 | When sources differ, the system shall prefer the more authoritative source (official > operational > secondary > unreliable), separate effective time from publication time, and state what was provisional, superseded or unconfirmed | Built as data (authority, publication time) plus prompt rules; quality depends on the model, not measured |
+| R2B-FR-7 | The system shall use TigerGraph when answering: every retrieval tool is one installed GSQL query | Built; never installed on a live workspace |
+| R2B-FR-8 | Every answer shall carry a trace written as the code runs: per step `step, tool, tigergraph, ms`, plus `query, params, rows` for TigerGraph steps and `input_tokens, output_tokens` for LLM steps. Answer token totals shall equal the sum over LLM steps | Built (`ogr.r2.trace`, `validate`) |
+| R2B-FR-9 | Every TigerGraph call shall be appended to a query log with a start timestamp, qid, step, query, params, rows, ms and ok | Built (`ogr.r2.querylog`) |
+| R2B-FR-10 | The system shall write `metrics.json` for both sets from the answer files only, with every field of the brief's example | Built (`ogr.r2.metrics`) |
+| R2B-FR-11 | The system shall write vertex and edge counts by type after the build | Built (`graph_counts.json`); needs a live server |
+| R2B-FR-12 | One-command build and run: `./build.sh corpus.jsonl`, `./run.sh questions answers` | Built |
+| R2B-FR-13 | Dependencies shall be locked (`backend/requirements.lock`) and every key listed in `.env.example` | Built; lock resolved but not installed from scratch in this environment |
+| R2B-FR-14 | The system shall contain no question-specific rules: no regex on question wording, no qids, no answers in code. The prompt and tools shall be general | Built by design. The Round-1 scan (`tests/pipelines/p3/test_anti_overfitting.py`) lists only `pipelines/` and `graph/` as answer path, so `r2/` is not in that list; extend it or review `r2/` by hand before tagging |
+| R2B-FR-15 | The system shall answer questions it has not seen and reproduce a submitted hidden answer and its trace on request | Not demonstrated; needs a live run |
+| R2B-FR-16 | The system shall report a public self-score by a stated method, without reading the hidden questions' answers (there are none) | Built (`ogr.r2.score`, `accuracy_method`) |
+| R2B-NFR-1 | The build shall need no LLM and no embedding model; `run.sh` shall need an LLM and TigerGraph only | Built |
+| R2B-NFR-2 | Behaviour shall be deterministic where possible: temperature 0, stable ordering, bounded steps (`R2_MAX_STEPS`, default 8) | Built; model output is still not guaranteed identical |
+| R2B-NFR-3 | A failed question shall not stop the run and shall not be written as an answer; a rerun retries it | Built (`run_questions` skips only qids already in the file) |
+| R2B-NFR-4 | Round-1 code paths and the offline suite shall not regress | Offline suite passes (920 tests, owner-reported) |
+| R2B-NFR-5 | The local backend (`--backend local`) shall be dev only: its steps are `tigergraph: false` and write no query log | Built |
 
-## 4. User stories
+## 4. User stories (live judging)
 
 | ID | Story | Acceptance |
 |---|---|---|
-| US-R2-1 | As a judge, I ask who holds a result "as of 2015", "originally" and "currently", and get three different, correct answers, each with the superseded values shown | R2-FR-1, R2-FR-4, R2-FR-8 |
-| US-R2-2 | As a judge, I ask a question where a blog and an official source disagree, and see which value was chosen, the score behind it, and the losing value still cited | R2-FR-2, R2-FR-8 |
-| US-R2-3 | As a judge, I ask a question whose only support is a hedged report, and the answer comes with a visibly low confidence instead of false certainty | R2-FR-3 |
-| US-R2-4 | As a judge, I see on the trace that the conflict was settled by a graph query and a deterministic score, and how many tokens that cost next to RAG | R2-FR-8, R2-NFR-2 |
-| US-R2-5 | As a judge, I ask an ambiguous question and the agent asks back with the candidates instead of guessing | Round-1 FR-25 |
-| US-R2-5 | As the team, we plug in the real Round-2 dataset by writing one adapter, and rerun the same harness commands | R2-FR-5, R2-FR-7 |
+| US-R2B-1 | A judge asks a new list or count question; the trace shows graph queries and a complete, cited answer | R2B-FR-1, 4, 5, 7, 8 |
+| US-R2B-2 | A judge asks about a result that was provisional, then decided; the answer names the official source and time, and says why the other documents differ | R2B-FR-6 |
+| US-R2B-3 | A judge asks something the corpus does not contain; the answer is `not_in_corpus` with no invented content | R2B-FR-2 |
+| US-R2B-4 | A judge picks a hidden question; the system reproduces the submitted answer and trace shape | R2B-FR-15 |
+| US-R2B-5 | A judge asks how it decides; we show the prompt, the tool list and one trace | README |
 
-## 5. Success criteria (targets; none measured live yet)
+## 5. Success criteria (targets, not results)
 
-The judged quantity is the relative gain of Agentic GraphRAG over plain RAG.
-Targets are set before the run so the result cannot move them. They apply
-to the harness **test** split (weights fitted on dev only) until the real
-Round-2 dataset replaces it.
+Set before any run so that results cannot move them. Accuracy targets use our own
+scorer on the public questions, the `check` split (14 questions) and all 50, and
+are proxies for the organisers' key.
 
 | Criterion | Target | Status |
 |---|---|---|
-| Relative accuracy gain | Agentic − RAG EM ≥ +0.25 on each of the evolving, conflicting and uncertain subsets, reported with Wilson 95% intervals, absolute and relative | Not measured |
-| The loop's own contribution | Agentic − GraphRAG reported per subset, whatever its sign | Not measured |
-| Token efficiency | Agentic median tokens per question ≤ RAG's on the same questions; tokens per correct answer reported for all three | Not measured |
-| Calibration | Agentic ECE ≤ 0.10 and Brier reported on test; reliability table in the report | Offline (oracle parse): ECE 0.01–0.09 overall; uneven per subset |
-| Unanswerable items | Mean confidence on unanswerable items lower than on answerable ones | Not measured |
-| Round-1 regression | Public-100 on `round-2` after the fact layer is installed: Agentic EM not below the same-day baseline by more than one question; RAG unchanged | Offline suite passes; live run not done |
-| Fair baseline | Same documents, `k`, LLM, embedding model and answer prompt in all three pipelines; source and date visible in the text RAG retrieves | Built into the harness |
-| Reproducibility | One command generates the harness, one fits and reports offline, one batch command per live run; seed and parameters recorded in the manifest | Built |
-| Real dataset | Loaded through an adapter with no change to the reasoning code; every [ASSUMPTION] in the Round-2 documents reconciled | Dataset not released |
+| Public accuracy, `check` split | Report `accuracy_pct` for `check` and for all 50 with `accuracy_method`; aim for the `check` score within 10 points of the `dev` score (no overfitting to dev). No absolute target is set because the organisers' scale is unknown | Not measured |
+| Honesty on public | All 4 gold `not_in_corpus` questions answered `not_in_corpus`; no `not_in_corpus` on a question with a gold answer unless the gold status is `partial` | Not measured |
+| Statuses | Status matches gold on at least 90% of the public 50 | Not measured |
+| Citations | Every answer cites at least one doc_id; compare with public `gold_doc_ids` and report precision and recall | Not measured |
+| Trace integrity | 0 errors from `validate` on every answer; token sums equal; at least 95% of answers have a TigerGraph step; every TigerGraph step has a query-log line within the step's time window | Checked offline on scripted runs only |
+| Efficiency per question | Targets are examples from the brief's sample (about 2-3 LLM calls, about 3 TigerGraph queries, about 3-4k tokens per question); the real values are reported, not forced. A question that hits the step budget is read in the trace | Not measured |
+| Run time | Public and hidden run each within the time of one demo-length session; report `total_run_time_s` | Not measured |
+| Reproducibility | A clean clone builds and runs from `build.sh` / `run.sh` with only `.env` filled in; two runs of the public set differ only by model non-determinism, which is reported | Not demonstrated |
 
-## 6. Risks to the Round-2 result
+## 6. Risks
 
 | Risk | Likelihood | Effect | Mitigation |
 |---|---|---|---|
-| No live Round-2 measurement before the deadline | High until credentials are added | No judged number at all | §12 steps 1–5 first, before any further feature |
-| The fact-layer GSQL fails on first install | Medium (never run on Savanna) | Blocks every live Round-2 run | Install early; the job is additive and Q1–Q5 keep working if it fails |
-| The real dataset is prose-only | Unknown | Graph pipelines have no claims; the gain over RAG shrinks to Round-1 behaviour | Build R2-FR-11 as soon as the format is known |
-| The real dataset is not about Olympic events | Unknown | Subjects must link as generic entities; entity linking for them is untested | `Entity` type and `ent:` subjects exist; test on the first sample |
-| The intent parse misses the subject or attribute on Round-2 wording | Medium | The resolver never runs, however good it is | Dry run first; gate G3 allows a temporal field in the parse if the rules fall short |
-| Evolving cases in the harness are too easy | Known | An inflated evolving score that will not transfer | Harder generator before the reported run |
-| RAG scores well on the harness because source and date are in its text | Medium | Smaller gain | Report it as it is; the comparison stays fair |
-| Round-1 score moves after the fact layer is installed | Low | Regression in a judged Round-1 criterion | Same-day baseline before and after |
+| No live measurement before the deadline (no credentials yet) | High until credentials are added | No accuracy or efficiency evidence; first install of the GSQL is its first syntax check | Obtain credentials first (D6); install and run the dry run before anything else ([PLAN.md](PLAN.md)) |
+| GSQL queries fail on first install | Medium | Blocks every live run | Install early; 227 offline tests cover the Python side and a static GSQL check |
+| The model over- or under-abstains | Medium | Lower accuracy or honesty | Look at `check` once; adjust general prompt rules only |
+| Model does not support native tool calling or does not report token usage | Medium | Agent loop fails, or tokens are estimated | `LLM_SUPPORTS_TOOL_CALLING`, `LLM_REPORTS_TOKEN_USAGE`; estimated tokens are marked in the trace `note` |
+| Source-record weighing is left to the LLM (D4 deviation) | Medium | Inconsistent answers on conflicting-source questions | Authority and time are given as fields; compare the public source-record questions |
+| Rerun with the same output file skips answered qids | Certain | A stale file mistaken for a fresh run | Delete answer files, query log and `out/r2/` before the final runs ([SUBMISSION.md](SUBMISSION.md)) |
+| A hidden answer cannot be reproduced live (model drift) | Medium | Repeatability and disqualification risk | Temperature 0, same model and settings, keep the traces; rehearse reproduction |
 
-## 7. Readiness checklist (in order; stop anywhere and the work before it stands)
-
-| # | Step | Needs | Status |
-|---|---|---|---|
-| 1 | Round-1 baseline on `round-2`: public-100, three pipelines | Credentials | Not done |
-| 2 | Install the fact layer and backfill claims (`ogr.cli round2`); reinstall Q2/Q3 | Credentials | Not done |
-| 3 | Build the harness corpus as its own dataset | Step 2 | Not done |
-| 4 | Dry run: 10 questions × three pipelines; read the cost before going on | Step 3 | Not done |
-| 5 | Harness test split × three pipelines; per-subset report with intervals, tokens and calibration | Step 4 | Not done |
-| 6 | Round-1 regression after the fact layer | Step 2 | Not done |
-| 7 | Expose the dataset scope as a run setting (R2-FR-6) | – | Not done |
-| 8 | Harder evolving generator | – | Not done |
-| 9 | Score the paraphrase set; rerun the hidden set on the final system | Credentials | Not done |
-| 10 | Calibration view on the dashboard (R2-FR-12) | Step 5 | Not done |
-| 11 | Demo script with one question each for US-R2-1 to US-R2-5 | Step 5 | Not done |
-| 12 | Real dataset: adapter, reconcile assumptions, rerun steps 3–6 | Dataset release | Blocked |
-
-## 8. Open questions
+## 7. Open questions
 
 | Question | Status |
 |---|---|
-| Round-2 dataset format, guidebook and deadline | **Open** — not released. The generic adapter and the class reliability priors are labelled assumptions |
-| "TG Multihop30" | **Open** — the Round-2 brief says the Round-1 output format was built against it; nothing by that name is in this repository (the Round-1 sets are public-100 and hidden-50) |
-| Does the real dataset say anything about its sources? | **Open** — with no reliability information and a coordinated false majority, the resolver's offline accuracy on conflicting items stops near 0.83 |
+| Model and provider for the run (D5) | Open; decide after a measured baseline |
+| Owner's confirmation of the D4 deviation (no LLM extraction of source records at build) | Open |
+| "TG Multihop30" (R1) | Open; nothing by that name in this repository |
+| How the organisers score list/JSON answers, what query log is acceptable on a managed workspace, whether overridden documents must be cited | Open; questions to the organisers (BRIEF-ANALYSIS section 8) |
