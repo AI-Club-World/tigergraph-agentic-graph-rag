@@ -1,4 +1,4 @@
-"""Conflict resolution and answer confidence (ROUND2-DESIGN.md §4).
+"""Conflict resolution and answer confidence (docs/round-2/DESIGN.md §4).
 
 Given the claims for one (subject, predicate), a temporal scope and source
 reliabilities, pick one value, deterministically, with:

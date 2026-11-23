@@ -141,7 +141,7 @@ class Question(BaseModel):
     """
     qid: str
     question: str
-    # The five Round-1 types, plus the Round-2 harness subsets (ROUND2-DESIGN.md §8).
+    # The five Round-1 types, plus the Round-2 harness subsets (docs/round-2/DESIGN.md §8).
     qtype: Literal[
         "lookup", "multi_hop", "temporal", "aggregation", "superlative",
         "evolving", "conflicting", "uncertain",

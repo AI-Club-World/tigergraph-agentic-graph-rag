@@ -18,17 +18,27 @@ The repo holds:
 
 ## Documentation
 
+Documents are split by hackathon round: [`docs/round-1/`](docs/round-1/) holds the system as built and measured for Round 1, and [`docs/round-2/`](docs/round-2/) holds the Round-2 extension (evolving, conflicting and uncertain facts).
+
 | Document | What it is |
 |---|---|
-| [`config-docs/APPLICATION-SPEC.md`](config-docs/APPLICATION-SPEC.md) | Functional and non-functional requirements (FR/NFR) |
-| [`config-docs/ARCHITECTURE-SPEC.md`](config-docs/ARCHITECTURE-SPEC.md) | Architecture diagram, the agents, routing, decision log, engineering guards, where the LLM is used, known limitations |
-| [`config-docs/TECHNICAL-SPEC.md`](config-docs/TECHNICAL-SPEC.md) | Stack, graph schema, query library, record contracts, evaluation |
-| [`config-docs/UI-SPEC.md`](config-docs/UI-SPEC.md) | Frontend contract: screens, states, data, formatting |
-| [`config-docs/EMBEDDING-SWITCHING.md`](config-docs/EMBEDDING-SWITCHING.md) | Selectable embedding models, per-model storage, the switch/re-embed jobs |
-| [`config-docs/WRITEUP.md`](config-docs/WRITEUP.md) | Submission write-up: what was built, measured results, limitations, next steps, demo script |
-| [`config-docs/SCORE-AUDIT.md`](config-docs/SCORE-AUDIT.md) | Rubric audit: baseline, root causes, owner decisions, before/after scores |
+| [`docs/round-1/APPLICATION-SPEC.md`](docs/round-1/APPLICATION-SPEC.md) | Functional and non-functional requirements (FR/NFR) |
+| [`docs/round-1/ARCHITECTURE-SPEC.md`](docs/round-1/ARCHITECTURE-SPEC.md) | Architecture diagram, the agents, routing, decision log, engineering guards, where the LLM is used, known limitations |
+| [`docs/round-1/TECHNICAL-SPEC.md`](docs/round-1/TECHNICAL-SPEC.md) | Stack, graph schema, query library, record contracts, evaluation |
+| [`docs/round-1/UI-SPEC.md`](docs/round-1/UI-SPEC.md) | Frontend contract: screens, states, data, formatting |
+| [`docs/round-1/EMBEDDING-SWITCHING.md`](docs/round-1/EMBEDDING-SWITCHING.md) | Selectable embedding models, per-model storage, the switch/re-embed jobs |
+| [`docs/round-1/WRITEUP.md`](docs/round-1/WRITEUP.md) | Submission write-up: what was built, measured results, limitations, next steps, demo script |
+| [`docs/round-1/SCORE-AUDIT.md`](docs/round-1/SCORE-AUDIT.md) | Rubric audit: baseline, root causes, owner decisions, before/after scores |
 | [`submission/`](submission/README.md) | Hidden-set raw outputs (answers, tokens, citations, agentic traces) and the public and hidden run reports |
-| [`config-docs/DEPLOY.md`](config-docs/DEPLOY.md) | Hosting the frontend on Netlify |
+| [`docs/round-1/DEPLOY.md`](docs/round-1/DEPLOY.md) | Hosting the frontend on Netlify |
+| [`docs/round-2/APPLICATION-SPEC.md`](docs/round-2/APPLICATION-SPEC.md) | Round 2: judging criteria and evidence, requirements, targets, risks, readiness checklist |
+| [`docs/round-2/ARCHITECTURE-SPEC.md`](docs/round-2/ARCHITECTURE-SPEC.md) | Round 2: claims route through the agent, decision log |
+| [`docs/round-2/TECHNICAL-SPEC.md`](docs/round-2/TECHNICAL-SPEC.md) | Round 2: fact-layer schema, Q5S/Q6, claim loading, modules, configuration |
+| [`docs/round-2/ANALYSIS.md`](docs/round-2/ANALYSIS.md) | Round 2: where Round 1 assumed static, single, certain facts; schema strategy |
+| [`docs/round-2/DESIGN.md`](docs/round-2/DESIGN.md) | Round 2: fact model, temporal/conflict/uncertainty logic, adapters, harness |
+| [`docs/round-2/PLAN.md`](docs/round-2/PLAN.md) | Round 2: ordered plan with status |
+| [`docs/round-2/INTERVIEW-LOG.md`](docs/round-2/INTERVIEW-LOG.md) | Round 2: gate questions and the owner's decisions |
+| [`docs/round-2/RESULTS.md`](docs/round-2/RESULTS.md) | Round 2: what is measured, what is not, and the commands to measure it |
 | [`embedding_server_2.ipynb`](embedding_server_2.ipynb) | Kaggle dual-GPU embedding & LLM server notebook with ngrok / Cloudflare tunnel |
 | [`data/README.md`](data/README.md) | The corpus and question sets, and how dataset names are resolved |
 | [`ATTRIBUTION.md`](ATTRIBUTION.md) | Licences for the corpus, embedding models and software |
@@ -278,7 +288,7 @@ embedding store are files under `out/`.
 ## Design notes
 
 How the pipelines differ, where the LLM is called, and the known limitations
-of the comparison are in `config-docs/ARCHITECTURE-SPEC.md`. Two facts that
+of the comparison are in `docs/round-1/ARCHITECTURE-SPEC.md`. Two facts that
 matter when reading results:
 
 - No LLM sits in the scoring path. EM and token F1 are computed
@@ -316,7 +326,7 @@ backend. Features whose service is down are blocked, with a contact link
   the provider's live model list and a custom model id field;
 - the embedding model, through a decision dialog (re-embed or keep parallel
   indices; eviction at the 2-model cap). See
-  `config-docs/EMBEDDING-SWITCHING.md`.
+  `docs/round-1/EMBEDDING-SWITCHING.md`.
 
 The panel closes itself 10 s after a successful Apply. Settings are hidden in
 mock mode.
@@ -397,7 +407,7 @@ set them through `style`, because `var()` does not resolve in SVG attributes.
 | `EMBEDDING_HOST_URL` fails or times out | If using `embedding_server_2.ipynb` on Kaggle, ensure Cell 6 is still running and check that the tunnel URL has not expired or changed |
 | Build returns `reset_required` | The graph predates dataset tracking or per-model embedding storage. Confirm "Reset graph and build" (this removes every loaded dataset) |
 | Embedding switching is greyed out | A build, re-embed job or benchmark is running. It re-enables when that ends |
-| `/dashboard`, `/build` or `/history` 404 on refresh of a deployed build | The SPA rewrite is missing. Keep both `netlify.toml` and `frontend/public/_redirects` (see `config-docs/DEPLOY.md`) |
+| `/dashboard`, `/build` or `/history` 404 on refresh of a deployed build | The SPA rewrite is missing. Keep both `netlify.toml` and `frontend/public/_redirects` (see `docs/round-1/DEPLOY.md`) |
 | `npm ci` fails on Windows with "operation was rejected by your operating system" | A dev server or antivirus is holding `node_modules`. Stop the dev server first. `npm install` is more forgiving |
 
 # Attribution

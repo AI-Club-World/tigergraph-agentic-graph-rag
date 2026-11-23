@@ -3,7 +3,7 @@
 # Only the frontend is deployed (the FastAPI backend is not hosted here).
 # Git-linked builds set VITE_USE_MOCK_API=true below, so every screen is
 # served from frontend/src/fixtures/. Without it a build calls the backend at
-# VITE_API_BASE_URL — see config-docs/DEPLOY.md.
+# VITE_API_BASE_URL — see docs/round-1/DEPLOY.md.
 
 [build]
   # The app is not at the repo root, so builds run inside frontend/.

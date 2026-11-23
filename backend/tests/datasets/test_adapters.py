@@ -1,4 +1,4 @@
-"""Dataset adapters (ROUND2-DESIGN.md §1)."""
+"""Dataset adapters (docs/round-2/DESIGN.md §1)."""
 
 from __future__ import annotations
 

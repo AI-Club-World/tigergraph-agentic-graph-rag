@@ -1,4 +1,4 @@
-"""Dataset adapters (ROUND2-DESIGN.md §1): one per dataset format."""
+"""Dataset adapters (docs/round-2/DESIGN.md §1): one per dataset format."""
 
 from __future__ import annotations
 

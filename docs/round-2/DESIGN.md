@@ -1,8 +1,8 @@
 # Round 2 — Design: evolving, conflicting and uncertain facts
 
 Status: implemented offline on `round-2` (see "As built" below and
-`ROUND2-RESULTS.md`); not yet run live. Gated items are marked **[GATE Gn]**
-and listed in `ROUND2-INTERVIEW-LOG.md`. Assumptions about the unknown Round-2
+`RESULTS.md`); not yet run live. Gated items are marked **[GATE Gn]**
+and listed in `INTERVIEW-LOG.md`. Assumptions about the unknown Round-2
 dataset are marked **[ASSUMPTION]** and must be reconciled when it arrives.
 
 Principles carried over from Round 1:
@@ -92,7 +92,7 @@ Relations:
   values that differ after normalisation, and no supersession between them.
   Built at ingest.
 
-Graph types: `ROUND2-ANALYSIS.md` §5. **[GATE G1]**
+Graph types: `ANALYSIS.md` §5. **[GATE G1]**
 
 ## 3. Temporal reasoning
 

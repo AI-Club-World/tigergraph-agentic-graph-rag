@@ -1,6 +1,6 @@
 USE GRAPH OlympicGraphRAG
 
-// Q6: claims(subject_ids, predicate, dataset_ids) — Round 2 (ROUND2-DESIGN.md §3.2).
+// Q6: claims(subject_ids, predicate, dataset_ids) — Round 2 (docs/round-2/DESIGN.md §3.2).
 // Every claim about the given subjects (an OlympicEvent event_id or an Entity
 // id), optionally for one predicate and within some datasets, with its
 // provenance, time and confidence fields. Temporal scoping, supersession and

@@ -1,4 +1,4 @@
-"""Injection harness (ROUND2-DESIGN.md §8). Needs the Round-1 corpus."""
+"""Injection harness (docs/round-2/DESIGN.md §8). Needs the Round-1 corpus."""
 
 from __future__ import annotations
 

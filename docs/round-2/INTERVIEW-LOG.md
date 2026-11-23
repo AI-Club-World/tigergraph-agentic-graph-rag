@@ -17,7 +17,7 @@ is recorded here.
 
 - **Current:** one graph, Olympic-specific types, multi-dataset tracked only in
   `out/datasets.json`, no query scoped by dataset.
-- **Proposed:** Option A (`ROUND2-ANALYSIS.md` §4): keep one graph; add
+- **Proposed:** Option A (`ANALYSIS.md` §4): keep one graph; add
   `Dataset, Source, Entity, Claim` and the edges `IN_DATASET, ASSERTS,
   FROM_SOURCE, ABOUT, SUPERSEDES, CONTRADICTS, SAME_AS` through a
   SCHEMA_CHANGE JOB (no `DROP GRAPH`, no change to existing types); backfill
@@ -33,7 +33,7 @@ is recorded here.
 
 - **Current:** no confidence anywhere.
 - **Proposed (recommended):** (a) P3 computes it deterministically from
-  claim scores (`ROUND2-DESIGN.md` §4.4), and the shared prompt is unchanged.
+  claim scores (`DESIGN.md` §4.4), and the shared prompt is unchanged.
   Alternative (b): add `confidence` to the shared answer contract for all
   three pipelines.
 - **Gain:** (a) no Round-1 change. (b) calibration is comparable across

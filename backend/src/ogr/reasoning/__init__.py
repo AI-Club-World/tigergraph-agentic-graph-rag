@@ -1,1 +1,1 @@
-"""Round 2: reasoning over evolving, conflicting and uncertain facts (ROUND2-DESIGN.md §2-§4)."""
+"""Round 2: reasoning over evolving, conflicting and uncertain facts (docs/round-2/DESIGN.md §2-§4)."""

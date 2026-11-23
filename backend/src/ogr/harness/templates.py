@@ -1,4 +1,4 @@
-"""Surface forms for the injection harness (ROUND2-DESIGN.md §8).
+"""Surface forms for the injection harness (docs/round-2/DESIGN.md §8).
 
 Several template families per statement, so no reasoning component can
 lean on one wording: claims are read from the record's key/value block

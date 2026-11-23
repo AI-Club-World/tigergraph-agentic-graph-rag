@@ -1,5 +1,5 @@
 """Load a dataset's fact layer: Dataset, Source, Entity, Claim and their edges
-(Round 2, ROUND2-DESIGN.md §2, gate G1).
+(Round 2, docs/round-2/DESIGN.md §2, gate G1).
 
 Runs after the Round-1 loader has written the dataset's Document and Chunk
 vertices. It never writes or changes an OlympicEvent, Document or Chunk

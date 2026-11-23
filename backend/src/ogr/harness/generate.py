@@ -1,6 +1,6 @@
 """Injection harness: evolving, conflicting and uncertain facts over the
 Round-1 corpus, with questions whose ground truth is known
-(ROUND2-DESIGN.md §8).
+(docs/round-2/DESIGN.md §8).
 
 Seeds are real events and values from the parsed Round-1 infoboxes. The
 generator writes *new* records (a separate dataset, `block_records`

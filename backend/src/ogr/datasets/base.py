@@ -1,4 +1,4 @@
-"""Dataset adapter contract (ROUND2-DESIGN.md §1).
+"""Dataset adapter contract (docs/round-2/DESIGN.md §1).
 
 An adapter turns one dataset's files into `SourceRecord`s (documents with
 provenance) and `ClaimRecord`s (statements with time, provenance and

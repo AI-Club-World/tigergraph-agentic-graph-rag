@@ -4,8 +4,8 @@ Round-2 statement (verbatim): *"Extend your agent to reason over evolving,
 conflicting, and uncertain facts on a harder dataset."*
 
 Status: analysis only. No code, schema or data changed by this document.
-Branch: `round-2`. Companion documents: `ROUND2-DESIGN.md` (design),
-`ROUND2-PLAN.md` (ordered plan), `ROUND2-INTERVIEW-LOG.md` (gate decisions).
+Branch: `round-2`. Companion documents: `DESIGN.md` (design),
+`PLAN.md` (ordered plan), `INTERVIEW-LOG.md` (gate decisions).
 
 **What is not known yet.** There is no Round-2 guidebook, dataset or deadline.
 Everything below that concerns the Round-2 dataset is an assumption and is
@@ -145,7 +145,7 @@ take the reasoning out of the graph. That is the weakest option for a
 TigerGraph GraphRAG entry, and it would not be queryable by the agent's graph
 tools.
 
-Proposed additive types (detailed in `ROUND2-DESIGN.md` §2). None of them
+Proposed additive types (detailed in `DESIGN.md` §2). None of them
 changes an existing type:
 
 ```

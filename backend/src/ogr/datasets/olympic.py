@@ -1,4 +1,4 @@
-"""Round-1 corpus adapter: infobox fields as claims (ROUND2-DESIGN.md §1).
+"""Round-1 corpus adapter: infobox fields as claims (docs/round-2/DESIGN.md §1).
 
 The Round-1 graph path (OlympicEvent, Q1-Q4) is not touched. These claims
 are a second view of the same infoboxes, so the claim tools have the

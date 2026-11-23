@@ -3,12 +3,12 @@
 Ordered by expected relative-accuracy gain (Agentic vs RAG) first, so the
 work can ship at any stopping point. **SAFE** = additive, no schema change,
 no re-ingest, no change to the Round-1 answer path. **GATED** = needs the
-user's decision recorded in `ROUND2-INTERVIEW-LOG.md`.
+user's decision recorded in `INTERVIEW-LOG.md`.
 
 **Status (2026-10-24):** steps 1–9 and 11 (offline part) are done on
 `round-2`; G2 and G3 are not needed so far; G4 is allowed and not built.
 Steps 0, 10, 12 and the live part of 11 need credentials (gate G5: offline
-first). The commands are in `ROUND2-RESULTS.md` §3.
+first). The commands are in `RESULTS.md` §3.
 
 | # | Status |
 |---|---|

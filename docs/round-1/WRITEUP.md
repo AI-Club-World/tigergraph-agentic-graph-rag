@@ -127,7 +127,7 @@ is the mean of per-question Agentic ÷ RAG ratios, as on the dashboard):
 0.74 → 0.80, lookup 0.74 → 1.00, aggregation 0.71 → 0.86. RAG stayed at
 0.62, as a control should. Each root cause and its fix, with the owner's
 decision where one changed routing or retrieved context, is in
-`config-docs/SCORE-AUDIT.md`.
+`docs/round-1/SCORE-AUDIT.md`.
 
 **Hidden set (50 questions, run once, on the system before answer verification and anchor recovery — the `r2` system plus the venue/date fix; kept rather than rerun, by the owner's decision):** 0 pipeline
 errors in 150 answers.

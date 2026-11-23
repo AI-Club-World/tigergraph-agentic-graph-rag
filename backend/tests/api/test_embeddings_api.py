@@ -1,5 +1,5 @@
 """Embedding switching over HTTP: server-side refusals (whatever the UI
-shows) and the query-time block (config-docs/EMBEDDING-SWITCHING.md)."""
+shows) and the query-time block (docs/round-1/EMBEDDING-SWITCHING.md)."""
 
 from __future__ import annotations
 

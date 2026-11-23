@@ -50,7 +50,7 @@ export async function fetchModels(provider: string): Promise<{ models: string[];
   return { models: res.models, note: res.note ?? null }
 }
 
-// ── Embedding models (config-docs/EMBEDDING-SWITCHING.md) ─────────────────────
+// ── Embedding models (docs/round-1/EMBEDDING-SWITCHING.md) ─────────────────────
 
 export type EmbeddingState =
   | 'complete' | 'incomplete' | 'building' | 'failed' | 'not_stored' | 'evicting'

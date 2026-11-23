@@ -1,4 +1,4 @@
-// Round 2 (config-docs/ROUND2-DESIGN.md §2, gate G1 = Option A, additive).
+// Round 2 (docs/round-2/DESIGN.md §2, gate G1 = Option A, additive).
 //
 // Adds the fact layer to the existing graph WITHOUT dropping it: a local
 // SCHEMA_CHANGE JOB on OlympicGraphRAG. No existing vertex or edge type is

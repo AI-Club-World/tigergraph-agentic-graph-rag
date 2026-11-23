@@ -1,7 +1,7 @@
 USE GRAPH OlympicGraphRAG
 
 // Q5S: q5_hybrid_search restricted to the chunks of some datasets — Round 2
-// (ROUND2-DESIGN.md §3.2, gate G1). Same result shape as Q5 (top_chunks,
+// (docs/round-2/DESIGN.md §3.2, gate G1). Same result shape as Q5 (top_chunks,
 // distances), so client._normalize_q5_results reads both. Q5 itself is not
 // touched: a run with no dataset scope still calls Q5, exactly as Round 1.
 // Seeds are the scoped chunks' embedding vertices of the query's own model,

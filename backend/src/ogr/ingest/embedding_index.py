@@ -1,5 +1,5 @@
 """Which embedding models are stored for the corpus, and switching between
-them (config-docs/EMBEDDING-SWITCHING.md).
+them (docs/round-1/EMBEDDING-SWITCHING.md).
 
 State lives in `out/embeddings.json` next to the dataset registry:
 

@@ -325,7 +325,7 @@ async def patch_settings(body: SettingsPatch) -> dict[str, Any]:
 
 
 # ─────────────────────────────────────────── /embeddings ────────────────────
-# Embedding model switching (config-docs/EMBEDDING-SWITCHING.md). Every
+# Embedding model switching (docs/round-1/EMBEDDING-SWITCHING.md). Every
 # refusal is enforced here, whatever state a (possibly stale) UI shows.
 
 _embedding_job: dict[str, Any] = {"task": None}

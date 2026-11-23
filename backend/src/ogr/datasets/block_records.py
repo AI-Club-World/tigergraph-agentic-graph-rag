@@ -1,6 +1,6 @@
 """Generic adapter: JSONL records with a key/value block and metadata.
 
-**[ASSUMPTION]** (ROUND2-DESIGN.md §1). The Round-2 dataset format is not
+**[ASSUMPTION]** (docs/round-2/DESIGN.md §1). The Round-2 dataset format is not
 known. This adapter reads the shape the Round-1 corpus already uses, an
 `[Infobox <type>]` header followed by indented `key: value` lines and then
 prose, plus record-level metadata a dataset of evolving facts plausibly

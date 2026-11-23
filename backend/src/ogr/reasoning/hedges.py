@@ -1,4 +1,4 @@
-"""Hedge detection: a statement qualified as uncertain (ROUND2-DESIGN.md §2).
+"""Hedge detection: a statement qualified as uncertain (docs/round-2/DESIGN.md §2).
 
 A general English lexicon, versioned here, never derived from questions or
 from the harness templates. A hedged claim keeps its value but gets a lower

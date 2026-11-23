@@ -1,4 +1,4 @@
-"""Source reliability (ROUND2-DESIGN.md §4.3).
+"""Source reliability (docs/round-2/DESIGN.md §4.3).
 
 The adapter's prior when the dataset defines one; otherwise estimated from
 agreement across the dataset's own claims (a TruthFinder-style fixed

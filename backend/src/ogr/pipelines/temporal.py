@@ -1,4 +1,4 @@
-"""Temporal scope of a question (Round 2, ROUND2-DESIGN.md §3.1).
+"""Temporal scope of a question (Round 2, docs/round-2/DESIGN.md §3.1).
 
 Which version of a fact the question asks for: the value as known at a
 point in time, before or after one, between two, the latest, or the

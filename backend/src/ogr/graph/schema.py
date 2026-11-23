@@ -27,7 +27,7 @@ QUERY_FILES = (
     "q5_hybrid_search.gsql",
 )
 
-# Round 2 (config-docs/ROUND2-DESIGN.md, gate G1): the fact layer, added to
+# Round 2 (docs/round-2/DESIGN.md, gate G1): the fact layer, added to
 # the existing graph by a schema change job, and its two queries. Installed
 # separately, so a Round-1 build is unchanged.
 ROUND2_SCHEMA_PATH = _GRAPH_DIR / "schema_round2.gsql"

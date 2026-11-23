@@ -1,4 +1,4 @@
-"""Supersession and contradiction between claims (ROUND2-DESIGN.md §2).
+"""Supersession and contradiction between claims (docs/round-2/DESIGN.md §2).
 
 Deterministic, built at ingest from the claims alone, and recorded with the
 reason, so every relation the agent relies on can be inspected.

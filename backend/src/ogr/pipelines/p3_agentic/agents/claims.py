@@ -1,4 +1,4 @@
-"""Claims tool (Round 2, ROUND2-DESIGN.md §5): the facts the graph holds about
+"""Claims tool (Round 2, docs/round-2/DESIGN.md §5): the facts the graph holds about
 the question's subject, weighed by time, source and certainty.
 
 Two steps, both deterministic and free of LLM calls:

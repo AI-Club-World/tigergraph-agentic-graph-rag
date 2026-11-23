@@ -14,7 +14,7 @@ export const PIPELINE_LABELS: Record<PipelineId, string> = {
 }
 
 export type Round1QType = 'lookup' | 'multi_hop' | 'temporal' | 'aggregation' | 'superlative'
-/** Round-2 harness subsets (config-docs/ROUND2-DESIGN.md §8). */
+/** Round-2 harness subsets (docs/round-2/DESIGN.md §8). */
 export type Round2QType = 'evolving' | 'conflicting' | 'uncertain'
 export type QType = Round1QType | Round2QType
 

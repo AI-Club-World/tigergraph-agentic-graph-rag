@@ -62,7 +62,7 @@ settled decision (asked before implementing); **U** = needs the user
 - **No demo video.** Deliverable; only a person can record it (U). An
   agent can script it (S).
 - **No write-up** (what was built, how it works, key results, limitations,
-  what next). S: `config-docs/WRITEUP.md`, with results filled from a real run.
+  what next). S: `docs/round-1/WRITEUP.md`, with results filled from a real run.
 - **No real numbers to present.** Blocked on the C1 run (U).
 - **The diagram is mermaid source only.** S: render it into README.
 

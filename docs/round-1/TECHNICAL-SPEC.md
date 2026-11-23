@@ -75,7 +75,7 @@ All directed, endpoints pinned.
 ## 3. GSQL Query Library (exactly five)
 
 Round 2 adds two queries, Q5S and Q6, installed separately by
-`graph/schema.install_round2` (see §15). Q1–Q5 are unchanged.
+`graph/schema.install_round2` ([../round-2/TECHNICAL-SPEC.md](../round-2/TECHNICAL-SPEC.md)). Q1–Q5 are unchanged.
 
 Source: `backend/src/ogr/graph/queries/*.gsql`, installed by `graph/schema.install_queries` (verified with `getInstalledQueries`). All `SYNTAX V2`.
 
@@ -596,52 +596,8 @@ There is no `OGR_HOST`/`OGR_PORT`; bind address and port are uvicorn arguments (
 - `PATCH /settings` with a provider requires a model and the preset's key on the server; it sets provider, base URL and key as in-memory overrides (lost on restart) and clears the model cache. The selection applies to all three pipelines.
 - `GET /settings` reports `llm_provider_preset` by matching the provider name or the base URL host against the presets.
 
-## 15. Round 2: evolving, conflicting and uncertain facts
-
-Design, plan, gate decisions and results: `ROUND2-DESIGN.md`,
-`ROUND2-PLAN.md`, `ROUND2-INTERVIEW-LOG.md`, `ROUND2-RESULTS.md`. Summary
-of what is implemented:
-
-| Area | Module | Notes |
-|---|---|---|
-| Dataset adapters | `datasets/` (`base`, `olympic`, `block_records`) | `SourceRecord`/`ClaimRecord`; `detect_adapter` picks one per dataset (sidecar `adapter`, else record metadata). `block_records` is an **[ASSUMPTION]** about the Round-2 format |
-| Temporal scope | `pipelines/temporal.py` | deterministic; modes `none, as_of, before, after, between, latest, original`; before/after/since/between scope a fact only next to a revision cue or "as of" |
-| Relations | `reasoning/relations.py` | `SUPERSEDES` (later + revision cue or same source; a hedged statement never supersedes a firm one), `CONTRADICTS` (different values, overlapping validity) |
-| Reliability | `reasoning/reliability.py` | dataset prior, else class prior **[ASSUMPTION]** (`CLASS_PRIORS`), else agreement-based estimate |
-| Resolution and confidence | `reasoning/resolve.py` | scope filter → drop superseded → score each value (reliability, corroboration, recency, extraction, hedging) → softmax share × noisy-or support → Platt; numbers answered without qualifiers |
-| Calibration | `eval/calibration.py` | ECE (10 bins), Brier, Platt fit with Platt's smoothed targets |
-| Harness | `harness/` | `python -m ogr.cli harness [--offline]` (see `ROUND2-RESULTS.md`) |
-| Agent | `pipelines/p3_agentic/agents/claims.py`, `orchestrator.py`, `router.py` | probe → `claims` tool → deterministic evaluation (corroborate once below `MARGIN` 0.6) → answer kept to the resolved value → `conflict_resolved` |
-| P2 | `p2_graphrag.py` | the same probe; claims as its one query; no confidence |
-
-**Graph (additive, `graph/schema_round2.gsql`, local SCHEMA_CHANGE JOB, no drop):**
-vertices `Dataset(dataset_id, title, adapter)`, `Source(source_id, name,
-source_class, reliability_prior, has_prior, reliability_est)`,
-`Entity(entity_id, name, entity_type)`, `Claim(claim_id, dataset_id, doc_id,
-subject_id, subject_name, predicate, value_text, value_num, has_num,
-valid_from, valid_to, observed_at, source_id, extraction_conf, hedged,
-hedge_terms, revision)`; edges `IN_DATASET` (Document/Chunk/Claim/Source/Entity
-→ Dataset), `ASSERTS` (Document → Claim), `FROM_SOURCE` (Document → Source),
-`ABOUT` (Claim → OlympicEvent | Entity), `SUPERSEDES(reason)`,
-`CONTRADICTS(reason)`. Dates are ISO strings (`""` = unknown).
-
-**Queries:** `q6_claims(SET<STRING> subject_ids, STRING predicate, SET<STRING>
-dataset_ids)` returns claim rows; relations are recomputed in Python by the
-same code that wrote the edges. `q5s_search(query_vector, k, emb_type,
-SET<STRING> dataset_ids)` is Q5 seeded from the datasets' chunks, used only
-when a run passes `dataset_ids`; an unscoped run calls Q5 exactly as in Round 1.
-
-**Loading:** `ingest/load_claims.py` (upserts only, `ABOUT` only to existing
-events, relations and reliability weighed against the claims already in the
-graph). API builds load claims inside the `install_graph_queries` stage when
-the graph has the Round-2 types. `python -m ogr.cli round2` installs the
-types and queries and backfills every registered dataset. A full CLI
-`build` resets the graph and so removes the fact layer; run `round2` again
-after it.
-
-**Configuration:** `OGR_ROUND2_WEIGHTS` names a weights JSON written by
-`harness --offline` (fitted on the dev split); defaults otherwise.
-
-**Status:** the GSQL has not been installed on Savanna yet; tests run
-against fakes.
-
+Round 2 (fact layer, Q5S/Q6, claim loading, harness, configuration):
+[../round-2/TECHNICAL-SPEC.md](../round-2/TECHNICAL-SPEC.md). The optional
+Round-2 record fields (`confidence`, `temporal_scope`, `conflicts`,
+`TraceStep.details`) and the `conflict_resolved` stop reason are listed in
+§6 above because every record carries them.

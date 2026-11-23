@@ -1,4 +1,4 @@
-"""Supersession, contradiction, reliability, resolution and calibration (ROUND2-DESIGN.md §2, §4)."""
+"""Supersession, contradiction, reliability, resolution and calibration (docs/round-2/DESIGN.md §2, §4)."""
 
 from __future__ import annotations
 

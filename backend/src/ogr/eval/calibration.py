@@ -1,4 +1,4 @@
-"""Confidence calibration metrics and fitting (ROUND2-DESIGN.md §4.4).
+"""Confidence calibration metrics and fitting (docs/round-2/DESIGN.md §4.4).
 
 Deterministic and dependency-free. A confidence is reported as calibrated
 only when these are computed on held-out questions (the harness test split),

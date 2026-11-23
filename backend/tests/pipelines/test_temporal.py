@@ -1,4 +1,4 @@
-"""Temporal scope detection (Round 2, ROUND2-DESIGN.md §3.1)."""
+"""Temporal scope detection (Round 2, docs/round-2/DESIGN.md §3.1)."""
 
 from __future__ import annotations
 
