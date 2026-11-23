@@ -10,6 +10,7 @@ from pathlib import Path
 from ogr.common.config import get_default_config
 from ogr.graph.client import TigerGraphClient
 from ogr.pipelines.p1_rag import run_p1_rag
+from ogr.r2 import cmds as r2_cmds
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -119,6 +120,8 @@ def build_parser() -> argparse.ArgumentParser:
     round2_parser.add_argument(
         "--skip-install", action="store_true", help="Only (re)load claims; the types and queries exist"
     )
+
+    r2_cmds.add_parsers(subparsers)
 
     return parser
 
@@ -246,6 +249,11 @@ def _query_config(requested: str | None = None):
 def main(argv=None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+
+    if args.command == "r2-score":
+        return r2_cmds.run_score(args)
+    if args.command == "r2-metrics":
+        return r2_cmds.run_metrics(args)
 
     if args.command == "report":
         from ogr.eval.report import build_report

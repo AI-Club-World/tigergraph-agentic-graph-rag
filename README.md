@@ -416,3 +416,26 @@ set them through `style`, because `var()` does not resolve in SVG attributes.
 
 The corpus is derived from English Wikipedia (CC BY-SA 4.0). The embedding
 models and software carry their own licences. See [`ATTRIBUTION.md`](ATTRIBUTION.md).
+
+## Round 2: build, run, submit
+
+Setup: `cp .env.example .env` and fill in the keys (`.env.example` is the canonical list; `env.example` is the older Round 1 copy), then `python3 -m pip install -r backend/requirements.lock && python3 -m pip install --no-deps -e backend`.
+
+```bash
+./build.sh corpus.jsonl                                      # build the graph, writes out/r2/graph_counts.json
+./run.sh questions_public.jsonl answers_public.jsonl         # answer, self-score, update out/r2/metrics.json (set "public")
+./run.sh questions_hidden.jsonl answers_hidden.jsonl         # same for the hidden set (accuracy stays null)
+```
+
+`run.sh` infers the metrics set from the questions file name (`hidden` / `public`; otherwise from whether the file has gold answers). Both scripts run from any directory and load `.env`.
+
+| File | What it is |
+|---|---|
+| `answers_*.jsonl` | One answer per question with a full trace (written as the code runs) |
+| `out/r2/metrics.json` | Both sets' metrics, recomputed from the answer files only (`metrics_notes.json` beside it lists defaults, e.g. unset prices) |
+| `out/r2/tg_query_log.jsonl` | One line per TigerGraph call: `ts, run_id, qid, step, query, params, rows, ms, ok, error` |
+| `out/r2/graph_counts.json` | Vertex and edge counts by type after the build |
+| `out/r2/score_public.json` | Per-question public scores from our own fact-level scorer (`ogr.r2.score`) |
+| `docs/round-2/data/public_split.json` | Deterministic `dev` / `check` split of the public 50 (`python3 -m ogr.r2.split`) |
+
+Public accuracy is our own measurement (method in `ogr.r2.score` and in `accuracy_method`); hidden accuracy is `null`. Dependencies are pinned in `backend/requirements.lock`.
