@@ -34,6 +34,16 @@ esac
 
 cd "$ROOT/backend"
 export PYTHONPATH="$ROOT/backend/src${PYTHONPATH:+:$PYTHONPATH}"
+# An existing answers file is resumed (questions already in it are skipped),
+# which is how a run that stopped on a failed question is completed. For a
+# submission run start clean: FRESH=1 removes the answers file first.
+if [ -f "$ANSWERS" ]; then
+  if [ "${FRESH:-0}" = 1 ]; then
+    rm -f "$ANSWERS"
+  else
+    echo "run.sh: resuming $ANSWERS ($(wc -l < "$ANSWERS") answers already present; FRESH=1 to start over)" >&2
+  fi
+fi
 START=$(date +%s.%N)
 python3 -m ogr.cli r2-run --questions "$QUESTIONS" --out "$ANSWERS"
 ELAPSED=$(python3 -c "import sys; print(round(float(sys.argv[1]) - float(sys.argv[2]), 1))" "$(date +%s.%N)" "$START")

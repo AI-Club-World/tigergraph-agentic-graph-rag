@@ -32,3 +32,25 @@ def test_r2_score_and_metrics_smoke(tmp_path, monkeypatch, capsys):
     assert data["public"]["questions"] == 2 and data["public"]["answers_with_tigergraph_step"] == 2
     assert data["hidden"]["accuracy_pct"] is None and data["hidden"]["total_run_time_s"] == 0.2
     assert (tmp_path / "out" / "metrics_notes.json").exists()
+
+
+def test_r2_score_can_score_one_part_of_the_split(tmp_path):
+    import json
+
+    from ogr.cli import main
+
+    qs = tmp_path / "q.jsonl"
+    qs.write_text("\n".join(json.dumps({"qid": q, "question": "x", "status": "answered", "answer": "Paris",
+                                        "gold_doc_ids": [], "note": ""}) for q in ("a", "b")), encoding="utf-8")
+    ans = tmp_path / "a.jsonl"
+    ans.write_text("\n".join(json.dumps({"qid": q, "status": "answered", "answer": a, "explanation": "",
+                                         "citations": [], "input_tokens": 0, "output_tokens": 0,
+                                         "latency_ms": 0, "trace": []}) for q, a in (("a", "Paris"), ("b", "Rome"))),
+                   encoding="utf-8")
+    split = tmp_path / "split.json"
+    split.write_text(json.dumps({"a": "dev", "b": "check"}), encoding="utf-8")
+    out = tmp_path / "s.json"
+    assert main(["r2-score", "--questions", str(qs), "--answers", str(ans), "--split", "check",
+                 "--split-file", str(split), "--out", str(out)]) == 0
+    result = json.loads(out.read_text(encoding="utf-8"))
+    assert len(result["per_question"]) == 1 and result["accuracy_pct"] == 0.0

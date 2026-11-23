@@ -35,6 +35,9 @@ def add_parsers(subparsers) -> None:
     sc.add_argument("--questions", required=True, help="questions_public.jsonl (with gold answers)")
     sc.add_argument("--answers", required=True, help="answers JSONL")
     sc.add_argument("--out", default=None, help="Write the per-question scores here (JSON)")
+    sc.add_argument("--split", choices=["dev", "check"], default=None,
+                    help="Score only this part of the public split (docs/round-2/data/public_split.json)")
+    sc.add_argument("--split-file", default="docs/round-2/data/public_split.json")
 
     me = subparsers.add_parser("r2-metrics", help="Recompute one set of metrics.json from its answers")
     me.add_argument("--set", required=True, choices=["public", "hidden"], dest="set_name")
@@ -50,11 +53,17 @@ def _rows(path: str) -> list[dict]:
 
 
 def run_score(args: argparse.Namespace) -> int:
-    result = score_set(_rows(args.questions), _rows(args.answers))
+    questions = _rows(args.questions)
+    if args.split:
+        split = json.loads(Path(args.split_file).read_text(encoding="utf-8"))
+        questions = [q for q in questions if split.get(q["qid"]) == args.split]
+    keep = {q["qid"] for q in questions}
+    result = score_set(questions, [a for a in _rows(args.answers) if a.get("qid") in keep])
     if args.out:
         Path(args.out).parent.mkdir(parents=True, exist_ok=True)
         Path(args.out).write_text(json.dumps(result, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    print(f"accuracy_pct: {result['accuracy_pct']} over {len(result['per_question'])} questions")
+    part = f" ({args.split} split)" if args.split else ""
+    print(f"accuracy_pct{part}: {result['accuracy_pct']} over {len(result['per_question'])} questions")
     return 0
 
 

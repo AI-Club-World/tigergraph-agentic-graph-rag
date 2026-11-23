@@ -39,13 +39,13 @@ Tick each only when done and verified.
 
 **Development runs (not the submission)**
 - [ ] Smoke run `r2-run --limit 5`; read the traces; validator clean.
-- [ ] Public run, then score: `out/r2/score_public.json`; compute accuracy on `dev` and `check` from `docs/round-2/data/public_split.json`.
+- [ ] Public run, then score: `out/r2/score_public.json`; score each part with `python3 -m ogr.cli r2-score --questions docs/round-2/data/questions_public.jsonl --answers answers_public.jsonl --split dev` (and `--split check`, only at the end).
 - [ ] Error analysis on `dev` only; fix general causes; `check` looked at once.
 - [ ] Rule 4 review: no regex on question wording, no qids, no answers in `backend/src/ogr/r2/`; extend `tests/pipelines/p3/test_anti_overfitting.py` to `r2/`.
 
 **Final runs (same code, same settings)**
 - [ ] Code frozen and committed; working tree clean.
-- [ ] Delete `answers_public.jsonl`, `answers_hidden.jsonl`, `out/r2/tg_query_log.jsonl`, `out/r2/metrics.json` (`r2-run` skips qids already in the file; the log is append-only).
+- [ ] Start clean: run the final runs with `FRESH=1 ./run.sh …` (removes the answers file first; without it `run.sh` resumes and says so), and delete `out/r2/tg_query_log.jsonl` and `out/r2/metrics.json` before the first one (the log is append-only).
 - [ ] `./build.sh docs/round-2/data/corpus.jsonl` from scratch.
 - [ ] `./run.sh docs/round-2/data/questions_public.jsonl answers_public.jsonl`.
 - [ ] `./run.sh docs/round-2/data/questions_hidden.jsonl answers_hidden.jsonl` (once; the hidden file is only read by the system).
