@@ -21,9 +21,15 @@ class AnswerRecord:
     output_tokens: int = 0
     latency_ms: int = 0
     trace: list[dict] = field(default_factory=list)
+    # Set when the run failed on this question. Such a record is never
+    # written to the answers file: a re-run retries it (resume), so no
+    # crash is ever submitted as if it were an answer.
+    error: str | None = None
 
     def to_dict(self) -> dict:
-        return asdict(self)
+        d = asdict(self)
+        d.pop("error")
+        return d
 
     @classmethod
     def from_dict(cls, d: dict) -> AnswerRecord:

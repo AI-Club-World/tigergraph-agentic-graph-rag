@@ -71,6 +71,13 @@ class TraceRecorder:
                               rows=int(rows), ms=int(ms), ok=ok, error=error, started_at=started)
         return step
 
+    def local_query(self, tool: str, query: str, params: Any, rows: int, ms: int,
+                    note: str | None = None) -> dict:
+        """A graph call served by the in-process LocalR2Graph (dev only): the same fields as a
+        TigerGraph step but `tigergraph` false and no query-log line, so it can never pass as one."""
+        return self._add({"tool": tool, "tigergraph": False, "query": query, "params": params,
+                          "rows": int(rows), "ms": int(ms), "note": note})
+
     def local(self, tool: str, ms: int, note: str | None = None) -> dict:
         return self._add({"tool": tool, "tigergraph": False, "ms": int(ms), "note": note})
 

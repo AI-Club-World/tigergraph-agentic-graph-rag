@@ -7,12 +7,30 @@ import json
 import sys
 from pathlib import Path
 
+from ogr.common.config import get_default_config
+from ogr.r2 import run as r2_run
 from ogr.r2.metrics import Prices, compute_set_metrics, update_metrics_file
 from ogr.r2.output import read_answers, validate
 from ogr.r2.score import ACCURACY_METHOD, score_set
 
 
 def add_parsers(subparsers) -> None:
+    bd = subparsers.add_parser(
+        "r2-build", help="Reset the graph, install the Round-2 schema and queries, load the corpus")
+    bd.add_argument("--corpus", required=True, help="corpus.jsonl")
+    bd.add_argument("--counts", default="out/r2/graph_counts.json", help="Where to write vertex/edge counts")
+
+    rn = subparsers.add_parser("r2-run", help="Answer a questions file with the Round-2 agent")
+    rn.add_argument("--questions", required=True, help="questions JSONL (qid, question)")
+    rn.add_argument("--out", required=True, help="answers JSONL (appended; qids already in it are skipped)")
+    rn.add_argument("--backend", choices=["tigergraph", "local"], default="tigergraph",
+                    help="local = LocalR2Graph over --corpus, DEV ONLY (its steps are tigergraph:false)")
+    rn.add_argument("--corpus", default="docs/round-2/data/corpus.jsonl", help="Corpus for --backend local")
+    rn.add_argument("--limit", type=int, default=None, help="Only the first N selected questions")
+    rn.add_argument("--qids", default=None, help="Comma-separated qids to run")
+    rn.add_argument("--workers", type=int, default=1, help="Parallel questions (default 1: deterministic)")
+    rn.add_argument("--query-log", default=None, help="TigerGraph query log path (default R2_QUERY_LOG)")
+
     sc = subparsers.add_parser("r2-score", help="Score public answers against gold (own fact-level scorer)")
     sc.add_argument("--questions", required=True, help="questions_public.jsonl (with gold answers)")
     sc.add_argument("--answers", required=True, help="answers JSONL")
@@ -61,4 +79,42 @@ def run_metrics(args: argparse.Namespace) -> int:
     metrics = compute_set_metrics(records, run_time, prices, accuracy, method)
     update_metrics_file(args.out, args.set_name, metrics, notes)
     print(f"{args.set_name}: {metrics['questions']} questions -> {args.out}")
+    return 0
+
+
+def run_build(args: argparse.Namespace) -> int:
+    from ogr.graph.client import TigerGraphClient
+    from ogr.r2.build import build
+
+    Path(args.counts).parent.mkdir(parents=True, exist_ok=True)
+    report = build(args.corpus, TigerGraphClient(get_default_config()), counts_path=args.counts)
+    print(json.dumps(report.graph, indent=2, sort_keys=True))
+    print(f"graph counts -> {args.counts}")
+    return 0
+
+
+def run_run(args: argparse.Namespace) -> int:
+    from ogr.r2.querylog import QueryLog
+
+    config = get_default_config()
+    questions = r2_run.read_questions(args.questions)
+    if args.qids:
+        wanted = [q.strip() for q in args.qids.split(",") if q.strip()]
+        questions = [q for q in questions if q["qid"] in wanted]
+    if args.limit is not None:
+        questions = questions[: args.limit]
+    if args.backend == "local":
+        print("LOCAL BACKEND: dev only, no TigerGraph; these answers are not a submission", file=sys.stderr)
+    graph = r2_run.make_graph(args.backend, args.corpus, config)
+    model = r2_run.make_model(config)
+    log = QueryLog(args.query_log, run_id=r2_run.new_run_id()) if args.backend == "tigergraph" else None
+    s = r2_run.run_questions(questions, args.out, graph, model, config, querylog=log, workers=args.workers)
+    print(f"r2-run [{args.backend}]: {s['answered_now']} answered, {s['skipped']} skipped (already in "
+          f"{args.out}); statuses {s['statuses']}; tokens in/out {s['input_tokens']}/{s['output_tokens']}; "
+          f"{s['seconds']}s")
+    if s["failed"]:
+        # Failed questions are not written; rerun the same command to retry them.
+        print(f"r2-run: {len(s['failed'])} failed (rerun to retry): " + "; ".join(s["failed"]),
+              file=sys.stderr)
+        return 1
     return 0

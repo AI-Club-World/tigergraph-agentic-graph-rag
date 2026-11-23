@@ -250,6 +250,10 @@ def main(argv=None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
+    if args.command == "r2-build":
+        return r2_cmds.run_build(args)
+    if args.command == "r2-run":
+        return r2_cmds.run_run(args)
     if args.command == "r2-score":
         return r2_cmds.run_score(args)
     if args.command == "r2-metrics":
