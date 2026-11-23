@@ -1,0 +1,33 @@
+USE GRAPH OlympicGraphRAG
+
+// r2_text_search(terms, max_rows): chunks whose text contains every term,
+// case-insensitive, in document id then chunk order (SOLUTION-DESIGN §3). The
+// tool's `limit` is passed as `max_rows` (LIMIT is a GSQL keyword). Terms are
+// matched as plain substrings of the lower-cased chunk text; a literal % or _
+// inside a term acts as a wildcard (LIKE). The chunk text is returned whole;
+// TigerGraphR2 trims it.
+
+CREATE OR REPLACE QUERY r2_text_search(
+  LIST<STRING> terms, INT max_rows = 10
+) FOR GRAPH OlympicGraphRAG SYNTAX V2 {
+
+  TYPEDEF TUPLE<STRING doc_id, INT seq, STRING title, STRING chunk_id, STRING text> HitRow;
+  HeapAccum<HitRow>(max_rows, doc_id ASC, seq ASC) @@rows;
+  SumAccum<INT> @hits;
+  INT needed = terms.size();
+
+  Scored = SELECT c FROM Chunk:c
+    ACCUM
+      FOREACH t IN terms DO
+        IF lower(c.text) LIKE "%" + lower(t) + "%" THEN c.@hits += 1 END
+      END
+    HAVING c.@hits == needed AND needed > 0;
+
+  Docs = SELECT d FROM Document:d -(HAS_CHUNK>)- Chunk:c
+    WHERE c.@hits == needed AND needed > 0
+    ACCUM @@rows += HitRow(d.doc_id, c.seq, d.title, c.chunk_id, c.text);
+
+  PRINT @@rows AS results;
+}
+
+INSTALL QUERY r2_text_search

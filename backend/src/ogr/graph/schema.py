@@ -34,7 +34,19 @@ ROUND2_SCHEMA_PATH = _GRAPH_DIR / "schema_round2.gsql"
 ROUND2_QUERY_FILES = ("q5s_search.gsql", "q6_claims.gsql")
 ROUND2_VERTEX_TYPES = frozenset({"Dataset", "Source", "Entity", "Claim"})
 
+# Round 2 answer layer (docs/round-2/SOLUTION-DESIGN.md §2-3): Athlete/WON and
+# SourceRecord/REPORTS_ON by a second schema change job, and the ten tool queries.
+R2_ANSWER_SCHEMA_PATH = _GRAPH_DIR / "schema_r2_answer.gsql"
+R2_ANSWER_VERTEX_TYPES = frozenset({"Athlete", "SourceRecord"})
+R2_QUERY_FILES = (
+    "r2_find_events.gsql", "r2_medals_by_nation.gsql", "r2_event_series.gsql", "r2_athlete_medals.gsql",
+    "r2_repeat_winners.gsql", "r2_entity_facts.gsql", "r2_find_entities.gsql", "r2_source_records.gsql",
+    "r2_text_search.gsql", "r2_read_document.gsql",
+)
+
 __all__ = [
+    "R2_ANSWER_SCHEMA_PATH", "R2_ANSWER_VERTEX_TYPES", "R2_QUERY_FILES", "has_r2_answer_schema",
+    "install_r2_answer",
     "SCHEMA_PATH", "QUERIES_DIR", "QUERY_FILES", "ROUND2_SCHEMA_PATH", "ROUND2_QUERY_FILES",
     "has_round2_schema", "install_schema", "install_queries", "install_round2",
 ]
@@ -127,3 +139,35 @@ def install_round2(client: TigerGraphClient) -> list[str]:
         raise RuntimeError("Round-2 queries not installed: " + ", ".join(missing))
     return results
 
+
+
+def has_r2_answer_schema(client: TigerGraphClient) -> bool:
+    """Whether Athlete and SourceRecord exist on the graph (False offline)."""
+    client._ensure_connection()
+    conn = client.conn
+    if conn is None or not hasattr(conn, "getVertexTypes"):
+        return False
+    types = conn.getVertexTypes()
+    return isinstance(types, list) and R2_ANSWER_VERTEX_TYPES <= set(types)
+
+
+def install_r2_answer(client: TigerGraphClient) -> list[str]:
+    """Add the Round-2 answer types (once) and install the ten r2_* queries.
+    Never drops anything; a graph that already has the types only gets the
+    queries (CREATE OR REPLACE)."""
+    client._ensure_connection()
+    if client.conn is None:
+        raise RuntimeError("No TigerGraph connection available; cannot install the Round-2 answer layer")
+    results = []
+    if not has_r2_answer_schema(client):
+        results.append(client.conn.gsql(R2_ANSWER_SCHEMA_PATH.read_text(encoding="utf-8")))
+        if hasattr(client.conn, "getVertexTypes") and not has_r2_answer_schema(client):
+            raise RuntimeError(f"Round-2 answer schema not installed: {str(results[-1])[-300:]}")
+    for filename in R2_QUERY_FILES:
+        results.append(client.conn.gsql((QUERIES_DIR / filename).read_text(encoding="utf-8")))
+    installed = client.conn.getInstalledQueries()
+    names = {n.rsplit("/", 1)[-1] for n in installed}
+    missing = [f for f in R2_QUERY_FILES if f.removesuffix(".gsql") not in names]
+    if missing:
+        raise RuntimeError("Round-2 queries not installed: " + ", ".join(missing))
+    return results

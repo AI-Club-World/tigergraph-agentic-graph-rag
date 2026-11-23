@@ -1,0 +1,46 @@
+// Round 2 answer layer (docs/round-2/SOLUTION-DESIGN.md §2, additive).
+//
+// Adds the vertices and edges the ten r2_* tool queries traverse, by one local
+// SCHEMA_CHANGE JOB on OlympicGraphRAG. Nothing is dropped and no existing type
+// is altered: run it after schema.gsql and schema_round2.gsql (graph/schema.py
+// skips it when the Athlete type already exists). The graph is reset by
+// schema.gsql on every build, which removes the job with it, so the job is
+// created once per build and needs no DROP.
+//
+//   Athlete      one per distinct medallist name; athlete_id is the normalized
+//                name (lower case, accents and punctuation off).
+//   WON          Athlete -> OlympicEvent: medal gold/silver/bronze, the NOC the
+//                infobox gives for that place, and `place` (1..3) so two medals
+//                of one kind in one event stay two; `event_key` is the normalized
+//                event part of the page title, the same for every edition of an
+//                event (infobox event names drift: "Men's +100kg").
+//   SourceRecord one per LA 2028 source record: source name, authority class
+//                (official/operational/secondary/unreliable), publication time
+//                (ISO 8601 with offset, and the original string) and text.
+//   REPORTS_ON   SourceRecord -> OlympicEvent: the deterministic link, with a
+//                score (1.0 event name + sport/distinctive name, 0.5 venue or
+//                athlete only, 0.25 event name only).
+//
+// [TO VERIFY ON SAVANNA] like schema_round2.gsql: local types with edges to the
+// graph's global OlympicEvent type.
+
+USE GRAPH OlympicGraphRAG
+
+CREATE SCHEMA_CHANGE JOB add_r2_answer_types FOR GRAPH OlympicGraphRAG {
+  ADD VERTEX Athlete (
+    PRIMARY_ID athlete_id STRING, name STRING
+  ) WITH PRIMARY_ID_AS_ATTRIBUTE="true";
+  ADD VERTEX SourceRecord (
+    PRIMARY_ID doc_id STRING, title STRING, source_name STRING, authority STRING,
+    published_at STRING, published_text STRING, text STRING
+  ) WITH PRIMARY_ID_AS_ATTRIBUTE="true";
+
+  ADD DIRECTED EDGE WON (
+    FROM Athlete, TO OlympicEvent, medal STRING, noc STRING, place INT, event_key STRING
+  ) WITH REVERSE_EDGE="reverse_WON";
+  ADD DIRECTED EDGE REPORTS_ON (
+    FROM SourceRecord, TO OlympicEvent, score DOUBLE
+  ) WITH REVERSE_EDGE="reverse_REPORTS_ON";
+}
+
+RUN SCHEMA_CHANGE JOB add_r2_answer_types

@@ -1,0 +1,57 @@
+USE GRAPH OlympicGraphRAG
+
+// r2_repeat_winners(sport, medal, season): athletes who took the same medal in
+// the same event (same sport, same event name) at two or more different Games
+// (SOLUTION-DESIGN §3). Two passes over WON: the first collects the distinct
+// years per (athlete, sport, event, medal), the second prints one row per
+// edition of every group that has two or more. TigerGraphR2 folds the rows into
+// {athlete, event_name, years[], doc_ids[]}. "Same event" is WON.event_key, the
+// normalized event part of the page title, which is stable across editions
+// where the infobox event name is not ("Men's +100kg" / "Men's +100 kg").
+
+CREATE OR REPLACE QUERY r2_repeat_winners(
+  STRING sport = "", STRING medal = "gold", STRING season = ""
+) FOR GRAPH OlympicGraphRAG SYNTAX V2 {
+
+  TYPEDEF TUPLE<
+    STRING athlete, STRING event_name, STRING event_key, STRING sport, STRING medal, INT year,
+    STRING doc_id
+  > WinRow;
+  ListAccum<WinRow> @@rows;
+  MapAccum<STRING, SetAccum<INT>> @@years;  // athlete|sport|event|medal -> years
+  MaxAccum<STRING> @doc;
+  MaxAccum<STRING> @sport;
+  MinAccum<INT> @year;
+  STRING kind = lower(medal);
+
+  Events = {OlympicEvent.*};
+  IF sport != "" THEN
+    Events = SELECT e FROM Events:e -(IN_SPORT>)- Sport:s WHERE lower(s.sport_name) == lower(sport);
+  END;
+  IF season != "" THEN
+    Events = SELECT e FROM Events:e -(AT_GAMES>)- Games:g WHERE (season == "" OR lower(g.season) == lower(season));
+  END;
+
+  Decor1 = SELECT e FROM Events:e -(reverse_DESCRIBES>)- Document:d ACCUM e.@doc += d.doc_id;
+  Decor2 = SELECT e FROM Events:e -(IN_SPORT>)- Sport:s ACCUM e.@sport += s.sport_name;
+  Decor3 = SELECT e FROM Events:e -(AT_GAMES>)- Games:g ACCUM e.@year += g.year;
+
+  Pass1 = SELECT e FROM Events:e -(reverse_WON>:w)- Athlete:a
+    WHERE kind == "" OR w.medal == kind
+    ACCUM @@years += (
+      a.athlete_id + "|" + lower(e.@sport) + "|" + w.event_key + "|" + w.medal -> e.@year
+    );
+
+  Pass2 = SELECT e FROM Events:e -(reverse_WON>:w)- Athlete:a
+    WHERE kind == "" OR w.medal == kind
+    ACCUM
+      IF @@years.get(
+           a.athlete_id + "|" + lower(e.@sport) + "|" + w.event_key + "|" + w.medal
+         ).size() >= 2 THEN
+        @@rows += WinRow(a.name, e.event_name, w.event_key, e.@sport, w.medal, e.@year, e.@doc)
+      END;
+
+  PRINT @@rows AS results;
+}
+
+INSTALL QUERY r2_repeat_winners

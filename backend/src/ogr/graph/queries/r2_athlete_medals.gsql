@@ -1,0 +1,42 @@
+USE GRAPH OlympicGraphRAG
+
+// r2_athlete_medals(name): every medal of one athlete (SOLUTION-DESIGN §3).
+// `name` is the normalized form (lower case, accents and punctuation off), which
+// is how Athlete.athlete_id is stored; TigerGraphR2 normalizes before the call.
+// An exact athlete_id wins; with none, athlete ids that contain the text at a
+// word boundary are used ("biles" finds "simone biles").
+
+CREATE OR REPLACE QUERY r2_athlete_medals(STRING name) FOR GRAPH OlympicGraphRAG SYNTAX V2 {
+
+  TYPEDEF TUPLE<
+    STRING athlete, STRING athlete_id, STRING medal, STRING noc, STRING title, STRING event_name,
+    STRING sport, INT year, STRING doc_id
+  > MedalRow;
+  ListAccum<MedalRow> @@rows;
+  MaxAccum<STRING> @doc;
+  MaxAccum<STRING> @title;
+  MaxAccum<STRING> @sport;
+  MinAccum<INT> @year;
+  STRING pStart = name + "%";
+  STRING pWord = "% " + name + "%";
+
+  Who = SELECT a FROM Athlete:a WHERE a.athlete_id == name;
+  IF Who.size() == 0 THEN
+    Who = SELECT a FROM Athlete:a WHERE name != "" AND (a.athlete_id LIKE pStart OR a.athlete_id LIKE pWord);
+  END;
+
+  Events = SELECT e FROM Who:a -(WON>)- OlympicEvent:e;
+  Decor1 = SELECT e FROM Events:e -(reverse_DESCRIBES>)- Document:d
+    ACCUM e.@doc += d.doc_id, e.@title += d.title;
+  Decor2 = SELECT e FROM Events:e -(IN_SPORT>)- Sport:s ACCUM e.@sport += s.sport_name;
+  Decor3 = SELECT e FROM Events:e -(AT_GAMES>)- Games:g ACCUM e.@year += g.year;
+
+  Rows = SELECT e FROM Who:a -(WON>:w)- OlympicEvent:e
+    ACCUM @@rows += MedalRow(
+      a.name, a.athlete_id, w.medal, w.noc, e.@title, e.event_name, e.@sport, e.@year, e.@doc
+    );
+
+  PRINT @@rows AS results;
+}
+
+INSTALL QUERY r2_athlete_medals

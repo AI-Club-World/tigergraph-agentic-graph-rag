@@ -1,0 +1,20 @@
+USE GRAPH OlympicGraphRAG
+
+// r2_read_document(doc_id): the chunks of one document in reading order
+// (SOLUTION-DESIGN §3). The character budget and the removal of the 50-word
+// overlap between neighbouring chunks are applied by TigerGraphR2 (the same
+// function LocalR2Graph uses), so both return the same text.
+
+CREATE OR REPLACE QUERY r2_read_document(STRING doc_id) FOR GRAPH OlympicGraphRAG SYNTAX V2 {
+
+  TYPEDEF TUPLE<STRING doc_id, STRING title, STRING chunk_id, INT seq, STRING text> ChunkRow;
+  ListAccum<ChunkRow> @@rows;
+
+  Doc = SELECT d FROM Document:d WHERE d.doc_id == doc_id;
+  Chunks = SELECT c FROM Doc:d -(HAS_CHUNK>)- Chunk:c
+    ACCUM @@rows += ChunkRow(d.doc_id, d.title, c.chunk_id, c.seq, c.text);
+
+  PRINT @@rows AS results;
+}
+
+INSTALL QUERY r2_read_document

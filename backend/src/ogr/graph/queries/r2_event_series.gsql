@@ -1,0 +1,65 @@
+USE GRAPH OlympicGraphRAG
+
+// r2_event_series(event_contains, sport, season): every edition of an event,
+// one row each, for trends across Games (SOLUTION-DESIGN §3). Matches like
+// find_events (event name or title at a word boundary) with no year filter.
+// `exact` marks an event whose name equals event_contains, so the wrapper keeps
+// one row per edition when a looser match also fires ("men's 100 metres" also
+// finds "men's 100 metres hurdles"). The max/min of the series are computed by
+// the caller (graph_backend.series_extremes), not here.
+
+CREATE OR REPLACE QUERY r2_event_series(
+  STRING event_contains, STRING sport = "", STRING season = ""
+) FOR GRAPH OlympicGraphRAG SYNTAX V2 {
+
+  TYPEDEF TUPLE<
+    INT year, STRING season, STRING event_id, STRING title, STRING doc_id, STRING event_name,
+    INT nations, INT competitors, BOOL exact, STRING medallists
+  > SeriesRow;
+  ListAccum<SeriesRow> @@rows;
+  // Per-event values gathered once, so a row is built in a single pass below.
+  MaxAccum<STRING> @doc;
+  MaxAccum<STRING> @title;
+  MaxAccum<STRING> @url;
+  MaxAccum<STRING> @sport;
+  MaxAccum<STRING> @games;
+  MinAccum<INT> @year;
+  MaxAccum<STRING> @season;
+  StringAccum @meds;
+  STRING pStart = lower(event_contains) + "%";
+  STRING pWord = "% " + lower(event_contains) + "%";
+
+  Events = {OlympicEvent.*};
+  IF sport != "" THEN
+    Events = SELECT e FROM Events:e -(IN_SPORT>)- Sport:s WHERE lower(s.sport_name) == lower(sport);
+  END;
+  IF season != "" THEN
+    Events = SELECT e FROM Events:e -(AT_GAMES>)- Games:g WHERE (season == "" OR lower(g.season) == lower(season));
+  END;
+  // Matches the infobox event name or the page title at a word boundary, so
+  // "men's 100 metres" is not found inside "women's 100 metres".
+  IF event_contains != "" THEN
+    Events = SELECT e FROM Events:e -(reverse_DESCRIBES>)- Document:d
+      WHERE lower(e.event_name) LIKE pStart OR lower(e.event_name) LIKE pWord
+         OR lower(d.title) LIKE pWord;
+  END;
+
+  Decor1 = SELECT e FROM Events:e -(reverse_DESCRIBES>)- Document:d
+    ACCUM e.@doc += d.doc_id, e.@title += d.title, e.@url += d.url;
+  Decor2 = SELECT e FROM Events:e -(IN_SPORT>)- Sport:s ACCUM e.@sport += s.sport_name;
+  Decor3 = SELECT e FROM Events:e -(AT_GAMES>)- Games:g
+    ACCUM e.@games += g.games_id, e.@year += g.year, e.@season += g.season;
+  Decor4 = SELECT e FROM Events:e -(reverse_WON>:w)- Athlete:a
+    WHERE w.medal == "gold"
+    ACCUM e.@meds += w.medal + "\t" + a.name + "\t" + w.noc + "\t" + to_string(w.place) + "\n";
+
+  Rows = SELECT e FROM Events:e
+    ACCUM @@rows += SeriesRow(
+      e.@year, e.@season, e.event_id, e.@title, e.@doc, e.event_name, e.nations, e.competitors,
+      lower(e.event_name) == lower(event_contains), e.@meds
+    );
+
+  PRINT @@rows AS results;
+}
+
+INSTALL QUERY r2_event_series

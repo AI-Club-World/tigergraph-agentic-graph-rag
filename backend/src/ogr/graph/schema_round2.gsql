@@ -11,6 +11,9 @@
 // reinstall after the job. Nothing here has been run against a live
 // workspace yet.
 //
+// value_note: the currency or unit of value_num ("USD", "minutes"), set by the
+// Round-2 infobox facts; empty for Round-1 claims.
+//
 // Dates are ISO strings ("" = unknown): ISO order is date order, and
 // DATETIME has no null. value_num is meaningful only when has_num.
 
@@ -33,7 +36,8 @@ CREATE SCHEMA_CHANGE JOB add_round2_types FOR GRAPH OlympicGraphRAG {
     PRIMARY_ID claim_id STRING, dataset_id STRING, doc_id STRING, subject_id STRING,
     subject_name STRING, predicate STRING, value_text STRING, value_num DOUBLE, has_num BOOL,
     valid_from STRING, valid_to STRING, observed_at STRING, source_id STRING,
-    extraction_conf DOUBLE, hedged BOOL, hedge_terms STRING, revision BOOL
+    extraction_conf DOUBLE, hedged BOOL, hedge_terms STRING, revision BOOL,
+    value_note STRING
   ) WITH PRIMARY_ID_AS_ATTRIBUTE="true";
 
   ADD DIRECTED EDGE IN_DATASET (

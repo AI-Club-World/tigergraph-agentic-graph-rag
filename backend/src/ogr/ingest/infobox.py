@@ -53,8 +53,10 @@ __all__ = [
     "CoverageReport",
     "parse_infobox_header",
     "parse_infobox_fields",
+    "parse_infobox_facts",
     "derive_sport",
     "normalise_games_id",
+    "medallist_slots",
     "parse_document",
     "event_id_for_title",
     "parse_corpus",
@@ -111,6 +113,12 @@ class ParsedDocument:
     silver: list[str] = field(default_factory=list)
     bronze: list[str] = field(default_factory=list)
     gold_noc: str | None = None
+    # Round 2: one NOC per medallist name, aligned with gold/silver/bronze
+    # ("" when the infobox gives none for that place). A team's single NOC is
+    # repeated for every member. `gold_noc` above stays the first goldNOC.
+    gold_nocs: list[str] = field(default_factory=list)
+    silver_noc: list[str] = field(default_factory=list)
+    bronze_noc: list[str] = field(default_factory=list)
     win_value: str | None = None
     win_label: str | None = None
     prev_year: int | None = None
@@ -228,6 +236,36 @@ def parse_infobox_fields(text: str) -> dict[str, str]:
     return fields
 
 
+# Round 2 facts: any key text up to the first colon ("jr/sr", "fourth-flagvar",
+# "image caption"). `_FIELD` stops the block at such a key, which silently
+# dropped every later field of Angus King's page (his governorship terms).
+_FACT_FIELD = re.compile(r"^[ \t]+([^\s:][^:]*?)\s*:\s*(.*)$")
+
+
+def parse_infobox_facts(text: str) -> dict[str, str]:
+    """Every `key: value` pair of the infobox block, keys as written.
+
+    Like `parse_infobox_fields` (first value wins for a repeated key, a blank
+    line is tolerated, the block ends where the prose begins) but without its
+    restriction of keys to letters, digits and underscores. Round 1 keeps using
+    `parse_infobox_fields`; only the Round-2 fact layer reads this.
+    """
+    match = _find_header_match(text)
+    if not match:
+        return {}
+    facts: dict[str, str] = {}
+    for line in text[match.end():].splitlines():
+        if not line.strip():
+            continue
+        field_match = _FACT_FIELD.match(line)
+        if not field_match:
+            break
+        key, value = field_match.group(1), field_match.group(2).strip()
+        if key not in facts and value:
+            facts[key] = value
+    return facts
+
+
 def derive_sport(title: str) -> str | None:
     """Sport from the title prefix — no infobox carries a `sport` field."""
     match = _TITLE_SPORT.match(title or "")
@@ -314,6 +352,31 @@ def _medallists(fields: dict[str, str], prefix: str) -> list[str]:
     return names
 
 
+def medallist_slots(fields: dict[str, str], prefix: str) -> list[tuple[int, str, str]]:
+    """(place index, name, NOC) for every medallist of one medal.
+
+    Each numbered place (`bronze`, `bronze2`, `bronze3`) pairs with its own NOC
+    key, written `bronzeNOC2` in most pages and `bronze2NOC` in a few, so a
+    tie keeps each medallist's country. The place index (1, 2, 3) tells two
+    medals of the same kind apart, which a medal count needs when both go to
+    one nation. A place whose name string is several concatenated people (a
+    team) gives each of them that NOC. Names are split exactly as `_medallists`
+    splits them, so the names agree with `ParsedDocument.gold/silver/bronze`.
+    """
+    slots: list[tuple[int, str, str]] = []
+    for index, suffix in enumerate(("", "2", "3"), start=1):
+        raw = fields.get(f"{prefix}{suffix}")
+        if not raw:
+            continue
+        noc = (fields.get(f"{prefix}NOC{suffix}") or fields.get(f"{prefix}{suffix}NOC") or "").strip()
+        slots.extend((index, name, noc) for name in split_multi_person(raw))
+    return slots
+
+
+def _nocs(fields: dict[str, str], prefix: str) -> list[str]:
+    return [noc for _, _, noc in medallist_slots(fields, prefix)]
+
+
 def _year(raw: str | None) -> int | None:
     if not raw:
         return None
@@ -382,6 +445,9 @@ def parse_document(record: dict[str, Any]) -> ParsedDocument:
     doc.silver = _medallists(fields, "silver")
     doc.bronze = _medallists(fields, "bronze")
     doc.gold_noc = fields.get("goldNOC")
+    doc.gold_nocs = _nocs(fields, "gold")
+    doc.silver_noc = _nocs(fields, "silver")
+    doc.bronze_noc = _nocs(fields, "bronze")
     doc.win_value = fields.get("win_value")
     doc.win_label = fields.get("win_label")
     doc.prev_year = _year(fields.get("prev"))

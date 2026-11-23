@@ -1,0 +1,71 @@
+USE GRAPH OlympicGraphRAG
+
+// r2_find_events(sport, year, season, event_contains): the events that match,
+// one row each, with medallists and NOCs (SOLUTION-DESIGN §3, tool find_events).
+// Semantics follow LocalR2Graph._select: sport exact (case-insensitive), year =
+// the Games year (0 = any), season "Summer"/"Winter"/"" and event_contains at a
+// word boundary of the event name or page title. OlympicEvent carries no sport
+// or year, so both come from IN_SPORT and AT_GAMES.
+//
+// Medallists travel as one string, "medal<TAB>name<TAB>noc<TAB>place<LF>" per
+// medallist (a GSQL tuple cannot hold a list); TigerGraphR2 decodes and sorts.
+// `synthetic` is true when the event page has no URL (the invented LA 2028
+// articles have none; every real page does).
+
+CREATE OR REPLACE QUERY r2_find_events(
+  STRING sport = "", INT year = 0, STRING season = "", STRING event_contains = ""
+) FOR GRAPH OlympicGraphRAG SYNTAX V2 {
+
+  TYPEDEF TUPLE<
+    STRING event_id, STRING doc_id, STRING title, STRING event_name, STRING sport, STRING games,
+    INT year, STRING season, STRING date_text, STRING venue, INT competitors, INT nations,
+    STRING medallists, BOOL synthetic
+  > EventRow;
+  ListAccum<EventRow> @@rows;
+  // Per-event values gathered once, so a row is built in a single pass below.
+  MaxAccum<STRING> @doc;
+  MaxAccum<STRING> @title;
+  MaxAccum<STRING> @url;
+  MaxAccum<STRING> @sport;
+  MaxAccum<STRING> @games;
+  MinAccum<INT> @year;
+  MaxAccum<STRING> @season;
+  StringAccum @meds;
+  MaxAccum<STRING> @venue;
+  STRING pStart = lower(event_contains) + "%";
+  STRING pWord = "% " + lower(event_contains) + "%";
+
+  Events = {OlympicEvent.*};
+  IF sport != "" THEN
+    Events = SELECT e FROM Events:e -(IN_SPORT>)- Sport:s WHERE lower(s.sport_name) == lower(sport);
+  END;
+  IF year != 0 OR season != "" THEN
+    Events = SELECT e FROM Events:e -(AT_GAMES>)- Games:g WHERE (year == 0 OR g.year == year) AND (season == "" OR lower(g.season) == lower(season));
+  END;
+  // Matches the infobox event name or the page title at a word boundary, so
+  // "men's 100 metres" is not found inside "women's 100 metres".
+  IF event_contains != "" THEN
+    Events = SELECT e FROM Events:e -(reverse_DESCRIBES>)- Document:d
+      WHERE lower(e.event_name) LIKE pStart OR lower(e.event_name) LIKE pWord
+         OR lower(d.title) LIKE pWord;
+  END;
+
+  Decor1 = SELECT e FROM Events:e -(reverse_DESCRIBES>)- Document:d
+    ACCUM e.@doc += d.doc_id, e.@title += d.title, e.@url += d.url;
+  Decor2 = SELECT e FROM Events:e -(IN_SPORT>)- Sport:s ACCUM e.@sport += s.sport_name;
+  Decor3 = SELECT e FROM Events:e -(AT_GAMES>)- Games:g
+    ACCUM e.@games += g.games_id, e.@year += g.year, e.@season += g.season;
+  Decor4 = SELECT e FROM Events:e -(HELD_AT>)- Venue:v ACCUM e.@venue += v.venue_name;
+  Decor5 = SELECT e FROM Events:e -(reverse_WON>:w)- Athlete:a
+    ACCUM e.@meds += w.medal + "\t" + a.name + "\t" + w.noc + "\t" + to_string(w.place) + "\n";
+
+  Rows = SELECT e FROM Events:e
+    ACCUM @@rows += EventRow(
+      e.event_id, e.@doc, e.@title, e.event_name, e.@sport, e.@games, e.@year, e.@season,
+      e.date_text, e.@venue, e.competitors, e.nations, e.@meds, e.@url == ""
+    );
+
+  PRINT @@rows AS results;
+}
+
+INSTALL QUERY r2_find_events

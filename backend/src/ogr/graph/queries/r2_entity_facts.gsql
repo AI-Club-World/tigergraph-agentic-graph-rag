@@ -1,0 +1,37 @@
+USE GRAPH OlympicGraphRAG
+
+// r2_entity_facts(name_contains, entity_type): the infobox facts of the
+// entities whose name contains the text (SOLUTION-DESIGN §3), e.g. a governor's
+// predecessor and successor. An Entity is one non-Olympic infobox page; each
+// infobox key is one Claim ABOUT it (numbered keys such as predecessor1 kept).
+// Facts travel as "predicate<TAB>value<TAB>has_num<TAB>value_num<TAB>note<LF>".
+// Compared lower-cased at a word boundary (LocalR2Graph also folds accents).
+
+CREATE OR REPLACE QUERY r2_entity_facts(
+  STRING name_contains, STRING entity_type = ""
+) FOR GRAPH OlympicGraphRAG SYNTAX V2 {
+
+  TYPEDEF TUPLE<STRING entity_id, STRING name, STRING entity_type, STRING doc_id, STRING facts> EntityRow;
+  ListAccum<EntityRow> @@rows;
+  StringAccum @facts;
+  MaxAccum<STRING> @doc;
+  STRING pStart = lower(name_contains) + "%";
+  STRING pWord = "% " + lower(name_contains) + "%";
+
+  Ents = SELECT en FROM Entity:en
+    WHERE (entity_type == "" OR lower(en.entity_type) == lower(entity_type))
+      AND (lower(en.name) LIKE pStart OR lower(en.name) LIKE pWord);
+
+  Gather = SELECT en FROM Ents:en -(reverse_ABOUT>)- Claim:c
+    ACCUM
+      en.@facts += c.predicate + "\t" + c.value_text + "\t" + (CASE WHEN c.has_num THEN "1" ELSE "0" END)
+        + "\t" + to_string(c.value_num) + "\t" + c.value_note + "\n",
+      en.@doc += c.doc_id;
+
+  Rows = SELECT en FROM Ents:en
+    ACCUM @@rows += EntityRow(en.entity_id, en.name, en.entity_type, en.@doc, en.@facts);
+
+  PRINT @@rows AS results;
+}
+
+INSTALL QUERY r2_entity_facts

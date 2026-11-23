@@ -1,0 +1,61 @@
+USE GRAPH OlympicGraphRAG
+
+// r2_source_records(event_contains, year): the LA 2028 source records about an
+// event (SOLUTION-DESIGN §3), with source, authority class, publication time
+// (ISO 8601 with offset, plus the original string) and text. A record is about
+// an event when a REPORTS_ON edge says so (event name and sport/venue found in
+// the record at load time). With no year, a record whose own title or text
+// contains the phrase also counts, so an unlinked record is still found; with
+// neither filter every record is returned. `events` lists the doc_ids of the
+// linked events, separated by line feeds. Sorting by instant is done by
+// TigerGraphR2 (the offsets differ, so a string sort is not time order).
+
+CREATE OR REPLACE QUERY r2_source_records(
+  STRING event_contains = "", INT year = 0
+) FOR GRAPH OlympicGraphRAG SYNTAX V2 {
+
+  TYPEDEF TUPLE<
+    STRING doc_id, STRING title, STRING source_name, STRING authority, STRING published_at,
+    STRING published_text, STRING text, STRING events
+  > RecordRow;
+  ListAccum<RecordRow> @@rows;
+  StringAccum @events;
+  MaxAccum<STRING> @doc;
+  STRING pStart = lower(event_contains) + "%";
+  STRING pWord = "% " + lower(event_contains) + "%";
+  STRING needle = "%" + lower(event_contains) + "%";
+
+  Events = {OlympicEvent.*};
+  IF year != 0 THEN
+    Events = SELECT e FROM Events:e -(AT_GAMES>)- Games:g WHERE (year == 0 OR g.year == year);
+  END;
+  // Matches the infobox event name or the page title at a word boundary, so
+  // "men's 100 metres" is not found inside "women's 100 metres".
+  IF event_contains != "" THEN
+    Events = SELECT e FROM Events:e -(reverse_DESCRIBES>)- Document:d
+      WHERE lower(e.event_name) LIKE pStart OR lower(e.event_name) LIKE pWord
+         OR lower(d.title) LIKE pWord;
+  END;
+
+  Decor1 = SELECT e FROM Events:e -(reverse_DESCRIBES>)- Document:d ACCUM e.@doc += d.doc_id;
+  Linked = SELECT r FROM Events:e -(reverse_REPORTS_ON>)- SourceRecord:r ACCUM r.@events += e.@doc + "\n";
+
+  Everything = {SourceRecord.*};
+  Found = Linked;
+  IF event_contains == "" AND year == 0 THEN
+    Found = Everything;
+  ELSE IF event_contains != "" AND year == 0 THEN
+    Textual = SELECT r FROM Everything:r
+      WHERE lower(r.title) LIKE needle OR lower(r.text) LIKE needle;
+    Found = Linked UNION Textual;
+  END;
+
+  Rows = SELECT r FROM Found:r
+    ACCUM @@rows += RecordRow(
+      r.doc_id, r.title, r.source_name, r.authority, r.published_at, r.published_text, r.text, r.@events
+    );
+
+  PRINT @@rows AS results;
+}
+
+INSTALL QUERY r2_source_records

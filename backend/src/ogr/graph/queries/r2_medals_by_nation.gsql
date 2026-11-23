@@ -1,0 +1,49 @@
+USE GRAPH OlympicGraphRAG
+
+// r2_medals_by_nation(sport, year, season, medal): medals per NOC, most first
+// (SOLUTION-DESIGN §3). A medal is counted once per (event, medal kind, place):
+// a relay team is one medal and two bronzes of one event are two, which is why
+// WON carries `place`. medal "" counts all three kinds. `events` is the list of
+// events behind the NOC's count, encoded "title<TAB>doc_id<LF>" per event.
+
+CREATE OR REPLACE QUERY r2_medals_by_nation(
+  STRING sport = "", INT year = 0, STRING season = "", STRING medal = ""
+) FOR GRAPH OlympicGraphRAG SYNTAX V2 {
+
+  TYPEDEF TUPLE<STRING noc, INT medal_count, STRING events> NationRow;
+  ListAccum<NationRow> @@rows;
+  MapAccum<STRING, SetAccum<STRING>> @@awards;   // noc -> {event|medal|place}
+  MapAccum<STRING, SetAccum<STRING>> @@eventsOf; // noc -> {title<TAB>doc_id}
+  MaxAccum<STRING> @doc;
+  MaxAccum<STRING> @title;
+  STRING kind = lower(medal);
+
+  Events = {OlympicEvent.*};
+  IF sport != "" THEN
+    Events = SELECT e FROM Events:e -(IN_SPORT>)- Sport:s WHERE lower(s.sport_name) == lower(sport);
+  END;
+  IF year != 0 OR season != "" THEN
+    Events = SELECT e FROM Events:e -(AT_GAMES>)- Games:g WHERE (year == 0 OR g.year == year) AND (season == "" OR lower(g.season) == lower(season));
+  END;
+
+  Decor1 = SELECT e FROM Events:e -(reverse_DESCRIBES>)- Document:d
+    ACCUM e.@doc += d.doc_id, e.@title += d.title;
+
+  Won = SELECT e FROM Events:e -(reverse_WON>:w)- Athlete:a
+    WHERE w.noc != "" AND (kind == "" OR w.medal == kind)
+    ACCUM
+      @@awards += (w.noc -> e.event_id + "|" + w.medal + "|" + to_string(w.place)),
+      @@eventsOf += (w.noc -> e.@title + "\t" + e.@doc);
+
+  FOREACH (noc, keys) IN @@awards DO
+    STRING listed = "";
+    FOREACH t IN @@eventsOf.get(noc) DO
+      listed = listed + t + "\n";
+    END;
+    @@rows += NationRow(noc, keys.size(), listed);
+  END;
+
+  PRINT @@rows AS results;
+}
+
+INSTALL QUERY r2_medals_by_nation

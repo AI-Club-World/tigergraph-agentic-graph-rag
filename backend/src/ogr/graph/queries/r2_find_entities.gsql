@@ -1,0 +1,40 @@
+USE GRAPH OlympicGraphRAG
+
+// r2_find_entities(entity_type, predicate, value_contains): entities having a
+// fact whose key is `predicate` and whose value contains the text, with all
+// their facts (SOLUTION-DESIGN §3), e.g. films whose director is Ron Howard.
+// `predicate_variants` is filled by TigerGraphR2 with the key and its numbered
+// forms (director, director1 ... director20), because GSQL cannot strip the
+// digits itself; empty = any key. At most 200 entities are returned.
+
+CREATE OR REPLACE QUERY r2_find_entities(
+  STRING entity_type = "", STRING predicate = "", STRING value_contains = "",
+  SET<STRING> predicate_variants
+) FOR GRAPH OlympicGraphRAG SYNTAX V2 {
+
+  TYPEDEF TUPLE<STRING name, STRING doc_id, STRING entity_id, STRING entity_type, STRING facts> EntityRow;
+  HeapAccum<EntityRow>(200, name ASC, doc_id ASC) @@rows;
+  StringAccum @facts;
+  MaxAccum<STRING> @doc;
+  STRING needle = "%" + lower(value_contains) + "%";
+
+  Ents = SELECT en FROM Entity:en
+    WHERE entity_type == "" OR lower(en.entity_type) == lower(entity_type);
+
+  Matched = SELECT en FROM Ents:en -(reverse_ABOUT>)- Claim:c
+    WHERE (predicate == "" OR predicate_variants.contains(lower(c.predicate)))
+      AND (value_contains == "" OR lower(c.value_text) LIKE needle);
+
+  Gather = SELECT en FROM Matched:en -(reverse_ABOUT>)- Claim:c
+    ACCUM
+      en.@facts += c.predicate + "\t" + c.value_text + "\t" + (CASE WHEN c.has_num THEN "1" ELSE "0" END)
+        + "\t" + to_string(c.value_num) + "\t" + c.value_note + "\n",
+      en.@doc += c.doc_id;
+
+  Rows = SELECT en FROM Matched:en
+    ACCUM @@rows += EntityRow(en.name, en.@doc, en.entity_id, en.entity_type, en.@facts);
+
+  PRINT @@rows AS results;
+}
+
+INSTALL QUERY r2_find_entities
