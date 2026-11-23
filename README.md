@@ -31,6 +31,8 @@ Documents are split by hackathon round: [`docs/round-1/`](docs/round-1/) holds t
 | [`docs/round-1/SCORE-AUDIT.md`](docs/round-1/SCORE-AUDIT.md) | Rubric audit: baseline, root causes, owner decisions, before/after scores |
 | [`submission/`](submission/README.md) | Hidden-set raw outputs (answers, tokens, citations, agentic traces) and the public and hidden run reports |
 | [`docs/round-1/DEPLOY.md`](docs/round-1/DEPLOY.md) | Hosting the frontend on Netlify |
+| [`docs/round-2/PROBLEM-STATEMENT.md`](docs/round-2/PROBLEM-STATEMENT.md) | Round 2: the organisers' problem statement; brief, corpus and questions in [`docs/round-2/data/`](docs/round-2/data/README.md) |
+| [`docs/round-2/BRIEF-ANALYSIS.md`](docs/round-2/BRIEF-ANALYSIS.md) | Round 2: gap analysis of the real brief and data against what we have; decisions needed; six-day plan |
 | [`docs/round-2/APPLICATION-SPEC.md`](docs/round-2/APPLICATION-SPEC.md) | Round 2: judging criteria and evidence, requirements, targets, risks, readiness checklist |
 | [`docs/round-2/ARCHITECTURE-SPEC.md`](docs/round-2/ARCHITECTURE-SPEC.md) | Round 2: claims route through the agent, decision log |
 | [`docs/round-2/TECHNICAL-SPEC.md`](docs/round-2/TECHNICAL-SPEC.md) | Round 2: fact-layer schema, Q5S/Q6, claim loading, modules, configuration |
