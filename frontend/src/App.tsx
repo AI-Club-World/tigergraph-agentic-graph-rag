@@ -4,6 +4,7 @@ import { SearchView } from './SearchView'
 import { BuildView } from './BuildView'
 import { DashboardPage } from './DashboardPage'
 import { HistoryView } from './HistoryView'
+import { Round2View } from './Round2View'
 import { config } from './config'
 import { useTheme } from './useTheme'
 import { ServiceStatusBar, ServiceStatusProvider } from './ServiceStatus'
@@ -54,6 +55,7 @@ export function App() {
             <NavLink to="/" end>
               Search
             </NavLink>
+            <NavLink to="/round2">Round 2 agent</NavLink>
             <NavLink to="/build">Build</NavLink>
             <NavLink to="/dashboard">Dashboard</NavLink>
             <NavLink to="/history">History</NavLink>
@@ -82,6 +84,7 @@ export function App() {
           <RouteBoundary>
           <Routes>
             <Route path="/" element={<SearchView />} />
+            <Route path="/round2" element={<Round2View />} />
             <Route path="/build" element={<BuildView />} />
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/benchmarks" element={<TabRedirect tab="runs" />} />

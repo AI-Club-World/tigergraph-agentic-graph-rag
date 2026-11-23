@@ -233,3 +233,34 @@ export interface RunExport {
   run_config: Record<string, RunConfigValue>
   records: BatchRecord[]
 }
+
+// ── Round-2 agent (POST /r2/ask) ─────────────────────────────────────────────
+
+export type R2Status = 'answered' | 'partial' | 'not_in_corpus'
+
+export interface R2TraceStep {
+  step: number
+  tool: string
+  tigergraph: boolean
+  query?: string | null
+  params?: Record<string, unknown> | null
+  rows?: number | null
+  input_tokens?: number
+  output_tokens?: number
+  ms: number
+  note?: string | null
+}
+
+export interface R2Answer {
+  qid: string
+  status: R2Status
+  /** Text, a JSON value, or null (not_in_corpus). */
+  answer: unknown
+  explanation: string
+  citations: string[]
+  input_tokens: number
+  output_tokens: number
+  latency_ms: number
+  trace: R2TraceStep[]
+  graph_backend: 'tigergraph' | 'local'
+}

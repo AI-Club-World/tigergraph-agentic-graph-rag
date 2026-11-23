@@ -25,7 +25,11 @@ SRC = Path(__file__).resolve().parents[3] / "src" / "ogr"
 #                      only".
 # Widening this to all of src/ would fail on code the spec mandates, which
 # would make the guard noise rather than a guard.
-ANSWER_PATH = sorted((SRC / "pipelines").rglob("*.py")) + sorted((SRC / "graph").rglob("*.py"))
+ANSWER_PATH = (
+    sorted((SRC / "pipelines").rglob("*.py")) + sorted((SRC / "graph").rglob("*.py"))
+    # Round 2: the answering agent, its tools and the graph layer it reads.
+    + sorted((SRC / "r2").rglob("*.py"))
+)
 
 # The forbidden-chain check has no such nuance: text-to-query generation is
 # rejected outright (§7), so it scans everything.
@@ -101,3 +105,23 @@ def test_no_text_to_gsql_chain():
             if name in source:
                 offenders.append(f"{path.relative_to(SRC)}: {name}")
     assert not offenders, "Text-to-query chain referenced: " + ", ".join(offenders)
+
+
+def test_no_round2_question_ids_or_gold_answers_in_the_answer_path():
+    """Round-2 rule 4: no question ids and no answers built into the code."""
+    import json
+
+    data = SRC.parents[2] / "docs" / "round-2" / "data" / "questions_public.jsonl"
+    golds = []
+    if data.exists():
+        for line in data.read_text(encoding="utf-8").splitlines():
+            answer = json.loads(line).get("answer")
+            if isinstance(answer, str) and len(answer) > 25:
+                golds.append(answer[:40])
+    offenders = []
+    for path in sorted((SRC / "r2").rglob("*.py")):
+        code = _code_without_comments_or_docstrings(path)
+        offenders += [f"{path.name}: {m}" for m in re.findall(r"\br2-(?:pub|hid)-\d{3}\b", code)]
+        offenders += [f"{path.name}: gold answer text" for g in golds if g in code]
+    assert not offenders, offenders
+

@@ -1451,3 +1451,32 @@ table.matrix .section-row th { background: var(--bg-sunken); text-align: left; f
 .embed-pick { display: flex; flex-wrap: wrap; gap: 0.5rem; }
 .stop-waiting { margin-top: 0.5rem; }
 
+
+/* ── Round 2 agent view ───────────────────────────────────── */
+.r2-status {
+  display: inline-flex; align-items: center; gap: 0.35rem;
+  font-size: 0.95rem; font-weight: 700; padding: 0.25rem 0.7rem; border-radius: 4px; border: 1px solid;
+}
+.r2-status-answered { color: var(--gain); background: var(--gain-bg); border-color: var(--gain-border); }
+.r2-status-partial { color: var(--warn); background: var(--warn-bg); border-color: var(--warn); }
+.r2-status-not_in_corpus { color: var(--text); background: var(--bg-overlay); border-color: var(--text-muted); border-style: dashed; }
+.r2-answer-text { font-size: 1.25rem; line-height: 1.5; margin: 0 0 0.5rem; overflow-wrap: anywhere; }
+.r2-explanation { margin: 0.2rem 0 0.6rem; max-width: 80ch; line-height: 1.5; }
+.r2-pre {
+  background: var(--bg-sunken); border: 1px solid var(--border); border-radius: 4px;
+  padding: 0.7rem 0.9rem; overflow: auto; font-size: 0.9rem; margin: 0 0 0.5rem;
+}
+.r2-table-wrap { overflow-x: auto; margin-bottom: 0.5rem; }
+.r2-table { font-size: 1rem; }
+.r2-totals { display: flex; flex-wrap: wrap; gap: 1.5rem; margin: 1rem 0 0; padding-top: 0.8rem; border-top: 1px solid var(--border); }
+.r2-totals dt { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
+.r2-totals dd { margin: 0; font-size: 1.2rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.r2-loading { display: flex; align-items: center; gap: 0.5rem; }
+.r2-trace { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; }
+.r2-step { display: flex; gap: 0.7rem; padding: 0.6rem 0.75rem; border: 1px solid var(--border); border-radius: 4px; }
+.r2-step-tg { border-left: 3px solid var(--gain); background: var(--gain-bg); }
+.r2-step-body { flex: 1; min-width: 0; }
+.r2-step-head { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.r2-query { color: var(--accent); }
+.r2-step-metrics { margin-left: auto; display: flex; gap: 0.9rem; font-size: 0.85rem; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.r2-params { display: block; margin-top: 0.3rem; font-size: 0.82rem; color: var(--text-muted); overflow-wrap: anywhere; }

@@ -69,6 +69,8 @@ from ogr.ingest.registry import DatasetRegistry
 from ogr.pipelines.p1_rag import run_p1_rag
 from ogr.pipelines.p2_graphrag import run_p2_graphrag
 from ogr.pipelines.p3_agentic.orchestrator import astream_p3_agentic
+from ogr.r2 import run as r2_run
+from ogr.r2.agent import answer_question as r2_answer_question
 
 logger = logging.getLogger(__name__)
 
@@ -1517,6 +1519,97 @@ async def get_batch_records(run_id: str) -> list[dict[str, Any]]:
         raise HTTPException(status_code=404, detail=f"No run {run_id!r}")
     _run_config, records = read_run(path)
     return [view_record(r) for r in records]
+
+
+# ─────────────────────────────────────────── /r2 (Round-2 agent) ────────────
+# Live demo: a judge types a question, the Round-2 agent answers it over the
+# TigerGraph graph (or, for development only, an in-process corpus copy) and
+# the full trace comes back with the answer.
+
+R2_LOCAL_CORPUS = Path(
+    os.environ.get("R2_CORPUS", str(_REPO_ROOT / "docs" / "round-2" / "data" / "corpus.jsonl"))
+)
+_R2_UNREACHABLE = ("connection", "connect", "timed out", "timeout", "unreachable", "refused", "tigergraph",
+                   "name resolution", "ssl", "401", "403", "502", "503", "504")
+
+
+class R2AskRequest(BaseModel):
+    question: str
+    backend: Literal["tigergraph", "local"] = "tigergraph"
+
+
+def _r2_unavailable(detail: str) -> HTTPException:
+    return HTTPException(status_code=503, detail=detail)
+
+
+def _r2_run_sync(question: str, backend: str, config: RunConfig) -> dict[str, Any]:
+    try:
+        model = r2_run.make_model(config)
+    except Exception as e:  # noqa: BLE001 - reported, never answered around
+        raise _r2_unavailable(f"The language model is not configured or unavailable: {str(e)[:300]}") from e
+    try:
+        graph = r2_run.make_graph(backend, R2_LOCAL_CORPUS, config)
+    except Exception as e:  # noqa: BLE001
+        raise _r2_unavailable(f"Could not open the {backend} graph: {str(e)[:300]}") from e
+    qid = "live-" + uuid.uuid4().hex[:8]
+    record = r2_answer_question(qid, question, graph, model, config)
+    if record.error:
+        text = record.error
+        down = any(k in text.lower() for k in _R2_UNREACHABLE)
+        raise HTTPException(
+            status_code=503 if down else 500,
+            detail=("TigerGraph or the model service could not be reached: " if down
+                    else "The agent failed on this question: ") + text,
+        )
+    return {**record.to_dict(), "graph_backend": backend}
+
+
+@router.post("/r2/ask")
+async def r2_ask(body: R2AskRequest, config: RunConfig = Depends(get_config)) -> dict[str, Any]:
+    question = body.question.strip()
+    if not question:
+        raise HTTPException(status_code=422, detail="question must not be empty")
+    started = time.monotonic()
+    try:
+        result = await asyncio.to_thread(_r2_run_sync, question, body.backend, config)
+    except HTTPException as e:
+        _r2_record(question, body.backend, "error", started, config, error=str(e.detail))
+        raise
+    except Exception as e:  # noqa: BLE001
+        logger.error("Round-2 ask failed: %s", e)
+        _r2_record(question, body.backend, "error", started, config, error=str(e))
+        raise HTTPException(status_code=500, detail=f"Round-2 agent failed: {str(e)[:300]}") from e
+    _r2_record(question, body.backend, "done", started, config, result=result)
+    return result
+
+
+def _r2_record(question: str, backend: str, status: str, started: float, config: RunConfig,
+               result: dict[str, Any] | None = None, error: str | None = None) -> None:
+    try:
+        _trials().append(
+            "query", status, subject=question, round=2, graph_backend=backend,
+            answer_status=(result or {}).get("status"),
+            duration_ms=round((time.monotonic() - started) * 1000),
+            tokens=(result or {}).get("input_tokens", 0) + (result or {}).get("output_tokens", 0),
+            error=error, **_model_fields(config),
+        )
+    except Exception as e:  # noqa: BLE001 - history must never fail an answer
+        logger.warning("Could not record the Round-2 query: %s", e)
+
+
+@router.get("/r2/status")
+async def r2_status(config: RunConfig = Depends(get_config)) -> dict[str, Any]:
+    from ogr.graph.schema import has_r2_answer_schema
+
+    def installed() -> tuple[bool, str | None]:
+        try:
+            return bool(has_r2_answer_schema(_get_client(config))), None
+        except Exception as e:  # noqa: BLE001
+            return False, str(e)[:200]
+
+    ok, error = await asyncio.to_thread(installed)
+    return {"schema_installed": ok, "model": config.llm_model, "llm_provider": config.llm_provider,
+            "error": error}
 
 
 app.include_router(router)
