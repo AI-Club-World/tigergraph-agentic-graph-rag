@@ -417,7 +417,7 @@ set them through `style`, because `var()` does not resolve in SVG attributes.
 The corpus is derived from English Wikipedia (CC BY-SA 4.0). The embedding
 models and software carry their own licences. See [`ATTRIBUTION.md`](ATTRIBUTION.md).
 
-## Round 2: Setup, Build, Run, Submit, Demo
+## Round 2: build, run, submit
 
 **1. Setup.** Copy `.env.example` to `.env` and fill in TigerGraph and LLM credentials (`env.example` is an identical copy kept for Round 1), then install locked dependencies:
 
