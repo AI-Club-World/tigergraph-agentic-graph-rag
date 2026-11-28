@@ -70,7 +70,7 @@ def install_schema(client: TigerGraphClient) -> str:
     # vertex types exist, so a failed install fails the build instead of the
     # registry recording an empty graph that every later load trips over.
     if hasattr(client.conn, "getVertexTypes"):
-        types = client.conn.getVertexTypes()
+        types = _vertex_types(client.conn)
         if isinstance(types, list):
             missing = sorted(EXPECTED_VERTEX_TYPES - set(types))
             if missing:
@@ -115,8 +115,17 @@ def has_round2_schema(client: TigerGraphClient) -> bool:
     conn = client.conn
     if conn is None or not hasattr(conn, "getVertexTypes"):
         return False
-    types = conn.getVertexTypes()
+    types = _vertex_types(conn)
     return isinstance(types, list) and ROUND2_VERTEX_TYPES <= set(types)
+
+
+def _vertex_types(conn):
+    """`getVertexTypes`, bypassing pyTigerGraph's schema cache (a stale cache
+    hides types a schema-change job just added); stand-ins take no argument."""
+    try:
+        return conn.getVertexTypes(force=True)
+    except TypeError:
+        return conn.getVertexTypes()
 
 
 def _wait_for(check, attempts: int = 12, delay_s: float = 5.0) -> bool:
@@ -160,7 +169,7 @@ def has_r2_answer_schema(client: TigerGraphClient) -> bool:
     conn = client.conn
     if conn is None or not hasattr(conn, "getVertexTypes"):
         return False
-    types = conn.getVertexTypes()
+    types = _vertex_types(conn)
     return isinstance(types, list) and R2_ANSWER_VERTEX_TYPES <= set(types)
 
 
