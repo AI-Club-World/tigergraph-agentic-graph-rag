@@ -35,7 +35,26 @@ Round 2 adds the `ogr.r2` package, the `r2_*` GSQL queries and the two scripts. 
 | Efficiency (10%) | Token counts come from the provider's usage fields for every LLM call (an estimate is marked in the trace when a provider reports none) and sum exactly to the answer totals (the validator checks it). Tool results are trimmed before they go back to the model (empty and repeated fields dropped, at most 60 rows, long text cut at 2,000 characters, 24k characters in total, truncation stated). Retrieval is graph queries, so no embedding calls are made. | `tools.py` (`compact_result`), `metrics.py` |
 | Live judging (15%) | One command to answer any new question on the live graph (`r2-run`, the `/round2` page or `POST /r2/ask`). | [`docs/round-2/LIVE-JUDGING.md`](docs/round-2/LIVE-JUDGING.md) |
 
-The numbers of the submitted runs (accuracy of the public set by our own scorer, tokens, latency, LLM calls and TigerGraph queries per question, cost) are in `submission/round-2/metrics.json`; this README repeats none of them.
+## Submitted run
+
+The files of the submitted run are in [`submission/round-2/`](submission/round-2/RUN-INFO.md): both answer files, `metrics.json`, `tg_query_log.jsonl`, `graph_counts.json` and the public score file. One clean build, then one public and one hidden run, with `nvidia/nemotron-3.5-super-vl-120b-a12b` at temperature 0 and the default `R2_MAX_STEPS`. The figures below are copied from `submission/round-2/metrics.json`, which is authoritative.
+
+| | Public (50) | Hidden (50) |
+|---|---|---|
+| Accuracy | 88.8%, **self-scored** with our own fact-level scorer (`accuracy_method` in `metrics.json`); the organisers' key may differ | not computed by us |
+| Statuses (`answered` / `partial` / `not_in_corpus`) | 43 / 2 / 5 | 42 / 3 / 5 |
+| Tokens per question (average) | 13,153 | 18,576 |
+| Latency average / p50 / p95 | 12.1 s / 9.5 s / 27.4 s | 14.2 s / 12.2 s / 24.9 s |
+| LLM calls / TigerGraph queries per question | 3.06 / 3.34 | 3.12 / 3.42 |
+| Trace steps per question | 6.42 | 6.56 |
+| Answers with a TigerGraph step | 50 | 50 |
+| Run time | 606 s | 711 s |
+
+The build took 753 s. Cost is reported as 0 because no per-token prices were configured (`R2_LLM_*_USD_PER_M`); tokens are the efficiency measure we stand behind.
+
+**Efficiency, honestly.** A question costs about 13k tokens on the public set and 19k on the hidden set, over three LLM calls and three to four TigerGraph queries. Tool results are read back into the model, so questions that need many rows (lists, series) cost the most; results are trimmed before they return, but not otherwise reduced. We have not tuned for token cost beyond that trimming. Runs are sequential (`--workers 1`) for determinism, so latency is the per-question wall-clock time.
+
+The development history (build fixes, tool parity, dev and check results) is in [`docs/round-2/RUN-HISTORY.md`](docs/round-2/RUN-HISTORY.md).
 
 ## Round 2: build, run, submit
 
@@ -114,6 +133,7 @@ cd frontend && npm ci && npm run dev
 | `backend/tests/` | Offline test suite (fake TigerGraph, scripted model); `tests/r2/` covers Round 2 |
 | `backend/scripts/r2_parity.py` | Runs each tool on TigerGraph and on the in-process copy and compares rows |
 | `scripts/validate_submission.py` | Checks the submission files against the brief |
+| `submission/round-2/` | The submitted run: answers, metrics, query log, graph counts, score, run info |
 | `docs/round-2/` | Brief, build contract, specs, runbook, submission checklist, corpus and public questions (`data/`) |
 | `frontend/`, `backend/src/ogr/api/` | Web UI and API (the demo page, and the Round-1 comparison app) |
 | `data/`, `acceptance/paraphrase/` | Round-1 corpus and question sets, still read by the comparison view and its tests |
@@ -124,11 +144,11 @@ Tests and lint: `cd backend && ruff check src tests && python3 -m pytest -q -p n
 
 ## Limitations
 
-- Public accuracy is measured by our own fact-level scorer (`ogr.r2.score`), which approximates the organisers' key; the public set is split into `dev` (used for error analysis) and `check` (14 questions, looked at once). Hidden accuracy is not known to us.
+- Public accuracy is measured by our own fact-level scorer (`ogr.r2.score`), which approximates the organisers' key; the public set is split into `dev` (used for error analysis) and `check` (14 questions, looked at once). Hidden accuracy is not known to us. On the `check` split a live run scored lower than on `dev` (81.3% against 86.2%, 14 against 36 questions), so expect the organisers' figure to be below our public self-score.
 - The model runs at temperature 0, but providers are not bit-for-bit deterministic: wording, token counts and occasionally a status can differ between runs. Graph rows for the same query and parameters do not.
 - Source records are classified by authority and time deterministically, but the answering LLM weighs conflicting records at answer time; there is no LLM claim extraction at build.
 - The GSQL compares lower-cased text; the in-process copy compares normalised text, so accents and apostrophes can differ in rare cases (apostrophes are straightened before the query).
-- The build resets the graph and takes several minutes. The GSQL names the graph `OlympicGraphRAG`, so `TG_GRAPHNAME` must be that valid identifier, and the TigerGraph user needs schema-write and query-install rights.
+- The build resets the graph and took 753 s in the submitted run. The GSQL names the graph `OlympicGraphRAG`, so `TG_GRAPHNAME` must be that valid identifier, and the TigerGraph user needs schema-write and query-install rights.
 - The Round-1 three-pipeline comparison and the earlier claim-resolution layer (`reasoning/`, `harness/`, `datasets/`) remain in the repository and are tested, but are not on the Round-2 answering path.
 
 ## Documentation
@@ -141,6 +161,7 @@ Tests and lint: `cd backend && ruff check src tests && python3 -m pytest -q -p n
 | [`docs/round-2/ARCHITECTURE-SPEC.md`](docs/round-2/ARCHITECTURE-SPEC.md), [`TECHNICAL-SPEC.md`](docs/round-2/TECHNICAL-SPEC.md) | Components, tool parameters, formats, configuration |
 | [`docs/round-2/LIVE-JUDGING.md`](docs/round-2/LIVE-JUDGING.md) | Runbook: start the system, ask a new question, reproduce a submitted answer |
 | [`docs/round-2/SUBMISSION.md`](docs/round-2/SUBMISSION.md) | The seven deliverables and the pre-submission checklist |
+| [`docs/round-2/RUN-HISTORY.md`](docs/round-2/RUN-HISTORY.md) | Dated log of the build, parity, development and final runs |
 | [`archive-round-1/docs/round-1/README.md`](archive-round-1/docs/round-1/README.md) | Round-1 web application: setup, CLI, API, frontend |
 | [`docs/archive/`](docs/archive/README.md) | Earlier working notes |
 | [`ATTRIBUTION.md`](ATTRIBUTION.md) | Licences for the corpus, models and software |

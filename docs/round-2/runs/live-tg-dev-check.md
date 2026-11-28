@@ -12,7 +12,7 @@ Commands: `r2-run --backend tigergraph` (dev 36 qids, then check 14 qids), `r2-s
 | check (live TG, once) | 14 | 81.3 | 12/14 | 12,930 / 11,325 | 11.8 s / 9.2 s / 26.1 s | 3.9 |
 
 - Tokens = input + output per question. Latency = per-question wall time recorded by the agent.
-- Comparison: local-backend dev run of W2 (same model, same code) scored 90.8% with status match 34/36. Live TigerGraph dev scores 86.2% with 32/36. The gap (4.6 points, 2 status misses) is larger than the 1-3 point noise seen between local iterations, so the live backend is treated as a real difference to investigate (retrieval misses on 020, 021, 024 are the main cause).
+- Comparison: local-backend dev run after the fixes (same model, same code) scored 90.8% with status match 34/36. Live TigerGraph dev scores 86.2% with 32/36. The gap (4.6 points, 2 status misses) is larger than the 1-3 point noise seen between local iterations, so the live backend is treated as a real difference to investigate (retrieval misses on 020, 021, 024 are the main cause).
 - Thresholds: dev >= 80% and validator clean on the public answers, so Part B ran.
 
 ## Validator

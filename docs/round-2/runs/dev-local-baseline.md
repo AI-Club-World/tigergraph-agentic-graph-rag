@@ -74,7 +74,7 @@ Total: 16 questions. Two of the status errors (046, 049) also scored 0.
 
 Observations:
 
-- Medal scope is a tool-parameter choice: `repeat_winners` was called with `medal=""`, which pulls in silver and bronze. That is a prompt or tool-use issue for a later W2 fix. Not changed here.
+- Medal scope is a tool-parameter choice: `repeat_winners` was called with `medal=""`, which pulls in silver and bronze. That is a prompt or tool-use issue for a later round of fixes fix. Not changed here.
 - The status field is the largest single cost on this set: 4 questions lost most of their score on status alone, including 025, whose answer is correct.
 - Cost: r2-pub-025 (78.9k input tokens, 8 steps) and r2-pub-028 (46.1k) are the heaviest; the mean input is about 11.9k per question.
 - Nothing here was changed in prompts or code. Findings only.

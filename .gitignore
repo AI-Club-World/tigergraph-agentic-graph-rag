@@ -27,3 +27,6 @@ Thumbs.db
 
 # TypeScript incremental build cache
 *.tsbuildinfo
+
+# Answer files written by run.sh from the repo root; the submitted copies are in submission/round-2/
+/answers_*.jsonl

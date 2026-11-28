@@ -1,4 +1,4 @@
-# Dev run on the local backend after general prompt/tool fixes (W2, 2026-11-28)
+# Dev run on the local backend after general prompt/tool fixes (2026-11-28)
 
 **Dev only. Backend `local`, 36 dev qids of `public_split.json`. Not a submission.** The `check` split and the hidden file were not touched.
 Model `nvidia/nemotron-3.5-super-vl-120b-a12b`, 4 workers. Scores: `r2-score --split dev`.
@@ -12,7 +12,7 @@ Model `nvidia/nemotron-3.5-super-vl-120b-a12b`, 4 workers. Scores: `r2-score --s
 | iteration 2 (extra status/basis rules) | 89.7 | 34/36 | 14,982 / 10,064 | 24.9 s / 50.0 s |
 | iteration 3 (final, kept) | 90.8 | 34/36 | 12,543 / 9,614 | 22.9 s / 46.4 s |
 
-H1's earlier baseline run scored 77.0; the temperature-0 model is still noisy between runs (about +-3 points), so differences of 1-3 points between iterations are not significant. The final code is iteration 3: higher than before on accuracy and status match, tokens about 4% lower. Iteration 1 was the best single run, but iteration 3 keeps the additional rules for the status and as-of failures that iteration 1 still showed.
+The earlier baseline run scored 77.0; the temperature-0 model is still noisy between runs (about +-3 points), so differences of 1-3 points between iterations are not significant. The final code is iteration 3: higher than before on accuracy and status match, tokens about 4% lower. Iteration 1 was the best single run, but iteration 3 keeps the additional rules for the status and as-of failures that iteration 1 still showed.
 
 ## Failure groups and changes
 
