@@ -417,47 +417,60 @@ set them through `style`, because `var()` does not resolve in SVG attributes.
 The corpus is derived from English Wikipedia (CC BY-SA 4.0). The embedding
 models and software carry their own licences. See [`ATTRIBUTION.md`](ATTRIBUTION.md).
 
-## Round 2: build, run, submit
+## Round 2: Setup, Build, Run, Submit, Demo
 
-Setup: set the variables in `.env.example` in your environment, or `cp .env.example .env` and fill in the keys (`env.example` is an identical copy kept for the Round 1 workflow), then `python3 -m pip install -r backend/requirements.lock && python3 -m pip install --no-deps -e backend`.
+**1. Setup.** Copy `.env.example` to `.env` and fill in TigerGraph and LLM credentials (`env.example` is an identical copy kept for Round 1), then install locked dependencies:
 
 ```bash
-./build.sh corpus.jsonl                                      # build the graph, writes out/r2/graph_counts.json
-./run.sh questions_public.jsonl answers_public.jsonl         # answer, self-score, update out/r2/metrics.json (set "public")
-./run.sh questions_hidden.jsonl answers_hidden.jsonl         # same for the hidden set (accuracy stays null)
+python3 -m pip install -r backend/requirements.lock && python3 -m pip install --no-deps -e backend
 ```
 
-`run.sh` infers the metrics set from the questions file name (`hidden` / `public`; otherwise from whether the file has gold answers). Both scripts run from any directory and load `.env`.
+**2. Build.** Load the Round-2 corpus (`3,530` docs) into TigerGraph, install the schema and `r2_*` GSQL queries, and write `out/r2/graph_counts.json`:
 
-| File | What it is |
+```bash
+./build.sh docs/round-2/data/corpus.jsonl
+# equivalent CLI: python -m ogr.cli r2-build --corpus docs/round-2/data/corpus.jsonl --counts out/r2/graph_counts.json
+```
+
+**3. Run & Submit.** Answer each question set, score the public set (`r2-score`), and recompute `out/r2/metrics.json` (`r2-metrics`):
+
+```bash
+./run.sh docs/round-2/data/questions_public.jsonl answers_public.jsonl   # answer, self-score, update metrics.json ("public")
+./run.sh docs/round-2/data/questions_hidden.jsonl answers_hidden.jsonl   # answer, update metrics.json ("hidden"; accuracy stays null)
+```
+
+`run.sh` infers the metrics set from the questions file name (`hidden` / `public`, or whether the file has gold answers) and resumes existing answer files (`FRESH=1` starts clean). Both scripts run from any directory and load `.env`.
+
+```bash
+python -m ogr.cli r2-run --questions q.jsonl --out answers.jsonl                      # TigerGraph backend, resumable
+python -m ogr.cli r2-run --questions q.jsonl --out dev.jsonl --backend local --limit 5 # dev only (tigergraph: false, no query log)
+python -m ogr.cli r2-score --questions docs/round-2/data/questions_public.jsonl --answers answers_public.jsonl
+python -m ogr.cli r2-metrics --set public --answers answers_public.jsonl --questions docs/round-2/data/questions_public.jsonl
+```
+
+| Submission / Output File | What it is |
 |---|---|
-| `answers_*.jsonl` | One answer per question with a full trace (written as the code runs) |
-| `out/r2/metrics.json` | Both sets' metrics, recomputed from the answer files only (`metrics_notes.json` beside it lists defaults, e.g. unset prices) |
+| `answers_public.jsonl`, `answers_hidden.jsonl` | One JSON answer per question with a full trace (written as the code runs) |
+| `out/r2/metrics.json` | Both sets' metrics, recomputed from the answer files only (`metrics_notes.json` lists defaults) |
 | `out/r2/tg_query_log.jsonl` | One line per TigerGraph call: `ts, run_id, qid, step, query, params, rows, ms, ok, error` |
 | `out/r2/graph_counts.json` | Vertex and edge counts by type after the build |
 | `out/r2/score_public.json` | Per-question public scores from our own fact-level scorer (`ogr.r2.score`) |
 | `docs/round-2/data/public_split.json` | Deterministic `dev` / `check` split of the public 50 (`python3 -m ogr.r2.split`) |
 
-Public accuracy is our own measurement (method in `ogr.r2.score` and in `accuracy_method`); hidden accuracy is `null`. Dependencies are pinned in `backend/requirements.lock`.
+Public accuracy is our own measurement (`ogr.r2.score`); hidden accuracy is `null`.
+
+**4. Demo (live judging).** Open the **"Round 2 agent"** page at `http://localhost:5173/round2` (or call `POST /r2/ask` with `{"question": "...", "backend": "tigergraph"}` and `GET /r2/status` to verify `"schema_installed": true`). See [`docs/round-2/LIVE-JUDGING.md`](docs/round-2/LIVE-JUDGING.md) for the 15-minute live-judging runbook.
 
 ### Round 2 architecture
 
-Nothing below has been measured live yet (no TigerGraph or LLM run); it was tested offline with a scripted model over an in-process copy of the graph.
+Tested offline with a scripted model over an in-process copy of the graph (`LocalR2Graph`); no live TigerGraph or LLM run is claimed here.
 
-**Documents to graph data** (`ogr.r2.corpus_model`, `ogr.r2.build`; design in `docs/round-2/SOLUTION-DESIGN.md` section 2). `r2-build` parses the corpus deterministically (no LLM, no embeddings), resets the graph, installs the schema and the `r2_*` GSQL queries, and loads: documents and text chunks; Olympic events, Games, sports and venues from the infobox; athletes with `WON` edges (medal, NOC) from the medallist fields; the dated LA 2028 source records with an authority class (official, operational, secondary, unreliable) taken from the `Source:` line and `REPORTS_ON` links to the events they mention; and for every other infobox (films, office holders, people) one entity with one claim per field. Vertex and edge counts are written to `out/r2/graph_counts.json`.
+**Documents to graph data** (`ogr.r2.corpus_model`, `ogr.r2.build`; design in `docs/round-2/SOLUTION-DESIGN.md` section 2). `r2-build` parses the corpus deterministically (no LLM, no embeddings), resets the graph, installs the schema and the `r2_*` GSQL queries, and loads: documents and text chunks; Olympic events, Games, sports and venues from the infobox; athletes with `WON` edges (medal, NOC) from the medallist fields; the dated LA 2028 source records with an authority class (`official`, `operational`, `secondary`, `unreliable`) taken from the `Source:` line and `REPORTS_ON` links to the events they mention; and for every other infobox (films, office holders, people) one entity with one claim per field. Vertex and edge counts are written to `out/r2/graph_counts.json`.
 
-**Tools** (`ogr.r2.tools`). Ten read tools, each one installed GSQL query: `find_events`, `medals_by_nation`, `event_series`, `athlete_medals`, `repeat_winners`, `entity_facts`, `find_entities`, `source_records`, `text_search`, `read_document`; plus the local helper `rank_rows` (sorts an earlier result; recorded as a non-TigerGraph step) and `finish`. Results go back to the model as compact JSON (empty fields dropped, at most 60 rows, long text cut, truncation stated).
+**Tools** (`ogr.r2.tools`). Ten read tools, each one installed GSQL query: `find_events`, `medals_by_nation`, `event_series`, `athlete_medals`, `repeat_winners`, `entity_facts`, `find_entities`, `source_records`, `text_search`, `read_document`; plus the local helper `rank_rows` (sorts an earlier result; recorded as a non-TigerGraph step) and `finish`. Results go back to the model as compact JSON (empty fields dropped, at most 60 rows, long text cut at 2,000 chars, 24k total, truncation stated).
 
-**How the agent decides** (`ogr.r2.agent`). A short general system prompt and the question go to the chat model with native tool calling at temperature 0. The model picks tools, sees the results, and calls `finish` with `status`, `answer` (text or JSON), `explanation` and `citations`. After `R2_MAX_STEPS` tool calls (default 8) a final `finish` is forced. Fixed guards then apply: citations are limited to doc_ids the tools actually returned; `not_in_corpus` always has a null answer; an unknown status becomes `partial`; a JSON-looking answer string is parsed. A question whose run fails (after bounded retries on rate limits) is not written to the answers file: the run continues with the others, `r2-run` exits 1 naming the failed questions, and rerunning the same command retries only those. A crash is never submitted as an answer.
+**How the agent decides** (`ogr.r2.agent`). A short general system prompt and the question go to the chat model with native tool calling at temperature 0. The model picks tools, sees the results, and calls `finish` with `status`, `answer` (text or JSON), `explanation` and `citations`. After `R2_MAX_STEPS` tool calls (default 8) a final `finish` is forced. Fixed guards then apply: citations are limited to `doc_id`s the tools actually returned; `not_in_corpus` always has a `null` answer; an empty answer becomes `not_in_corpus`; an unknown status becomes `partial`; a JSON-looking answer string is parsed. A question whose run fails (after bounded retries on rate limits) is not written to the answers file: the run continues with the others, `r2-run` exits 1 naming the failed questions, and rerunning the same command retries only those.
 
 **Statuses.** `answered`: fully supported. `partial`: some requested parts are not in the corpus (the answer says which). `not_in_corpus`: nothing in the corpus answers it.
 
 **Traces and logs.** Every model call is a trace step with the provider's token counts (an estimate is marked in `note`); every graph call is a step with `query`, `params`, `rows`, `ms` and a line in `out/r2/tg_query_log.jsonl`. Answer totals are the sum of the model steps.
-
-```bash
-python -m ogr.cli r2-build --corpus corpus.jsonl --counts out/r2/graph_counts.json
-python -m ogr.cli r2-run --questions q.jsonl --out answers.jsonl            # TigerGraph backend, resumable
-python -m ogr.cli r2-run --questions q.jsonl --out dev.jsonl --backend local --limit 5   # dev only
-```
-
-`--backend local` answers from an in-process copy of the corpus. It is for development: its tool steps carry `tigergraph: false` and write no query log, so such a file cannot pass as a submission.
