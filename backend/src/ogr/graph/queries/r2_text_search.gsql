@@ -14,7 +14,8 @@ CREATE OR REPLACE QUERY r2_text_search(
   TYPEDEF TUPLE<STRING doc_id, INT seq, STRING title, STRING chunk_id, STRING text> HitRow;
   HeapAccum<HitRow>(max_rows, doc_id ASC, seq ASC) @@rows;
   SumAccum<INT> @hits;
-  INT needed = terms.size();
+  INT needed = 0;
+  FOREACH t IN terms DO needed = needed + 1; END;
 
   Scored = SELECT c FROM Chunk:c
     ACCUM

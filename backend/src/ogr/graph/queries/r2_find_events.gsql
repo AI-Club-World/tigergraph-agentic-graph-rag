@@ -30,7 +30,7 @@ CREATE OR REPLACE QUERY r2_find_events(
   MaxAccum<STRING> @games;
   MinAccum<INT> @year;
   MaxAccum<STRING> @season;
-  StringAccum @meds;
+  SumAccum<STRING> @meds;
   MaxAccum<STRING> @venue;
   STRING pStart = lower(event_contains) + "%";
   STRING pWord = "% " + lower(event_contains) + "%";

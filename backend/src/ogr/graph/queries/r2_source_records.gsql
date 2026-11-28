@@ -19,7 +19,7 @@ CREATE OR REPLACE QUERY r2_source_records(
     STRING published_text, STRING text, STRING events
   > RecordRow;
   ListAccum<RecordRow> @@rows;
-  StringAccum @events;
+  SumAccum<STRING> @events;
   MaxAccum<STRING> @doc;
   STRING pStart = lower(event_contains) + "%";
   STRING pWord = "% " + lower(event_contains) + "%";

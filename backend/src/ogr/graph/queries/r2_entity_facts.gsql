@@ -13,7 +13,7 @@ CREATE OR REPLACE QUERY r2_entity_facts(
 
   TYPEDEF TUPLE<STRING entity_id, STRING name, STRING entity_type, STRING doc_id, STRING facts> EntityRow;
   ListAccum<EntityRow> @@rows;
-  StringAccum @facts;
+  SumAccum<STRING> @facts;
   MaxAccum<STRING> @doc;
   STRING pStart = lower(name_contains) + "%";
   STRING pWord = "% " + lower(name_contains) + "%";

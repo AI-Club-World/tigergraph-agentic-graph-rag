@@ -14,7 +14,7 @@ CREATE OR REPLACE QUERY r2_find_entities(
 
   TYPEDEF TUPLE<STRING name, STRING doc_id, STRING entity_id, STRING entity_type, STRING facts> EntityRow;
   HeapAccum<EntityRow>(200, name ASC, doc_id ASC) @@rows;
-  StringAccum @facts;
+  SumAccum<STRING> @facts;
   MaxAccum<STRING> @doc;
   STRING needle = "%" + lower(value_contains) + "%";
 
