@@ -37,7 +37,7 @@ SPEC_PARAMS = {
     "r2_read_document": {"doc_id"},
 }
 KNOWN_EDGES = {
-    "IN_SPORT", "AT_GAMES", "HELD_AT", "HAS_CHUNK", "reverse_DESCRIBES", "WON", "reverse_WON",
+    "IN_SPORT", "AT_GAMES", "HELD_AT", "HAS_CHUNK", "reverse_OG_DESCRIBES", "WON", "reverse_WON",
     "reverse_REPORTS_ON", "reverse_ABOUT",
 }
 KNOWN_VERTICES = {"OlympicEvent", "Sport", "Games", "Venue", "Document", "Chunk", "Athlete", "SourceRecord",

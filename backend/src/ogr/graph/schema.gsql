@@ -26,7 +26,7 @@ DROP GRAPH OlympicGraphRAG CASCADE
 // Edges first: a vertex type that still carries an edge type cannot be
 // dropped ("Please drop the edges first!"), which leaves the second run
 // unable to recreate the vertices it failed to drop.
-DROP EDGE DESCRIBES
+DROP EDGE OG_DESCRIBES
 DROP EDGE AT_GAMES
 DROP EDGE IN_SPORT
 DROP EDGE HELD_AT
@@ -107,7 +107,7 @@ CREATE VERTEX Embedding_BGELarge (PRIMARY_ID chunk_id STRING) WITH PRIMARY_ID_AS
 
 // All endpoints pinned explicitly (TECHNICAL-SPEC §2.2 note: v0.2 left four
 // undirected, and direction inversion is a named failure mode).
-CREATE DIRECTED EDGE DESCRIBES (FROM Document, TO OlympicEvent) WITH REVERSE_EDGE="reverse_DESCRIBES"
+CREATE DIRECTED EDGE OG_DESCRIBES (FROM Document, TO OlympicEvent) WITH REVERSE_EDGE="reverse_OG_DESCRIBES"
 CREATE DIRECTED EDGE AT_GAMES (FROM OlympicEvent, TO Games)
 CREATE DIRECTED EDGE IN_SPORT (FROM OlympicEvent, TO Sport)
 CREATE DIRECTED EDGE HELD_AT (FROM OlympicEvent, TO Venue, date_text STRING) WITH REVERSE_EDGE="reverse_HELD_AT"
@@ -127,7 +127,7 @@ CREATE DIRECTED EDGE HAS_EMBEDDING (
 CREATE GRAPH OlympicGraphRAG (
   Document, OlympicEvent, Games, Sport, Venue, Chunk,
   Embedding_Qwen, Embedding_EmbeddingGemma, Embedding_GteLarge, Embedding_Mxbai, Embedding_BGELarge,
-  DESCRIBES, AT_GAMES, IN_SPORT, HELD_AT, PREV_EDITION, NEXT_EDITION, HAS_CHUNK, HAS_EMBEDDING
+  OG_DESCRIBES, AT_GAMES, IN_SPORT, HELD_AT, PREV_EDITION, NEXT_EDITION, HAS_CHUNK, HAS_EMBEDDING
 )
 
 // Vector attributes can only be added by ALTER VERTEX inside a SCHEMA_CHANGE

@@ -32,7 +32,7 @@ CREATE OR REPLACE QUERY r2_repeat_winners(
     Events = SELECT e FROM Events:e -(AT_GAMES>)- Games:g WHERE (season == "" OR lower(g.season) == lower(season));
   END;
 
-  Decor1 = SELECT e FROM Events:e -(reverse_DESCRIBES>)- Document:d ACCUM e.@doc += d.doc_id;
+  Decor1 = SELECT e FROM Events:e -(reverse_OG_DESCRIBES>)- Document:d ACCUM e.@doc += d.doc_id;
   Decor2 = SELECT e FROM Events:e -(IN_SPORT>)- Sport:s ACCUM e.@sport += s.sport_name;
   Decor3 = SELECT e FROM Events:e -(AT_GAMES>)- Games:g ACCUM e.@year += g.year;
 

@@ -26,7 +26,7 @@ CREATE OR REPLACE QUERY r2_medals_by_nation(
     Events = SELECT e FROM Events:e -(AT_GAMES>)- Games:g WHERE (year == 0 OR g.year == year) AND (season == "" OR lower(g.season) == lower(season));
   END;
 
-  Decor1 = SELECT e FROM Events:e -(reverse_DESCRIBES>)- Document:d
+  Decor1 = SELECT e FROM Events:e -(reverse_OG_DESCRIBES>)- Document:d
     ACCUM e.@doc += d.doc_id, e.@title += d.title;
 
   Won = SELECT e FROM Events:e -(reverse_WON>:w)- Athlete:a

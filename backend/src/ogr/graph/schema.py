@@ -119,6 +119,19 @@ def has_round2_schema(client: TigerGraphClient) -> bool:
     return isinstance(types, list) and ROUND2_VERTEX_TYPES <= set(types)
 
 
+def _wait_for(check, attempts: int = 12, delay_s: float = 5.0) -> bool:
+    """Schema-change jobs return before `getVertexTypes` shows the new types
+    (seen on Savanna); poll `check()` for up to ~1 minute."""
+    import time
+
+    for i in range(attempts):
+        if check():
+            return True
+        if i < attempts - 1:
+            time.sleep(delay_s)
+    return False
+
+
 def install_round2(client: TigerGraphClient) -> list[str]:
     """Add the Round-2 types (once) and install Q5S and Q6. Never drops the
     graph; a graph that already has the types only gets the queries."""
@@ -128,7 +141,7 @@ def install_round2(client: TigerGraphClient) -> list[str]:
     results = []
     if not has_round2_schema(client):
         results.append(client.conn.gsql(ROUND2_SCHEMA_PATH.read_text(encoding="utf-8")))
-        if hasattr(client.conn, "getVertexTypes") and not has_round2_schema(client):
+        if hasattr(client.conn, "getVertexTypes") and not _wait_for(lambda: has_round2_schema(client)):
             raise RuntimeError(f"Round-2 schema not installed: {str(results[-1])[-300:]}")
     for filename in ROUND2_QUERY_FILES:
         results.append(client.conn.gsql((QUERIES_DIR / filename).read_text(encoding="utf-8")))
@@ -161,7 +174,7 @@ def install_r2_answer(client: TigerGraphClient) -> list[str]:
     results = []
     if not has_r2_answer_schema(client):
         results.append(client.conn.gsql(R2_ANSWER_SCHEMA_PATH.read_text(encoding="utf-8")))
-        if hasattr(client.conn, "getVertexTypes") and not has_r2_answer_schema(client):
+        if hasattr(client.conn, "getVertexTypes") and not _wait_for(lambda: has_r2_answer_schema(client)):
             raise RuntimeError(f"Round-2 answer schema not installed: {str(results[-1])[-300:]}")
     for filename in R2_QUERY_FILES:
         results.append(client.conn.gsql((QUERIES_DIR / filename).read_text(encoding="utf-8")))

@@ -39,9 +39,9 @@ FOR GRAPH OlympicGraphRAG SYNTAX V2 {
 
   Candidates = {OlympicEvent.*};
   // A title may be the page title ("Biathlon at the 2022 Winter Olympics –
-  // Women's relay"): the event that page DESCRIBES is a candidate too, so a
+  // Women's relay"): the event that page OG_DESCRIBES is a candidate too, so a
   // page-title lookup returns the event's attributes, not just the Document.
-  ByPage = SELECT e FROM Document:d -(DESCRIBES>)- OlympicEvent:e
+  ByPage = SELECT e FROM Document:d -(OG_DESCRIBES>)- OlympicEvent:e
            WHERE title != "" AND d.title == title;
   IF event_id != "" THEN
     Candidates = SELECT e FROM Candidates:e WHERE e.event_id == event_id;
@@ -52,10 +52,10 @@ FOR GRAPH OlympicGraphRAG SYNTAX V2 {
     Candidates = SELECT e FROM Candidates:e WHERE FALSE;
   END;
 
-  // Resolve each event's parent Document.doc_id via the reverse DESCRIBES
-  // edge (declared WITH REVERSE_EDGE="reverse_DESCRIBES" in schema.gsql) —
+  // Resolve each event's parent Document.doc_id via the reverse OG_DESCRIBES
+  // edge (declared WITH REVERSE_EDGE="reverse_OG_DESCRIBES" in schema.gsql) —
   // OlympicEvent itself does not store doc_id.
-  Resolved = SELECT e FROM Candidates:e -(reverse_DESCRIBES>:conn)- Document:doc
+  Resolved = SELECT e FROM Candidates:e -(reverse_OG_DESCRIBES>:conn)- Document:doc
              ACCUM e.@doc_id += doc.doc_id, e.@title += doc.title
              POST-ACCUM
                FOREACH g IN e.gold DO e.@gold_s += g + "; " END,

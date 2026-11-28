@@ -27,7 +27,7 @@ CREATE OR REPLACE QUERY q3_argmax(
     Events = SELECT e FROM Events:e -(HELD_AT>)- Venue:v WHERE v.venue_name == anchor_venue;
   END;
 
-  Ranked_ = SELECT e FROM Events:e -(reverse_DESCRIBES>:conn)- Document:doc
+  Ranked_ = SELECT e FROM Events:e -(reverse_OG_DESCRIBES>:conn)- Document:doc
     ACCUM
       DOUBLE rankValue = 0.0,
       IF field == "nations" THEN

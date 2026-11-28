@@ -37,7 +37,7 @@ class TestSchemaFile:
     def test_every_edge_type_is_declared_with_pinned_endpoints(self):
         text = SCHEMA_PATH.read_text(encoding="utf-8")
         for edge, frm, to in (
-            ("DESCRIBES", "Document", "OlympicEvent"),
+            ("OG_DESCRIBES", "Document", "OlympicEvent"),
             ("AT_GAMES", "OlympicEvent", "Games"),
             ("IN_SPORT", "OlympicEvent", "Sport"),
             ("HELD_AT", "OlympicEvent", "Venue"),

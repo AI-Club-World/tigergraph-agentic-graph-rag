@@ -126,7 +126,7 @@ CREATE OR REPLACE QUERY q2_count_where(
         END
       END;
 
-  Members = SELECT e FROM Matched:e -(reverse_DESCRIBES>)- Document:doc
+  Members = SELECT e FROM Matched:e -(reverse_OG_DESCRIBES>)- Document:doc
     WHERE e.@counted
     ACCUM @@members += Member(e.event_id, e.event_name, doc.doc_id, doc.title, e.competitors, e.nations, e.date_year);
 

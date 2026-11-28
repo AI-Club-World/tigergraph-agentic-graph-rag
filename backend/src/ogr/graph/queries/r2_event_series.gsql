@@ -39,12 +39,12 @@ CREATE OR REPLACE QUERY r2_event_series(
   // Matches the infobox event name or the page title at a word boundary, so
   // "men's 100 metres" is not found inside "women's 100 metres".
   IF event_contains != "" THEN
-    Events = SELECT e FROM Events:e -(reverse_DESCRIBES>)- Document:d
+    Events = SELECT e FROM Events:e -(reverse_OG_DESCRIBES>)- Document:d
       WHERE lower(e.event_name) LIKE pStart OR lower(e.event_name) LIKE pWord
          OR lower(d.title) LIKE pWord;
   END;
 
-  Decor1 = SELECT e FROM Events:e -(reverse_DESCRIBES>)- Document:d
+  Decor1 = SELECT e FROM Events:e -(reverse_OG_DESCRIBES>)- Document:d
     ACCUM e.@doc += d.doc_id, e.@title += d.title, e.@url += d.url;
   Decor2 = SELECT e FROM Events:e -(IN_SPORT>)- Sport:s ACCUM e.@sport += s.sport_name;
   Decor3 = SELECT e FROM Events:e -(AT_GAMES>)- Games:g

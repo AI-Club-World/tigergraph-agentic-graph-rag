@@ -245,7 +245,7 @@ def load_graph(
         _flush(conn, "V", (vtype,), payload, size)
 
     for src, etype, tgt, payload in (
-        ("Document", "DESCRIBES", "OlympicEvent", e_describes),
+        ("Document", "OG_DESCRIBES", "OlympicEvent", e_describes),
         ("OlympicEvent", "AT_GAMES", "Games", e_at_games),
         ("OlympicEvent", "IN_SPORT", "Sport", e_in_sport),
         ("OlympicEvent", "HELD_AT", "Venue", e_held_at),

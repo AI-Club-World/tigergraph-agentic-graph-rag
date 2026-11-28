@@ -26,7 +26,7 @@ CREATE OR REPLACE QUERY r2_athlete_medals(STRING name) FOR GRAPH OlympicGraphRAG
   END;
 
   Events = SELECT e FROM Who:a -(WON>)- OlympicEvent:e;
-  Decor1 = SELECT e FROM Events:e -(reverse_DESCRIBES>)- Document:d
+  Decor1 = SELECT e FROM Events:e -(reverse_OG_DESCRIBES>)- Document:d
     ACCUM e.@doc += d.doc_id, e.@title += d.title;
   Decor2 = SELECT e FROM Events:e -(IN_SPORT>)- Sport:s ACCUM e.@sport += s.sport_name;
   Decor3 = SELECT e FROM Events:e -(AT_GAMES>)- Games:g ACCUM e.@year += g.year;

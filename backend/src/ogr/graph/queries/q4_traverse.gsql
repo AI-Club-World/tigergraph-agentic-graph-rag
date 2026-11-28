@@ -27,7 +27,7 @@ FOR GRAPH OlympicGraphRAG SYNTAX V2 {
       VenueEvents = SELECT e FROM Venue:ve -(reverse_HELD_AT>:conn)- OlympicEvent:e
                     WHERE ve.venue_name == anchor;
       // Each event's page (doc_id, title), so venue answers are citable too.
-      VenueDocs = SELECT e FROM VenueEvents:e -(reverse_DESCRIBES>:conn)- Document:doc
+      VenueDocs = SELECT e FROM VenueEvents:e -(reverse_OG_DESCRIBES>:conn)- Document:doc
                   ACCUM @@rows += EventRow(e.event_id, e.event_name, doc.doc_id, doc.title);
       PRINT @@rows AS results;
     END;
@@ -45,7 +45,7 @@ FOR GRAPH OlympicGraphRAG SYNTAX V2 {
       step = step + 1;
     END;
 
-    Resolved = SELECT e FROM Current:e -(reverse_DESCRIBES>:conn)- Document:doc
+    Resolved = SELECT e FROM Current:e -(reverse_OG_DESCRIBES>:conn)- Document:doc
       ACCUM @@rows += EventRow(e.event_id, e.event_name, doc.doc_id, doc.title);
     PRINT @@rows AS results;
   END;

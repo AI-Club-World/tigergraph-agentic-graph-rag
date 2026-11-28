@@ -105,7 +105,7 @@ class TestVertexAndEdgeCounts:
         assert vtypes.count("Venue") == 1
 
         edge_types = {e[2] for e in conn.edges}
-        assert {"DESCRIBES", "AT_GAMES", "IN_SPORT", "HELD_AT"} <= edge_types
+        assert {"OG_DESCRIBES", "AT_GAMES", "IN_SPORT", "HELD_AT"} <= edge_types
 
     def test_shared_games_sport_venue_vertices_are_not_duplicated(self):
         conn = _FakeConn()
