@@ -110,3 +110,12 @@ def real_model() -> CorpusModel:
 @pytest.fixture(scope="session")
 def real(real_model) -> LocalR2Graph:
     return LocalR2Graph(real_model)
+
+
+import pytest  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _no_settle_wait(monkeypatch):
+    """The build waits for server-side counts to settle; stand-in clients need no wait."""
+    monkeypatch.setattr("ogr.r2.build.SETTLE_INTERVAL_S", 0.0)

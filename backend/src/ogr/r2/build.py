@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
@@ -73,6 +74,31 @@ def graph_counts(client: Any) -> dict[str, dict[str, int]]:
         if isinstance(counts, dict):
             out[key] = {name: int(n) for name, n in sorted(counts.items())}
     return out
+
+
+SETTLE_INTERVAL_S = 10.0
+SETTLE_MAX_S = 300.0
+
+
+def settled_graph_counts(
+    client: Any, interval_s: float | None = None, max_s: float | None = None
+) -> dict[str, dict[str, int]]:
+    """`graph_counts`, read until two consecutive reads agree: Savanna applies
+    upserts asynchronously, so counts read right after the load are too low."""
+    interval = SETTLE_INTERVAL_S if interval_s is None else interval_s
+    limit = SETTLE_MAX_S if max_s is None else max_s
+    prev = graph_counts(client)
+    if not (prev["vertices"] or prev["edges"]):
+        return prev
+    waited = 0.0
+    while waited < limit:
+        time.sleep(interval)
+        waited += interval
+        cur = graph_counts(client)
+        if cur == prev:
+            return cur
+        prev = cur
+    return prev
 
 
 def load_r2_layer(client: Any, model: CorpusModel) -> tuple[dict[str, int], dict[str, int]]:
@@ -149,7 +175,7 @@ def build(corpus_path: str | Path, client: Any, counts_path: str | Path | None =
     result = BuildReport(
         loaded_vertices={**vertices, **extra_vertices},
         loaded_edges={"round1_edges_total": report.edges, **edges},
-        graph=graph_counts(client),
+        graph=settled_graph_counts(client),
     )
     if counts_path:
         Path(counts_path).write_text(json.dumps(result.graph, indent=2, sort_keys=True), encoding="utf-8")
