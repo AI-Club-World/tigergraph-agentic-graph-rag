@@ -2,10 +2,10 @@
 
 Current plan for the real brief, through the submission deadline
 (**29 Nov 2026, 23:59 IST**). Written 2026-11-23. Contract:
-[SOLUTION-DESIGN.md](SOLUTION-DESIGN.md); requirements:
+[SOLUTION-DESIGN.md](../../round-2/SOLUTION-DESIGN.md); requirements:
 [APPLICATION-SPEC.md](APPLICATION-SPEC.md); decisions:
 [INTERVIEW-LOG.md](INTERVIEW-LOG.md); what is measured: [RESULTS.md](RESULTS.md);
-submission checklist: [SUBMISSION.md](SUBMISSION.md).
+submission checklist: [SUBMISSION.md](../../round-2/SUBMISSION.md).
 
 Status words: **done offline** = implemented and unit-tested without TigerGraph or
 an LLM; **needs credentials** = cannot be done or measured without them;
@@ -59,7 +59,7 @@ to the organisers: see [INTERVIEW-LOG.md](INTERVIEW-LOG.md).
 Kept as history. It was written when the judged metric was assumed to be the
 Agentic-vs-RAG relative gain. The code it describes (`reasoning/`, `harness/`,
 `datasets/`, the P3 claim tools) exists but is not on the Round-2 answering path
-(see [TECHNICAL-SPEC.md](TECHNICAL-SPEC.md) section 6).
+(see [TECHNICAL-SPEC.md](../../round-2/TECHNICAL-SPEC.md) section 6).
 
 Ordered by expected relative-accuracy gain (Agentic vs RAG) first, so the
 work can ship at any stopping point. **SAFE** = additive, no schema change,

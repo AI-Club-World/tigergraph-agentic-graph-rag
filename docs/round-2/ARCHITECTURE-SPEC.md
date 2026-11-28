@@ -3,7 +3,7 @@
 Describes the Round-2 answering system as built on branch `round-2` (offline
 tested; never run live). Brief: [PROBLEM-STATEMENT.md](PROBLEM-STATEMENT.md).
 Contract: [SOLUTION-DESIGN.md](SOLUTION-DESIGN.md). Decisions:
-[INTERVIEW-LOG.md](INTERVIEW-LOG.md). Round-1 architecture
+[INTERVIEW-LOG.md](../archive/round-2-exploration/INTERVIEW-LOG.md). Round-1 architecture
 ([../round-1/ARCHITECTURE-SPEC.md](../round-1/ARCHITECTURE-SPEC.md)) is unchanged and
 shares only the graph, the loader and the LLM client.
 
@@ -91,14 +91,14 @@ it. `metrics.json` is recomputed from the answer files only.
 
 ## 7. Decisions
 
-D1-D7 and the D4 deviation: [INTERVIEW-LOG.md](INTERVIEW-LOG.md). Not on the
+D1-D7 and the D4 deviation: [INTERVIEW-LOG.md](../archive/round-2-exploration/INTERVIEW-LOG.md). Not on the
 answering path: the Agentic-vs-RAG pipelines and the claim-resolution layer
 (section E below).
 
 ## 8. Open points
 
 Model choice (D5); GSQL never installed; parity between `LocalR2Graph` and the
-GSQL unchecked on a server; see [RESULTS.md](RESULTS.md) sections 3-4.
+GSQL unchecked on a server; see [RESULTS.md](../archive/round-2-exploration/RESULTS.md) sections 3-4.
 
 ---
 
@@ -121,7 +121,7 @@ still apply.
 
 ### E1. Overview
 
-Full design in [DESIGN.md](DESIGN.md); results in [RESULTS.md](RESULTS.md).
+Full design in [DESIGN.md](DESIGN.md); results in [RESULTS.md](../archive/round-2-exploration/RESULTS.md).
 
 ```
 question ─► intent parse (LLM) ─► entity linking ─► temporal scope (rules) ─► claim probe (Q6, 0 tokens)
@@ -144,18 +144,18 @@ question ─► intent parse (LLM) ─► entity linking ─► temporal scope (
 - **Where the LLM is used in Round 2:** nowhere new. Temporal scope,
   relations, reliability, resolution and confidence are deterministic; the
   existing intent parse and answer generation are unchanged.
-- **Known limitations:** see [RESULTS.md](RESULTS.md) §4 (synthetic harness, the
+- **Known limitations:** see [RESULTS.md](../archive/round-2-exploration/RESULTS.md) §4 (synthetic harness, the
   evolving subset is easy once parsed, a coordinated false majority without
   reliability information, per-subset calibration, block-only claim
   extraction, GSQL not yet installed on Savanna).
 
 ### E2. Decision log (Round 2)
 
-Gate decisions with their full context: [INTERVIEW-LOG.md](INTERVIEW-LOG.md).
+Gate decisions with their full context: [INTERVIEW-LOG.md](../archive/round-2-exploration/INTERVIEW-LOG.md).
 
 | Id | Decision | Status |
 |---|---|---|
-| R2-G1 | Round-2 fact layer in the same graph, scoped by dataset (Option A), additive types, Q1–Q5 untouched | Decided by the user 2026-10-24 ([INTERVIEW-LOG.md](INTERVIEW-LOG.md)) |
+| R2-G1 | Round-2 fact layer in the same graph, scoped by dataset (Option A), additive types, Q1–Q5 untouched | Decided by the user 2026-10-24 ([INTERVIEW-LOG.md](../archive/round-2-exploration/INTERVIEW-LOG.md)) |
 | R2-G2 | Answer confidence computed by the agent from the claims (P3 only); shared answer prompt unchanged | Decided 2026-10-24 |
 | R2-G3 | Optional LLM temporal field in the intent parse, only if the dev split shows the deterministic detector falls short | Allowed 2026-10-24; not built |
 | R2-G4 | LLM claim extraction at ingest, Round-2 datasets only, only if needed | Allowed 2026-10-24; not built |

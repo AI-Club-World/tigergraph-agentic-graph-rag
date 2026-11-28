@@ -4,7 +4,7 @@ Deadline: **29 Nov 2026, 23:59 IST**. The seven items follow the numbering of
 [PROBLEM-STATEMENT.md](PROBLEM-STATEMENT.md) ("What to submit"); `data/README.md`
 lists six (no repo link) and numbers the query log 5 and graph counts 6.
 Nothing below has been run yet: it needs TigerGraph and LLM credentials
-([PLAN.md](PLAN.md)). Paths are relative to the repository root.
+([PLAN.md](../archive/round-2-exploration/PLAN.md)). Paths are relative to the repository root.
 
 ## 1. The seven deliverables
 
@@ -56,7 +56,7 @@ Tick each only when done and verified.
 - [ ] Every answer has a TigerGraph step (`answers_with_tigergraph_step` = 50 in both blocks); none produced with `--backend local`.
 - [ ] Query-log timestamps fall inside the matching traces (spot check several qids; log `ts` is a call's start in UTC).
 - [ ] `metrics.json` has both blocks, all fields; hidden `accuracy_pct` is `null`.
-- [ ] README accurate against the code (see the inconsistencies in [RESULTS.md](RESULTS.md) section 4).
+- [ ] README accurate against the code (see the inconsistencies in [RESULTS.md](../archive/round-2-exploration/RESULTS.md) section 4).
 - [ ] Tag `round2-submission` on the committed code; pushed.
 - [ ] Package assembled: repo link, two answer files, `metrics.json`, query log, graph counts; sent before the deadline.
 

@@ -1,7 +1,7 @@
 # TECHNICAL-SPEC.md
 Agentic GraphRAG Hackathon — Three-Pipeline Comparison System
 
-Status: **v0.4 — synchronised with the code, 2026-09-27.** Supersedes v0.3. Fragment-style; every statement is checked against `backend/src/ogr`, `config/`, `env.example`, `frontend/.env.example` and the `Makefile`. Section numbers §1–§14 are stable (code cites them); new material is added as subsections.
+Status: **v0.4 — synchronised with the code, 2026-09-27.** Supersedes v0.3. Fragment-style; every statement is checked against `backend/src/ogr`, `config/`, `.env.example`, `frontend/.env.example` and the `Makefile`. Section numbers §1–§14 are stable (code cites them); new material is added as subsections.
 
 Related documents: `ARCHITECTURE-SPEC.md` (components, routing rule; rationale in its **Decision log**, CI/runtime checks in **Engineering guards**), `EMBEDDING-SWITCHING.md` (per-model embedding storage and switching), `UI-SPEC.md` (screens), `APPLICATION-SPEC.md` (requirements), `README.md` / `DEPLOY.md` (running and deploying). Where this document and the code disagree, the code is the truth and this document is the defect.
 
@@ -539,7 +539,7 @@ Structure follows `tigergraph/graphrag`'s `server_config.json` (`db_config` / `l
 
 File key → env var: `db_config.graphname` TG_GRAPHNAME · `useCert` TG_USE_CERT · `certPath` TG_CERT_PATH · `model_kwargs.temperature` LLM_TEMPERATURE · `max_tokens` LLM_MAX_TOKENS · `thinking_level` LLM_THINKING · `supports_tool_calling` LLM_SUPPORTS_TOOL_CALLING · `reports_token_usage` LLM_REPORTS_TOKEN_USAGE · `nvidia_free_endpoints.catalog_url/catalog_query` NVIDIA_FREE_CATALOG_URL/_QUERY · `embedding_service.model_name` EMBEDDING_MODEL · `rate_limit.max_concurrent` RUN_POOL_SIZE · `requests_per_minute` LLM_REQUESTS_PER_MINUTE · `backoff_base_s` LLM_BACKOFF_BASE_S · `max_retries` LLM_MAX_RETRIES · `api_config.stream_token_ttl_s` OGR_STREAM_TOKEN_TTL_S · `run_defaults.*` RUN_K, RUN_CHUNK_TOKENS, RUN_CHUNK_OVERLAP, RUN_MAX_STEPS, RUN_MAX_TOKENS_PER_QUERY, RUN_MAX_TOTAL_TOKENS, RUN_LATENCY_MODE, RUN_SEED. `embedding_model_service` and `similarity` are descriptive only (not read). `supports_tool_calling`/`reports_token_usage` accept `auto`, `true`, `false`.
 
-### 14.2 Environment variables (`env.example`, backend)
+### 14.2 Environment variables (`.env.example`, backend)
 
 Defaults are the effective ones (file value where the file sets one, else code).
 
@@ -547,14 +547,14 @@ Defaults are the effective ones (file value where the file sets one, else code).
 |---|---|---|
 | TigerGraph | `TG_HOST` | `http://localhost` (Savanna: workspace endpoint) |
 | | `TG_GRAPHNAME` | `OlympicGraphRAG` |
-| | `TG_CLOUD` | `false` in code (`env.example`: `true`) — must be `true` for Savanna |
+| | `TG_CLOUD` | `false` in code (`.env.example`: `true`) — must be `true` for Savanna |
 | | `TG_RESTPP_PORT`, `TG_GS_PORT` | unset; set 14240 etc. for CE only (Savanna derives 443) |
 | | `TG_JWT_TOKEN` › `TG_TOKEN` › `TG_SECRET` › `TG_USERNAME`/`TG_PASSWORD` | first non-empty wins; username default `tigergraph` |
 | | `TG_USE_CERT`, `TG_CERT_PATH` | `true`, unset |
 | Runtime LLM presets | `GEMINI_API_KEY`, `GROQ_API_KEY`, `NVIDIA_API_KEY` | env only (§14.4) |
 | | `NVIDIA_FREE_CATALOG_URL`, `NVIDIA_FREE_CATALOG_QUERY` | from the file |
-| Startup LLM | `LLM_PROVIDER` | `openai_compatible` (`env.example`: `openai`) |
-| | `LLM_MODEL` | `qwen2.5:7b-instruct` (`env.example`: `gpt-4o-mini`) |
+| Startup LLM | `LLM_PROVIDER` | `openai_compatible` (`.env.example`: `openai`) |
+| | `LLM_MODEL` | `qwen2.5:7b-instruct` (`.env.example`: `gpt-4o-mini`) |
 | | `LLM_BASE_URL` | `http://localhost:11434/v1` when unset; an empty value in `.env` means none |
 | | `LLM_API_KEY` | none |
 | | `LLM_TEMPERATURE`, `LLM_MAX_TOKENS`, `LLM_THINKING` | 0, 1024, `minimal` |
@@ -576,7 +576,7 @@ There is no `OGR_HOST`/`OGR_PORT`; bind address and port are uvicorn arguments (
 
 | Rule | Reason / enforcement |
 |---|---|
-| `.env` is git-ignored; `env.example` and `frontend/.env.example` are committed with empty secrets | shape is documentation, values are secrets |
+| `.env` is git-ignored; `.env.example` and `frontend/.env.example` are committed with empty secrets | shape is documentation, values are secrets |
 | No credential in `server_config.json`, a persisted record, an SSE frame, a log or an unauthenticated response | `eval/store._assert_no_secret` on every header, record and import: key shapes (`sk-`, `gsk_`, `AIza`, `hf_`, `gh[pousr]_`, JWT) plus the literal values (≥ 8 chars) of `LLM_API_KEY`, `TG_PASSWORD`, `TG_SECRET`, `TG_TOKEN`, `TG_JWT_TOKEN`, `OGR_API_KEY`. The run header is an explicit allow-list. Health details are redacted (§4.7); `GET /settings` exposes only the base host |
 | `run_config` is written into every run's header | a result without its conditions is not reproducible (NFR-4) |
 | The model is pinned within a run, swappable between runs | each query/run snapshots the config once; P1/P2/P3 share one cached client |

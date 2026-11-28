@@ -59,7 +59,7 @@ Notes that affect the measurement:
 
 ## 4. Inconsistencies noticed between documents and code (2026-11-23)
 
-- [SOLUTION-DESIGN.md](SOLUTION-DESIGN.md) places the GSQL at `graph/schema_r2_answer.gsql`
+- [SOLUTION-DESIGN.md](../../round-2/SOLUTION-DESIGN.md) places the GSQL at `graph/schema_r2_answer.gsql`
   and `graph/queries/r2_*.gsql`; the files are under `backend/src/ogr/graph/`.
 - SOLUTION-DESIGN section 2 omits `published_text` on `SourceRecord` and `place`,
   `event_key` on `WON`, which the code has.
@@ -70,7 +70,7 @@ Notes that affect the measurement:
   `r2-run` exits 1.
 - The code docstrings call the query log "item 5" and the graph counts "item 6"
   (the numbering of `data/README.md`); PROBLEM-STATEMENT numbers them 6 and 7.
-  [SUBMISSION.md](SUBMISSION.md) uses the PROBLEM-STATEMENT numbering.
+  [SUBMISSION.md](../../round-2/SUBMISSION.md) uses the PROBLEM-STATEMENT numbering.
 
 ## 5. Earlier synthetic harness (superseded)
 

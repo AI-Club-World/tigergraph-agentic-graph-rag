@@ -12,7 +12,7 @@ node_modules/
 dist/
 .vite/
 
-# Secrets — env.example carries the shape, .env carries the values
+# Secrets — .env.example carries the shape, .env carries the values
 .env
 .env.local
 
@@ -24,3 +24,6 @@ coverage/
 # OS
 .DS_Store
 Thumbs.db
+
+# TypeScript incremental build cache
+*.tsbuildinfo

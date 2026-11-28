@@ -3,8 +3,8 @@
 How the Round-2 answering system is built. Contract:
 [SOLUTION-DESIGN.md](SOLUTION-DESIGN.md); overview:
 [ARCHITECTURE-SPEC.md](ARCHITECTURE-SPEC.md); requirements:
-[APPLICATION-SPEC.md](APPLICATION-SPEC.md); results:
-[RESULTS.md](RESULTS.md). Round-1 stack and schema:
+[APPLICATION-SPEC.md](../archive/round-2-exploration/APPLICATION-SPEC.md); results:
+[RESULTS.md](../archive/round-2-exploration/RESULTS.md). Round-1 stack and schema:
 [../round-1/TECHNICAL-SPEC.md](../round-1/TECHNICAL-SPEC.md). Offline tested
 only; GSQL not installed on any server yet.
 
@@ -101,7 +101,7 @@ Extends [../round-1/TECHNICAL-SPEC.md](../round-1/TECHNICAL-SPEC.md) (stack,
 Round-1 schema, Q1–Q5, record contracts, evaluation), which still applies.
 
 Design, plan, gate decisions and results: [DESIGN.md](DESIGN.md),
-[PLAN.md](PLAN.md), [INTERVIEW-LOG.md](INTERVIEW-LOG.md), [RESULTS.md](RESULTS.md). Summary
+[PLAN.md](../archive/round-2-exploration/PLAN.md), [INTERVIEW-LOG.md](../archive/round-2-exploration/INTERVIEW-LOG.md), [RESULTS.md](../archive/round-2-exploration/RESULTS.md). Summary
 of what is implemented:
 
 | Area | Module | Notes |
@@ -112,7 +112,7 @@ of what is implemented:
 | Reliability | `reasoning/reliability.py` | dataset prior, else class prior **[ASSUMPTION]** (`CLASS_PRIORS`), else agreement-based estimate |
 | Resolution and confidence | `reasoning/resolve.py` | scope filter → drop superseded → score each value (reliability, corroboration, recency, extraction, hedging) → softmax share × noisy-or support → Platt; numbers answered without qualifiers |
 | Calibration | `eval/calibration.py` | ECE (10 bins), Brier, Platt fit with Platt's smoothed targets |
-| Harness | `harness/` | `python -m ogr.cli harness [--offline]` (see [RESULTS.md](RESULTS.md)) |
+| Harness | `harness/` | `python -m ogr.cli harness [--offline]` (see [RESULTS.md](../archive/round-2-exploration/RESULTS.md)) |
 | Agent | `pipelines/p3_agentic/agents/claims.py`, `orchestrator.py`, `router.py` | probe → `claims` tool → deterministic evaluation (corroborate once below `MARGIN` 0.6) → answer kept to the resolved value → `conflict_resolved` |
 | P2 | `p2_graphrag.py` | the same probe; claims as its one query; no confidence |
 

@@ -1,7 +1,7 @@
 # Round 2 — Solution design (build contract)
 
 The binding contract for the Round-2 submission. Owner decisions D1–D7 of
-[BRIEF-ANALYSIS.md](BRIEF-ANALYSIS.md) §6 are accepted as recommended
+[BRIEF-ANALYSIS.md](../archive/round-2-exploration/BRIEF-ANALYSIS.md) §6 are accepted as recommended
 (2026-11-23). The brief and data: [PROBLEM-STATEMENT.md](PROBLEM-STATEMENT.md),
 [data/README.md](data/README.md).
 

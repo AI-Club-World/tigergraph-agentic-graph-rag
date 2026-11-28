@@ -284,7 +284,7 @@ the graph. Another stored model is not re-embedded by a build; it shows
 |---|---|---|
 | 1 | Model catalog: keys, labels, dims, vertex types, prompts, hosts, cap | `backend/src/ogr/common/embedding_models.py` (new) |
 | 2 | Per-model embedding with prompts, dimension check, `strict` mode | `backend/src/ogr/common/embeddings.py` |
-| 3 | `EMBEDDING_MODEL` normalized to a catalog key; dim from the model | `backend/src/ogr/common/config.py`, `env.example`, `config/server_config.json` |
+| 3 | `EMBEDDING_MODEL` normalized to a catalog key; dim from the model | `backend/src/ogr/common/config.py`, `.env.example`, `config/server_config.json` |
 | 4 | Schema migration: vector-free `Chunk`; five `Embedding_*` types; `HAS_EMBEDDING`; one HNSW per type | `backend/src/ogr/graph/schema.gsql` |
 | 5 | Q5 searches `emb_type`'s own index, returns chunks via `reverse_HAS_EMBEDDING` | `backend/src/ogr/graph/queries/q5_hybrid_search.gsql` |
 | 6 | `hybrid_search(embedding_model)`, `upsert_embeddings`, `delete_embeddings` (type-guarded), `get_chunk_texts` | `backend/src/ogr/graph/client.py` |

@@ -2,13 +2,13 @@
 
 Round-2 brief: build an agentic GraphRAG system on TigerGraph that reasons across
 many documents, weighs sources that disagree, and says honestly what cannot be
-established. Brief: [PROBLEM-STATEMENT.md](PROBLEM-STATEMENT.md),
-[data/README.md](data/README.md). Gap analysis: [BRIEF-ANALYSIS.md](BRIEF-ANALYSIS.md).
-Build contract: [SOLUTION-DESIGN.md](SOLUTION-DESIGN.md). Owner decisions D1-D7:
+established. Brief: [PROBLEM-STATEMENT.md](../../round-2/PROBLEM-STATEMENT.md),
+[data/README.md](../../round-2/data/README.md). Gap analysis: [BRIEF-ANALYSIS.md](BRIEF-ANALYSIS.md).
+Build contract: [SOLUTION-DESIGN.md](../../round-2/SOLUTION-DESIGN.md). Owner decisions D1-D7:
 [INTERVIEW-LOG.md](INTERVIEW-LOG.md). Companion documents:
-[ARCHITECTURE-SPEC.md](ARCHITECTURE-SPEC.md), [TECHNICAL-SPEC.md](TECHNICAL-SPEC.md),
-[PLAN.md](PLAN.md), [RESULTS.md](RESULTS.md), [SUBMISSION.md](SUBMISSION.md).
-Round-1 requirements ([../round-1/APPLICATION-SPEC.md](../round-1/APPLICATION-SPEC.md))
+[ARCHITECTURE-SPEC.md](../../round-2/ARCHITECTURE-SPEC.md), [TECHNICAL-SPEC.md](../../round-2/TECHNICAL-SPEC.md),
+[PLAN.md](PLAN.md), [RESULTS.md](RESULTS.md), [SUBMISSION.md](../../round-2/SUBMISSION.md).
+Round-1 requirements ([../round-1/APPLICATION-SPEC.md](../../round-1/APPLICATION-SPEC.md))
 still apply to the Round-1 code, which Round 2 does not change.
 
 Status (2026-11-23): the system is built on branch `round-2` and tested offline.
@@ -23,7 +23,7 @@ explicitly, so the relative-gain targets and the no-abstention policy are droppe
 (decisions D1 and D2). The synthetic-harness requirements (R2-FR-1 to R2-FR-12,
 R2-NFR-1 to R2-NFR-6 of that version) are superseded; that work is kept as
 earlier work in [RESULTS.md](RESULTS.md) section 5 and
-[TECHNICAL-SPEC.md](TECHNICAL-SPEC.md) section 6, and is not on the answering path.
+[TECHNICAL-SPEC.md](../../round-2/TECHNICAL-SPEC.md) section 6, and is not on the answering path.
 
 ## 1. Judging criteria and the evidence for each
 
@@ -36,7 +36,7 @@ earlier work in [RESULTS.md](RESULTS.md) section 5 and
 | Evidence (10%) | `citations` limited to doc_ids that tools returned; prompt asks for the doc_ids that support each fact | Built; citation precision not measured (public `gold_doc_ids` allow it) |
 | Repeatability (15%) | `build.sh` / `run.sh`, `backend/requirements.lock`, `.env.example`, traces written as the code runs, query log, token-sum and step-time checks, graph counts, git tag | Scripts and writers built; no live run, so no log to compare with traces yet |
 | Efficiency (10%) | Per-question tokens, latency, LLM calls and TigerGraph queries in `metrics.json`; `R2_MAX_STEPS` bounds tool calls; no embeddings at answer time | Counters built; values unknown until the first run (model choice D5 open) |
-| Live judging (15%) | README "Round 2 architecture"; the trace of every answer; a prepared live-call kit in [SUBMISSION.md](SUBMISSION.md) | README written; demo not rehearsed on a live system |
+| Live judging (15%) | README "Round 2 architecture"; the trace of every answer; a prepared live-call kit in [SUBMISSION.md](../../round-2/SUBMISSION.md) | README written; demo not rehearsed on a live system |
 
 ## 2. Scope decisions
 
@@ -114,7 +114,7 @@ are proxies for the organisers' key.
 | The model over- or under-abstains | Medium | Lower accuracy or honesty | Look at `check` once; adjust general prompt rules only |
 | Model does not support native tool calling or does not report token usage | Medium | Agent loop fails, or tokens are estimated | `LLM_SUPPORTS_TOOL_CALLING`, `LLM_REPORTS_TOKEN_USAGE`; estimated tokens are marked in the trace `note` |
 | Source-record weighing is left to the LLM (D4 deviation) | Medium | Inconsistent answers on conflicting-source questions | Authority and time are given as fields; compare the public source-record questions |
-| Rerun with the same output file skips answered qids | Certain | A stale file mistaken for a fresh run | Delete answer files, query log and `out/r2/` before the final runs ([SUBMISSION.md](SUBMISSION.md)) |
+| Rerun with the same output file skips answered qids | Certain | A stale file mistaken for a fresh run | Delete answer files, query log and `out/r2/` before the final runs ([SUBMISSION.md](../../round-2/SUBMISSION.md)) |
 | A hidden answer cannot be reproduced live (model drift) | Medium | Repeatability and disqualification risk | Temperature 0, same model and settings, keep the traces; rehearse reproduction |
 
 ## 7. Open questions

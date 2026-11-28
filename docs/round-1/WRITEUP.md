@@ -127,7 +127,7 @@ is the mean of per-question Agentic ÷ RAG ratios, as on the dashboard):
 0.74 → 0.80, lookup 0.74 → 1.00, aggregation 0.71 → 0.86. RAG stayed at
 0.62, as a control should. Each root cause and its fix, with the owner's
 decision where one changed routing or retrieved context, is in
-`docs/round-1/SCORE-AUDIT.md`.
+`docs/archive/round-1/SCORE-AUDIT.md`.
 
 **Hidden set (50 questions, run once, on the system before answer verification and anchor recovery — the `r2` system plus the venue/date fix; kept rather than rerun, by the owner's decision):** 0 pipeline
 errors in 150 answers.
@@ -141,7 +141,7 @@ errors in 150 answers.
 The router answered 36 of the 50 without the loop, at a median of 2,094
 tokens; the 14 loop runs cost a median of 12,026. The hidden set has no gold
 answers, so there is no EM or F1. The raw outputs (answer, tokens, citations
-and every agentic trace) are in `submission/hidden-set-export.json`
+and every agentic trace) are in `submission/hidden-set-export.json` (in this folder)
 (`python -m ogr.cli export`, `make results`).
 
 ## Limitations
@@ -172,58 +172,3 @@ and every agentic trace) are in `submission/hidden-set-export.json`
 2. A second intent parse when the operation and the linked anchors disagree.
 3. Round 2: facts carry source and date; supersession and source authority.
 4. A shared session store for several API replicas.
-
-## Demo script (3 minutes)
-
-Slides: the "Agentic GraphRAG — final presentation" deck (13 slides, speaker
-notes on each). The application is open: no sign-in is needed.
-
-1. **Build screen** (20 s): the graph loads from the corpus. The counts
-   match the numbers above, and the embedding model and its index state are
-   shown.
-2. **Search, a counting question** (40 s): "How many biathlon events at the
-   2006 Winter Olympics had more than 72 competitors?" RAG guesses; GraphRAG
-   and Agentic answer 4. The Agentic trace shows the direct route (Q2), the
-   four events it counted, and each one cited.
-3. **Search, a venue question** (60 s): "Who won the gold medal in the event
-   held at Beijing National Stadium on 16 August 2008?" Show the trace:
-   venue → the 2008 events there → the one on 16 August → Valerie Vili, with
-   the strategy change and stop reason. GraphRAG, with no loop, cannot chain
-   it.
-4. **Dashboard** (40 s): the per-type worth-it table (aggregation "Worth
-   it", lookup "Overkill"). Then the direct-vs-loop token split, and
-   grounding per pipeline.
-5. **Close** (20 s): the agent is not always better. It pays where
-   structure matters (counts, chains), costs less where the router skips
-   the loop, and ties RAG on single facts.
-
-## Judges' Q&A: likely questions, short answers
-
-- **Is the comparison fair?** One LLM for all three pipelines, a byte-identical
-  answer prompt, one deterministic scorer. Every graph-side fix runs in
-  GraphRAG too, so Agentic − GraphRAG is the loop and GraphRAG − RAG the graph.
-- **Did you tune on the public set?** No prompt was tuned. Each gain is a named
-  root cause found in the traces (`SCORE-AUDIT.md` §3–§6), and RAG, which no
-  fix touched, stayed at 0.59–0.62 in every run.
-- **Why is the agent's grounding lower than RAG's?** RAG cites long text
-  chunks, so its answer's names are almost always in them. A count answer
-  cites a count row with no prose. The verification step reports graph
-  support separately: 90 of 100 agentic answers.
-- **When is the agent not worth it?** Single-fact lookups and dates: RAG is
-  already exact there. The router keeps those cheap (direct route, one query).
-- **Why is it cheaper than RAG?** 62% of questions take the direct route
-  (median under 2,000 tokens); RAG always sends ten chunks.
-- **What fails?** Two of 100 in r5: an intent parse that put the venue in
-  the event slot (fixed after r5) and a copied evidence field in the answer.
-  The open cases are intent-parse variance and venue days that several
-  events share; the right behaviour there is to ask back.
-- **Hidden set?** Run once, raw outputs in `submission/`. No gold, so cost,
-  routing and grounding only.
-- **How is it secured?** It is an open demo application: no sign-in, and no
-  secret in the browser bundle (the build refuses a `VITE_API_KEY`). Backend
-  credentials stay in the server's `.env`; a public deployment goes behind a
-  proxy with its own authentication.
-- **What is novel?** Necessity routing refined after entity linking, exact
-  event ids derived the way ingest builds them, gazetteer anchor recovery, a
-  zero-token answer-verification step with conflict reporting, per-model
-  HNSW indices, and a grounding score that needs no gold.

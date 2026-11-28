@@ -1,5 +1,5 @@
 # REPRO-01 / NFR-4: clean clone -> full run with one command.
-# Needs a filled-in .env (copy env.example): TigerGraph workspace + LLM endpoint.
+# Needs a filled-in .env (copy .env.example): TigerGraph workspace + LLM endpoint.
 #   make reproduce   install, check, verify endpoints, build graph, run all benchmarks
 # Outputs: out/$(RUN_ID)-public.jsonl (throughput), out/$(RUN_ID)-public-timing.jsonl
 # (latency figures), out/$(RUN_ID)-holdout.jsonl (one-time hidden-set run),

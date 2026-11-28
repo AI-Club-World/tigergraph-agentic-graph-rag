@@ -90,11 +90,11 @@ Multihop30". The repository's Round-1 sets are `eval_public.jsonl` (100) and
 
 ## Round-2 decisions on the real brief (2026-11-23)
 
-Context: the real brief ([PROBLEM-STATEMENT.md](PROBLEM-STATEMENT.md),
-[data/README.md](data/README.md)) scores one system's hidden-set answers fact by
+Context: the real brief ([PROBLEM-STATEMENT.md](../../round-2/PROBLEM-STATEMENT.md),
+[data/README.md](../../round-2/data/README.md)) scores one system's hidden-set answers fact by
 fact, with statuses `answered`, `partial` and `not_in_corpus`. The gap analysis
 is [BRIEF-ANALYSIS.md](BRIEF-ANALYSIS.md); the resulting build contract is
-[SOLUTION-DESIGN.md](SOLUTION-DESIGN.md). The owner accepted D1-D7 as
+[SOLUTION-DESIGN.md](../../round-2/SOLUTION-DESIGN.md). The owner accepted D1-D7 as
 recommended.
 
 **Superseded answer policy.** The earlier policy, "always commit to one best
