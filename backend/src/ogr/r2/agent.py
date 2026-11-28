@@ -149,6 +149,11 @@ def answer_question(qid: str, question: str, graph: R2Graph, model: Any, config:
     trace = TraceRecorder(qid, querylog)
     ctx = ToolContext()
     try:
+        if os.environ.get("R2_TOOL_MODE", "native").strip().lower() == "text":
+            from ogr.r2.text_tools import run_text_loop
+
+            finish = run_text_loop(question, graph, model, config, trace, ctx, budget, _call, SYSTEM_PROMPT)
+            return _finalize(qid, finish, ctx, trace, started)
         messages: list[Any] = [SystemMessage(content=SYSTEM_PROMPT), HumanMessage(content=question)]
         bound = _bind(model, [*TOOL_SPECS, {"type": "function", "function": FINISH_SPEC}])
         used = 0
