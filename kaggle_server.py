@@ -36,6 +36,11 @@ API_KEY = ""                      # optional: if set, every endpoint except /hea
 CLOUDFLARE_TUNNEL_TOKEN = ""
 CLOUDFLARE_TUNNEL_HOSTNAME = ""   # e.g. llm.example.com (no "https://")
 
+ENABLE_EMBEDDINGS = True          # False: no embedding models are loaded or downloaded;
+                                  #        /embed* answer 503 (frees GPU 0 and startup time)
+ENABLE_CHAT = True                # False: no Ollama, no chat model; /chat* and /v1/* answer 503
+                                  # (at least one of the two must be True)
+
 MAX_RUNTIME_HOURS = 8             # the script stops itself after this long
 CHAT_MODEL = "gemma4:12b"         # any Ollama library tag; the Round-2 agent needs one
                                   # that Ollama marks as supporting TOOLS (tool calling)
@@ -89,6 +94,8 @@ def banner(msg):
 
 if MODE not in ("serve", "seed"):
     raise ValueError(f'MODE must be "serve" or "seed", got {MODE!r}')
+if not (ENABLE_EMBEDDINGS or ENABLE_CHAT):
+    raise ValueError("ENABLE_EMBEDDINGS and ENABLE_CHAT are both False: nothing to serve")
 
 # ------------------------------------------------------------ dependencies
 def install_dependencies():
@@ -280,17 +287,33 @@ app = FastAPI(title="Kaggle Embedding + Chat Server")
 AUTH = [Depends(require_key)]
 
 
+def need_embeddings():
+    if not ENABLE_EMBEDDINGS:
+        raise HTTPException(503, "embedding models are disabled on this server (ENABLE_EMBEDDINGS = False)")
+
+
+def need_chat():
+    if not ENABLE_CHAT:
+        raise HTTPException(503, "the chat model is disabled on this server (ENABLE_CHAT = False)")
+
+
+EMBED = AUTH + [Depends(need_embeddings)]
+CHAT = AUTH + [Depends(need_chat)]
+
+
 @app.get("/health")
 def health():
-    try:
-        pulled = CHAT_MODEL in [m["model"] for m in ollama_client.list().get("models", [])]
-    except Exception:
-        pulled = False
-    return {"status": "ok", "embedding_models_loaded": list(LOADED.keys()),
-            "chat_model_pulled": pulled}
+    pulled = False
+    if ENABLE_CHAT and ollama_client is not None:
+        try:
+            pulled = CHAT_MODEL in [m["model"] for m in ollama_client.list().get("models", [])]
+        except Exception:
+            pulled = False
+    return {"status": "ok", "embeddings_enabled": ENABLE_EMBEDDINGS, "chat_enabled": ENABLE_CHAT,
+            "embedding_models_loaded": list(LOADED.keys()), "chat_model_pulled": pulled}
 
 
-@app.get("/embed/status", dependencies=AUTH)
+@app.get("/embed/status", dependencies=EMBED)
 def embed_status():
     results = {}
     for name, info in LOADED.items():
@@ -304,7 +327,7 @@ def embed_status():
     return {"all_up": all(r["up"] for r in results.values()), "models": results}
 
 
-@app.get("/chat/status", dependencies=AUTH)
+@app.get("/chat/status", dependencies=CHAT)
 def chat_status():
     try:
         t0 = time.time()
@@ -316,7 +339,7 @@ def chat_status():
         return {"up": False, "model": CHAT_MODEL, "error": str(e)}
 
 
-@app.get("/models", dependencies=AUTH)
+@app.get("/models", dependencies=EMBED)
 def list_models():
     return {n: {"repo": i["repo"], "dim": i["dim"], "max_seq_length": i["max_seq_length"],
                 "device": i["device"],
@@ -324,7 +347,7 @@ def list_models():
             for n, i in LOADED.items()}
 
 
-@app.post("/embed", dependencies=AUTH)
+@app.post("/embed", dependencies=EMBED)
 def embed(req: EmbedRequest):
     if req.model not in LOADED:
         raise HTTPException(404, f"unknown model '{req.model}'. Available: {list(LOADED.keys())}")
@@ -337,7 +360,7 @@ def embed(req: EmbedRequest):
     return {"model": req.model, "dim": info["dim"], "embeddings": vectors.tolist()}
 
 
-@app.post("/chat", dependencies=AUTH)
+@app.post("/chat", dependencies=CHAT)
 def chat(req: ChatRequest):
     try:
         r = ollama_client.chat(model=CHAT_MODEL, messages=req.messages,
@@ -353,7 +376,7 @@ def chat(req: ChatRequest):
 # OpenAI-compatible API: /v1/* is forwarded to Ollama's own OpenAI endpoint
 # (chat completions with tool calling and token usage, /v1/models). Clients
 # such as the Round-2 agent use LLM_BASE_URL=<public url>/v1, any API key.
-@app.api_route("/v1/{path:path}", methods=["GET", "POST"], dependencies=AUTH)
+@app.api_route("/v1/{path:path}", methods=["GET", "POST"], dependencies=CHAT)
 async def openai_compat(path: str, request: Request):
     import httpx
     body = await request.body()
@@ -415,11 +438,17 @@ def run_cloudflare(port):
 # ------------------------------------------------------------ MODE: seed
 def run_seed():
     banner("SEED MODE: downloading models once so later runs can skip the download")
-    for name, cfg in MODEL_REGISTRY.items():
-        download_embedding_model(name, cfg)
-    proc, client = start_ollama()
-    pull_model(client, CHAT_MODEL)
-    proc.terminate()
+    if ENABLE_EMBEDDINGS:
+        for name, cfg in MODEL_REGISTRY.items():
+            download_embedding_model(name, cfg)
+    else:
+        log("embeddings disabled: skipping embedding downloads")
+    if ENABLE_CHAT:
+        proc, client = start_ollama()
+        pull_model(client, CHAT_MODEL)
+        proc.terminate()
+    else:
+        log("chat disabled: skipping the Ollama model pull")
     banner("SEED COMPLETE")
     log(f"hf_cache      : {dir_size_gb(HF_DIR):.1f} GB   ({HF_DIR})")
     log(f"ollama_models : {dir_size_gb(OLLAMA_DIR):.1f} GB   ({OLLAMA_DIR})")
@@ -439,11 +468,14 @@ def run_serve():
     tunnel_token = get_setting("CLOUDFLARE_TUNNEL_TOKEN", CLOUDFLARE_TUNNEL_TOKEN)
     tunnel_host = get_setting("CLOUDFLARE_TUNNEL_HOSTNAME", CLOUDFLARE_TUNNEL_HOSTNAME)
 
-    banner("LOADING EMBEDDING MODELS ONTO GPU 0")
-    n_gpus = torch.cuda.device_count()
-    device = "cuda:0" if n_gpus > 0 else "cpu"
-    log(f"visible GPUs: {n_gpus} -> embeddings on {device}")
-    for name, cfg in MODEL_REGISTRY.items():
+    if ENABLE_EMBEDDINGS:
+        banner("LOADING EMBEDDING MODELS ONTO GPU 0")
+        n_gpus = torch.cuda.device_count()
+        device = "cuda:0" if n_gpus > 0 else "cpu"
+        log(f"visible GPUs: {n_gpus} -> embeddings on {device}")
+    else:
+        log("embeddings disabled (ENABLE_EMBEDDINGS = False)")
+    for name, cfg in (MODEL_REGISTRY.items() if ENABLE_EMBEDDINGS else []):
         local = local_model_dir(name)
         use_local = os.path.exists(os.path.join(local, "config.json"))
         log(f"loading {name} from {'cache' if use_local else 'Hugging Face (downloading)'} ...")
@@ -458,16 +490,20 @@ def run_serve():
         }
         log(f"  -> ready, dim={LOADED[name]['dim']}")
 
-    banner("STARTING OLLAMA + CHAT MODEL")
-    ollama_proc, ollama_client = start_ollama()
-    pull_model(ollama_client, CHAT_MODEL)
-    log(f"chat model ready: {CHAT_MODEL} (test reply: {test_chat(ollama_client)!r})")
-    tools = tools_supported(CHAT_MODEL)
-    if tools is False:
-        log(f"WARNING: Ollama does not list TOOLS for {CHAT_MODEL}: the Round-2 agent needs tool "
-            "calling. Pick a tool-capable model (ollama.com/search?c=tools) in CHAT_MODEL.")
+    ollama_proc = tools = None
+    if ENABLE_CHAT:
+        banner("STARTING OLLAMA + CHAT MODEL")
+        ollama_proc, ollama_client = start_ollama()
+        pull_model(ollama_client, CHAT_MODEL)
+        log(f"chat model ready: {CHAT_MODEL} (test reply: {test_chat(ollama_client)!r})")
+        tools = tools_supported(CHAT_MODEL)
+        if tools is False:
+            log(f"WARNING: Ollama does not list TOOLS for {CHAT_MODEL}: the Round-2 agent needs tool "
+                "calling. Pick a tool-capable model (ollama.com/search?c=tools) in CHAT_MODEL.")
+        else:
+            log(f"tool calling: {'supported' if tools else 'unknown'}")
     else:
-        log(f"tool calling: {'supported' if tools else 'unknown'}")
+        log("chat disabled (ENABLE_CHAT = False): Ollama is not started")
 
     # 8000 when free: a named tunnel's hostname is configured to point there.
     port = find_free_port()
@@ -498,18 +534,20 @@ def run_serve():
            else "TUNNEL UP BUT LOCAL HEALTH CHECK FAILED -- see log above")
     log(f"Tunnel      : {mode_label}")
     log(f"Public URL  : {public_url}")
-    log(f"Embeddings  : {list(LOADED.keys())}  (GPU 0)")
-    log(f"Chat model  : {CHAT_MODEL}  (Ollama, context {CHAT_CONTEXT}, tools: {tools})")
+    log(f"Embeddings  : {list(LOADED.keys()) if ENABLE_EMBEDDINGS else 'DISABLED'}")
+    log(f"Chat model  : {f'{CHAT_MODEL}  (Ollama, context {CHAT_CONTEXT}, tools: {tools})' if ENABLE_CHAT else 'DISABLED'}")
     log(f"API key     : {'REQUIRED (header X-API-Key)' if API_KEY_VALUE else 'not set (endpoints are open)'}")
     log("-" * 64)
     log(f"GET  {public_url}/health          fast check, no inference")
-    log(f"GET  {public_url}/embed/status    runs a real test embed")
-    log(f"GET  {public_url}/chat/status     runs a real test generation")
-    log(f"GET  {public_url}/models")
-    log(f"POST {public_url}/embed   " + '{"model": "bge-large-en-v1.5", "texts": ["hello world"]}')
-    log(f"POST {public_url}/chat    " + '{"messages": [{"role": "user", "content": "hi"}]}')
-    log(f"OpenAI-compatible (Round-2 agent): LLM_BASE_URL={public_url}/v1  LLM_MODEL={CHAT_MODEL}")
-    log(f"Embeddings (web UI)            : EMBEDDING_HOST_URL={public_url}")
+    if ENABLE_EMBEDDINGS:
+        log(f"GET  {public_url}/embed/status    runs a real test embed")
+        log(f"GET  {public_url}/models")
+        log(f"POST {public_url}/embed   " + '{"model": "bge-large-en-v1.5", "texts": ["hello world"]}')
+        log(f"Embeddings (web UI)            : EMBEDDING_HOST_URL={public_url}")
+    if ENABLE_CHAT:
+        log(f"GET  {public_url}/chat/status     runs a real test generation")
+        log(f"POST {public_url}/chat    " + '{"messages": [{"role": "user", "content": "hi"}]}')
+        log(f"OpenAI-compatible (Round-2 agent): LLM_BASE_URL={public_url}/v1  LLM_MODEL={CHAT_MODEL}")
     log("=" * 64)
 
     start = time.time()
