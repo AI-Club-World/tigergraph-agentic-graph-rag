@@ -1,0 +1,37 @@
+{
+  "public": {
+    "questions": 50,
+    "accuracy_pct": 88.8,
+    "accuracy_method": "Own deterministic fact-level partial-credit scorer (ogr.r2.score): status must match (not_in_corpus only if predicted not_in_corpus with no answer); gold answers are flattened to atomic facts (normalised strings, numbers, list items, dict values; prose answers reduced to numbers, capitalised names and yes/no polarity); score = F1 against facts found in a structured prediction, or recall of facts present as whole-word matches in a free-text prediction; mean over questions.",
+    "not_in_corpus_answers": 5,
+    "input_tokens_total": 597677,
+    "output_tokens_total": 59949,
+    "tokens_per_question_avg": 13152.5,
+    "latency_ms_avg": 12057.9,
+    "latency_ms_p50": 9502,
+    "latency_ms_p95": 27411,
+    "llm_calls_per_question_avg": 3.06,
+    "tigergraph_queries_per_question_avg": 3.34,
+    "trace_steps_per_question_avg": 6.42,
+    "answers_with_tigergraph_step": 50,
+    "total_run_time_s": 606.4,
+    "cost_usd_total": 0.0
+  },
+  "hidden": {
+    "questions": 50,
+    "accuracy_pct": null,
+    "not_in_corpus_answers": 5,
+    "input_tokens_total": 857291,
+    "output_tokens_total": 71503,
+    "tokens_per_question_avg": 18575.9,
+    "latency_ms_avg": 14178.3,
+    "latency_ms_p50": 12160,
+    "latency_ms_p95": 24888,
+    "llm_calls_per_question_avg": 3.12,
+    "tigergraph_queries_per_question_avg": 3.42,
+    "trace_steps_per_question_avg": 6.56,
+    "answers_with_tigergraph_step": 50,
+    "total_run_time_s": 710.7,
+    "cost_usd_total": 0.0
+  }
+}
