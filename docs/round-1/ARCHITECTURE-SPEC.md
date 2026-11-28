@@ -390,7 +390,7 @@ One line per decision ID cited in the code. `DP-n` numbers were assigned per are
 
 ## Known limitations
 
-- **Round 2 is built but not measured live.** Fact versioning, supersession, source reliability and confidence exist ([../round-2/ARCHITECTURE-SPEC.md](../round-2/ARCHITECTURE-SPEC.md)); no live pipeline run has used them yet ([../round-2/RESULTS.md](../round-2/RESULTS.md)).
+- **The Round-2 claim layer is not the submitted Round-2 system.** Fact versioning, supersession, source reliability and confidence exist in the code (see [../round-2/DESIGN.md](../round-2/DESIGN.md)) but were built before the Round-2 brief; the submitted Round-2 system is described in [../round-2/ARCHITECTURE-SPEC.md](../round-2/ARCHITECTURE-SPEC.md).
 - **Open access.** There is no sign-in (TECHNICAL-SPEC §4.5): anyone who can reach the API can build, reset and start benchmarks.
 - **GSQL is tested live by the benchmark runs, statically in CI.** The schema and Q1–Q5 are installed and run against a TigerGraph Savanna workspace by every build and benchmark; CI checks them only statically (`tests/graph/test_schema.py`).
 - **Traversal follows `PREV_EDITION` only.** Multi-hop and traversal agents use PREV_EDITION or HELD_AT; `NEXT_EDITION` exists in the schema and Q4 but no agent calls it (the dataset has no "next edition" questions).

@@ -1,9 +1,7 @@
 # Round 2 - Architecture spec
 
-Describes the Round-2 answering system as built on branch `round-2` (offline
-tested; never run live). Brief: [PROBLEM-STATEMENT.md](PROBLEM-STATEMENT.md).
-Contract: [SOLUTION-DESIGN.md](SOLUTION-DESIGN.md). Decisions:
-[INTERVIEW-LOG.md](../archive/round-2-exploration/INTERVIEW-LOG.md). Round-1 architecture
+Describes the Round-2 answering system. Brief: [PROBLEM-STATEMENT.md](PROBLEM-STATEMENT.md).
+Contract: [SOLUTION-DESIGN.md](SOLUTION-DESIGN.md). Round-1 architecture
 ([../round-1/ARCHITECTURE-SPEC.md](../round-1/ARCHITECTURE-SPEC.md)) is unchanged and
 shares only the graph, the loader and the LLM client.
 
@@ -22,7 +20,7 @@ question --(run.sh: ogr.cli r2-run)--> agent loop (LLM, native tool calling, tem
           answers.jsonl --> r2-score (public) --> r2-metrics --> out/r2/metrics.json
 ```
 
-One system answers (D2). The three-pipeline comparison of Round 1 stays in the
+One system answers. The three-pipeline comparison of Round 1 stays in the
 demo UI and is not part of `run.sh`.
 
 ## 2. Components
@@ -37,7 +35,7 @@ demo UI and is not part of `run.sh`.
 | Output | `ogr.r2.output`, `trace`, `querylog`, `metrics` | Answer record and validator, trace recorder, query log, `metrics.json` |
 | Evaluation | `ogr.r2.score`, `split` | Fact-level public scorer; deterministic dev/check split |
 
-## 3. Graph additions (D3)
+## 3. Graph additions
 
 | Type | Meaning |
 |---|---|
@@ -49,8 +47,7 @@ demo UI and is not part of `run.sh`.
 
 Authority classes come from a general lexicon over the `Source:` line:
 `official`, `operational`, `secondary`, `unreliable` (`unclassified` when no
-rule fires). Source records are **not** LLM-extracted at build (deviation from
-D4); the answering LLM weighs them.
+rule fires). Source records are **not** LLM-extracted at build; the answering LLM weighs them.
 
 ## 4. Tools
 
@@ -89,75 +86,19 @@ marked in `note`). Every graph call is a step with `query`, `params`, `rows`,
 qid, step). Answer token totals are the sum over LLM steps; the validator checks
 it. `metrics.json` is recomputed from the answer files only.
 
-## 7. Decisions
+## 7. Not on the answering path
 
-D1-D7 and the D4 deviation: [INTERVIEW-LOG.md](../archive/round-2-exploration/INTERVIEW-LOG.md). Not on the
-answering path: the Agentic-vs-RAG pipelines and the claim-resolution layer
-(section E below).
+The Agentic-vs-RAG pipelines (Round 1) and the earlier claim-resolution layer
+(`ogr.reasoning`, `ogr.harness`, `ogr.datasets`, the P3 claim tools). They stay
+in the repository and are tested; `ogr.r2` does not call them. The one trace of
+them: `ogr.r2.build` imports helpers from `ogr.ingest.load_claims`, a module
+that itself imports `ogr.reasoning` at load time; the helpers used do not call
+it. The graph build also installs the earlier fact-layer types (Entity, Claim,
+Source, Dataset) and reuses Entity and Claim for infobox facts. The earlier
+design is in [DESIGN.md](DESIGN.md).
 
-## 8. Open points
+## 8. Checking the GSQL against the Python copy
 
-Model choice (D5); GSQL never installed; parity between `LocalR2Graph` and the
-GSQL unchecked on a server; see [RESULTS.md](../archive/round-2-exploration/RESULTS.md) sections 3-4.
-
----
-
-## Earlier work, not on the answering path
-
-Round-2 architecture from before the real brief (claim resolver, temporal
-scope, harness). It is still in the repository and tested, but `ogr.r2` does
-not call it: `ogr.r2` imports no module of `ogr.reasoning`, `ogr.harness` or
-`ogr.pipelines`. The one trace of it: `ogr.r2.build` imports helpers from
-`ogr.ingest.load_claims`, a module that itself imports `ogr.reasoning` at load
-time; the helpers used (`_claim_attrs`, `_upsert_vertices`, `_upsert_edges`)
-do not call it. The Round-2 graph build also still installs the earlier fact
-layer types (Entity, Claim, Source, Dataset) via `install_round2`, and reuses
-Entity and Claim for infobox facts. The text below is the earlier spec,
-unchanged except for heading levels.
-
-Extends [../round-1/ARCHITECTURE-SPEC.md](../round-1/ARCHITECTURE-SPEC.md):
-the Round-1 containers, agents, routing and decision log are unchanged and
-still apply.
-
-### E1. Overview
-
-Full design in [DESIGN.md](DESIGN.md); results in [RESULTS.md](../archive/round-2-exploration/RESULTS.md).
-
-```
-question ─► intent parse (LLM) ─► entity linking ─► temporal scope (rules) ─► claim probe (Q6, 0 tokens)
-                                                                                │
-                      claims matter (time-scoped, disagreeing or hedged)? ─────┤
-                      no  ─► Round-1 route, unchanged                           │
-                      yes ─► loop: claims tool ─► resolution (scope → supersession → score → confidence)
-                                     │ share < MARGIN ─► one corroborating Q5 search
-                                     ▼
-                     shared answer prompt (context = labelled candidate values, chosen first)
-                                     ▼
-                     answer kept to the resolved value · confidence · conflicts · conflict_resolved
-```
-
-- **Dataset adapter layer** (`datasets/`): a new dataset needs a new
-  adapter; the reasoning code reads only `ClaimRecord`/`SourceRecord`.
-- **Fact layer** in the graph (`Dataset, Source, Entity, Claim` and
-  `IN_DATASET, ASSERTS, FROM_SOURCE, ABOUT, SUPERSEDES, CONTRADICTS`), next
-  to the unchanged Round-1 types.
-- **Where the LLM is used in Round 2:** nowhere new. Temporal scope,
-  relations, reliability, resolution and confidence are deterministic; the
-  existing intent parse and answer generation are unchanged.
-- **Known limitations:** see [RESULTS.md](../archive/round-2-exploration/RESULTS.md) §4 (synthetic harness, the
-  evolving subset is easy once parsed, a coordinated false majority without
-  reliability information, per-subset calibration, block-only claim
-  extraction, GSQL not yet installed on Savanna).
-
-### E2. Decision log (Round 2)
-
-Gate decisions with their full context: [INTERVIEW-LOG.md](../archive/round-2-exploration/INTERVIEW-LOG.md).
-
-| Id | Decision | Status |
-|---|---|---|
-| R2-G1 | Round-2 fact layer in the same graph, scoped by dataset (Option A), additive types, Q1–Q5 untouched | Decided by the user 2026-10-24 ([INTERVIEW-LOG.md](../archive/round-2-exploration/INTERVIEW-LOG.md)) |
-| R2-G2 | Answer confidence computed by the agent from the claims (P3 only); shared answer prompt unchanged | Decided 2026-10-24 |
-| R2-G3 | Optional LLM temporal field in the intent parse, only if the dev split shows the deterministic detector falls short | Allowed 2026-10-24; not built |
-| R2-G4 | LLM claim extraction at ingest, Round-2 datasets only, only if needed | Allowed 2026-10-24; not built |
-| R2-5 | Conflict resolution is deterministic and inspectable; the LLM phrases the answer; when the model answers a value the resolution ranked lower, the resolved value stands (logged on the trace) | Followed (`orchestrator.node_generate`) |
-| R2-6 | One corroborating search when the resolved value's share is below `MARGIN` (0.6); then commit (answer policy: always answer, with confidence and cited losers) | Followed |
+`backend/scripts/r2_parity.py` runs each tool on TigerGraph and on
+`LocalR2Graph` for a fixed set of parameters and compares the rows:
+`cd backend && python3 scripts/r2_parity.py --verbose`.

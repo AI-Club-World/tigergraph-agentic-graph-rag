@@ -2,11 +2,8 @@
 
 How the Round-2 answering system is built. Contract:
 [SOLUTION-DESIGN.md](SOLUTION-DESIGN.md); overview:
-[ARCHITECTURE-SPEC.md](ARCHITECTURE-SPEC.md); requirements:
-[APPLICATION-SPEC.md](../archive/round-2-exploration/APPLICATION-SPEC.md); results:
-[RESULTS.md](../archive/round-2-exploration/RESULTS.md). Round-1 stack and schema:
-[../round-1/TECHNICAL-SPEC.md](../round-1/TECHNICAL-SPEC.md). Offline tested
-only; GSQL not installed on any server yet.
+[ARCHITECTURE-SPEC.md](ARCHITECTURE-SPEC.md). Round-1 stack and schema:
+[../round-1/TECHNICAL-SPEC.md](../round-1/TECHNICAL-SPEC.md).
 
 ## 1. Code map (`backend/src/ogr/r2/`)
 
@@ -17,7 +14,7 @@ only; GSQL not installed on any server yet.
 | `graph_backend` | `R2Graph` protocol, `QueryResult`, `TigerGraphR2`, `QUERY_NAMES`, `series_extremes` |
 | `local_graph` | `LocalR2Graph`, same rows in Python (dev and tests) |
 | `tools` | Tool specs for the LLM, `run_tool`, `rank_rows`, `ToolContext` (doc_ids seen) |
-| `agent` | `SYSTEM_PROMPT` (`PROMPT_VERSION` r2-agent-v1), `answer_question` |
+| `agent` | `SYSTEM_PROMPT` (`PROMPT_VERSION`), `answer_question` |
 | `run` | `run_questions` (resumable, optional threads), model and graph factories |
 | `output`, `trace`, `querylog`, `metrics` | Record and validator, recorder, log, metrics |
 | `score`, `split` | Public scorer, dev/check split |
@@ -100,9 +97,8 @@ heading levels:
 Extends [../round-1/TECHNICAL-SPEC.md](../round-1/TECHNICAL-SPEC.md) (stack,
 Round-1 schema, Q1–Q5, record contracts, evaluation), which still applies.
 
-Design, plan, gate decisions and results: [DESIGN.md](DESIGN.md),
-[PLAN.md](../archive/round-2-exploration/PLAN.md), [INTERVIEW-LOG.md](../archive/round-2-exploration/INTERVIEW-LOG.md), [RESULTS.md](../archive/round-2-exploration/RESULTS.md). Summary
-of what is implemented:
+Design: [DESIGN.md](DESIGN.md); older notes: [../archive/](../archive/README.md).
+Summary of what is implemented:
 
 | Area | Module | Notes |
 |---|---|---|
@@ -112,7 +108,7 @@ of what is implemented:
 | Reliability | `reasoning/reliability.py` | dataset prior, else class prior **[ASSUMPTION]** (`CLASS_PRIORS`), else agreement-based estimate |
 | Resolution and confidence | `reasoning/resolve.py` | scope filter → drop superseded → score each value (reliability, corroboration, recency, extraction, hedging) → softmax share × noisy-or support → Platt; numbers answered without qualifiers |
 | Calibration | `eval/calibration.py` | ECE (10 bins), Brier, Platt fit with Platt's smoothed targets |
-| Harness | `harness/` | `python -m ogr.cli harness [--offline]` (see [RESULTS.md](../archive/round-2-exploration/RESULTS.md)) |
+| Harness | `harness/` | `python -m ogr.cli harness [--offline]` (see [DESIGN.md](DESIGN.md)) |
 | Agent | `pipelines/p3_agentic/agents/claims.py`, `orchestrator.py`, `router.py` | probe → `claims` tool → deterministic evaluation (corroborate once below `MARGIN` 0.6) → answer kept to the resolved value → `conflict_resolved` |
 | P2 | `p2_graphrag.py` | the same probe; claims as its one query; no confidence |
 
@@ -144,5 +140,5 @@ after it.
 **Configuration:** `OGR_ROUND2_WEIGHTS` names a weights JSON written by
 `harness --offline` (fitted on the dev split); defaults otherwise.
 
-**Status:** the GSQL has not been installed on Savanna yet; tests run
-against fakes.
+**Status:** this layer is not used by the Round-2 answering path; its tests
+run against fakes.

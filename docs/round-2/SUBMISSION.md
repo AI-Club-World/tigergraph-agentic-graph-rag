@@ -1,77 +1,58 @@
 # Round 2 - Submission
 
 Deadline: **29 Nov 2026, 23:59 IST**. The seven items follow the numbering of
-[PROBLEM-STATEMENT.md](PROBLEM-STATEMENT.md) ("What to submit"); `data/README.md`
-lists six (no repo link) and numbers the query log 5 and graph counts 6.
-Nothing below has been run yet: it needs TigerGraph and LLM credentials
-([PLAN.md](../archive/round-2-exploration/PLAN.md)). Paths are relative to the repository root.
+[PROBLEM-STATEMENT.md](PROBLEM-STATEMENT.md) ("What to submit"); the organisers'
+`data/README.md` lists six (no repo link) and numbers the query log 5 and the graph
+counts 6. Paths are relative to the repository root. How to run each step is in the
+README, section "Round 2: build, run, submit".
 
 ## 1. The seven deliverables
 
-| # | Deliverable | Produced by | File |
+| # | Deliverable (as the brief states it) | Produced by | File |
 |---|---|---|---|
-| 1 | Repo link with a README describing the architecture (documents to graph, tools, how the agent decides) | `README.md`, sections "Round 2: build, run, submit" and "Round 2 architecture" | repository URL at the tag |
-| 2 | Answers to the 50 public questions | `./run.sh docs/round-2/data/questions_public.jsonl answers_public.jsonl` | `answers_public.jsonl` |
-| 3 | Answers to the 50 hidden questions | `./run.sh docs/round-2/data/questions_hidden.jsonl answers_hidden.jsonl` | `answers_hidden.jsonl` |
-| 4 | `metrics.json` for both runs | written by `run.sh` (`r2-metrics`); public block includes our accuracy and `accuracy_method`, hidden accuracy `null` | `out/r2/metrics.json` (and `metrics_notes.json`) |
-| 5 | Git tag for the code that produced both answer files | `git tag round2-submission` then push the tag (by the owner, at the deadline) | tag `round2-submission` |
-| 6 | TigerGraph query log of both runs | written by the run (`ogr.r2.querylog`); one file for both runs, `run_id` tells them apart | `out/r2/tg_query_log.jsonl` |
+| 1 | Repo link, with a README describing the architecture: how documents become graph data, which tools the agent has, how it decides what to do next | `README.md`, sections "Architecture", "Round 2: build, run, submit" and "Round 2 architecture" | the repository URL, at the tag |
+| 2 | `answers_public.jsonl`: answers to the 50 public questions | `./run.sh docs/round-2/data/questions_public.jsonl answers_public.jsonl` | `answers_public.jsonl` |
+| 3 | `answers_hidden.jsonl`: answers to the 50 hidden questions | `./run.sh docs/round-2/data/questions_hidden.jsonl answers_hidden.jsonl` | `answers_hidden.jsonl` |
+| 4 | `metrics.json`: a summary of both runs | written by `run.sh` (`r2-metrics`); the public block includes our accuracy and `accuracy_method`, hidden accuracy is `null` | `out/r2/metrics.json` (and `metrics_notes.json`) |
+| 5 | A git tag on the repo for the code that produced both answer files | `git tag round2-submission`, then push the tag | tag `round2-submission` |
+| 6 | The TigerGraph query log from both runs, timestamps matching the traces | written by the run (`ogr.r2.querylog`); one file for both runs, `run_id` tells them apart | `out/r2/tg_query_log.jsonl` |
 | 7 | Vertex and edge counts by type after loading `corpus.jsonl` | `./build.sh docs/round-2/data/corpus.jsonl` | `out/r2/graph_counts.json` |
 
-`out/` is git-ignored: copy items 4, 6 and 7 into the submission package
-separately. If the metrics `cost_usd_total` should be real, set
-`R2_LLM_INPUT_USD_PER_M` and `R2_LLM_OUTPUT_USD_PER_M` before the runs.
+Each answer line has `qid`, `status` (`answered`, `partial`, `not_in_corpus`), `answer`,
+`explanation`, `citations`, `input_tokens`, `output_tokens`, `latency_ms` and `trace`.
+`metrics.json` gives, per set, accuracy (public only), total and average tokens, average,
+p50 and p95 latency, LLM calls and TigerGraph queries per question, trace steps, run time
+and cost. The submitted copies of items 2-4, 6 and 7 are kept under `submission/round-2/`
+(`out/` is git-ignored). For a real `cost_usd_total`, set `R2_LLM_INPUT_USD_PER_M` and
+`R2_LLM_OUTPUT_USD_PER_M` before the runs.
 
 ## 2. Pre-submission checklist
 
 Tick each only when done and verified.
 
 **Environment**
-- [ ] TigerGraph workspace and LLM credentials available; `.env` filled from `.env.example` (every key).
-- [ ] Clean environment: `python3 -m pip install -r backend/requirements.lock && python3 -m pip install --no-deps -e backend`.
-- [ ] Model chosen and recorded (D5); prices set if cost is to be reported.
-- [ ] `cd backend && python3 -m pytest -q` passes (and `ruff check src tests`).
+- [ ] TigerGraph workspace running and LLM credentials available; `.env` filled from `.env.example`.
+- [ ] Clean install: `python3 -m pip install -r backend/requirements.lock && python3 -m pip install --no-deps -e backend`.
+- [ ] `cd backend && ruff check src tests && python3 -m pytest -q -p no:cacheprovider` passes.
 
-**Build**
-- [ ] `./build.sh docs/round-2/data/corpus.jsonl` completes (first live install of the GSQL).
-- [ ] `out/r2/graph_counts.json` exists and is plausible against the offline model (3,530 Document vertices; Athlete, WON, SourceRecord (39), REPORTS_ON, Entity, Claim non-zero). Expected values are not recorded anywhere yet; derive them from `build_model` and compare.
-- [ ] Parity spot check: each tool on TigerGraph and `LocalR2Graph` for the same parameters.
-
-**Development runs (not the submission)**
-- [ ] Smoke run `r2-run --limit 5`; read the traces; validator clean.
-- [ ] Public run, then score: `out/r2/score_public.json`; score each part with `python3 -m ogr.cli r2-score --questions docs/round-2/data/questions_public.jsonl --answers answers_public.jsonl --split dev` (and `--split check`, only at the end).
-- [ ] Error analysis on `dev` only; fix general causes; `check` looked at once.
-- [ ] Rule 4 review: no regex on question wording, no qids, no answers in `backend/src/ogr/r2/`; extend `tests/pipelines/p3/test_anti_overfitting.py` to `r2/`.
-
-**Final runs (same code, same settings)**
-- [ ] Code frozen and committed; working tree clean.
-- [ ] Start clean: run the final runs with `FRESH=1 ./run.sh …` (removes the answers file first; without it `run.sh` resumes and says so), and delete `out/r2/tg_query_log.jsonl` and `out/r2/metrics.json` before the first one (the log is append-only).
-- [ ] `./build.sh docs/round-2/data/corpus.jsonl` from scratch.
-- [ ] `./run.sh docs/round-2/data/questions_public.jsonl answers_public.jsonl`.
-- [ ] `./run.sh docs/round-2/data/questions_hidden.jsonl answers_hidden.jsonl` (once; the hidden file is only read by the system).
-- [ ] 50 lines in each answers file; no qid missing (a failed question is not written; `r2-run` exits 1 and says which).
+**Final runs (same code, same settings, working tree clean and committed)**
+- [ ] Start clean: delete `out/r2/tg_query_log.jsonl` and `out/r2/metrics.json` (the log is append-only) and run with `FRESH=1`.
+- [ ] `./build.sh docs/round-2/data/corpus.jsonl` from scratch; `out/r2/graph_counts.json` written.
+- [ ] `FRESH=1 ./run.sh docs/round-2/data/questions_public.jsonl answers_public.jsonl`.
+- [ ] `FRESH=1 ./run.sh docs/round-2/data/questions_hidden.jsonl answers_hidden.jsonl` (once).
+- [ ] 50 lines in each answers file, no qid missing (a failed question is not written; `r2-run` exits 1 and names it).
 
 **Verification**
-- [ ] Validator output empty for both files (`r2-metrics` prints errors and warnings to stderr): token sums equal, steps numbered, TigerGraph steps have query, params, rows.
-- [ ] Every answer has a TigerGraph step (`answers_with_tigergraph_step` = 50 in both blocks); none produced with `--backend local`.
-- [ ] Query-log timestamps fall inside the matching traces (spot check several qids; log `ts` is a call's start in UTC).
-- [ ] `metrics.json` has both blocks, all fields; hidden `accuracy_pct` is `null`.
-- [ ] README accurate against the code (see the inconsistencies in [RESULTS.md](../archive/round-2-exploration/RESULTS.md) section 4).
-- [ ] Tag `round2-submission` on the committed code; pushed.
-- [ ] Package assembled: repo link, two answer files, `metrics.json`, query log, graph counts; sent before the deadline.
+- [ ] `python3 scripts/validate_submission.py` (see `--help` for paths) reports no errors: token sums equal, steps numbered, TigerGraph steps have query, params and rows, metrics recompute from the answer files.
+- [ ] Every answer has a TigerGraph step (`answers_with_tigergraph_step` is 50 in both blocks); none was produced with `--backend local`.
+- [ ] Query-log timestamps fall inside the matching traces (spot-check several qids; the log `ts` is a call's start in UTC).
+- [ ] `metrics.json` has both blocks with all fields; hidden `accuracy_pct` is `null`.
+- [ ] No question-specific rules in `backend/src/ogr/r2/` (no regex on question wording, no qids, no built-in answers).
+- [ ] README matches the code; links and commands checked.
+- [ ] Tag `round2-submission` on the committed code, pushed.
+- [ ] Package assembled and sent: repo link, the two answer files, `metrics.json`, the query log and the graph counts.
 
-## 3. For the live judging call
+## 3. Live judging
 
-Judges will ask new questions and pick hidden questions to reproduce, with
-TigerGraph running and the full corpus loaded.
-
-Have ready before the call:
-- TigerGraph workspace running and loaded (`graph_counts.json` matches the live counts); `.env` in place; the tagged commit checked out; backend installed.
-- The exact model and settings used for the final runs; the same `R2_MAX_STEPS`.
-- Terminal with `./run.sh` usable on a one-question file, and `python3 -m ogr.cli r2-run --questions q.jsonl --out live.jsonl --qids <qid>` for a single qid (use a fresh output file; reruns skip existing qids).
-- Submitted `answers_hidden.jsonl` and the query log open, to compare a reproduced answer and trace with the submitted ones.
-- README "Round 2 architecture", `SOLUTION-DESIGN.md`, and `backend/src/ogr/r2/agent.py` (system prompt) and `tools.py` (tool list) open for the architecture talk.
-- One trace of each kind to walk through: a list or count answer, a source-conflict answer (authority and time), a `partial`, a `not_in_corpus`.
-- The graph schema in `backend/src/ogr/graph/schema_r2_answer.gsql` and one query such as `r2_medals_by_nation.gsql`.
-- The honest limits: public accuracy is our own proxy score; the check split is small; source records are weighed by the LLM at answer time (D4 deviation); model output is not guaranteed identical between runs.
-- A list of 5-10 new questions of our own, written per question style, kept outside the code.
+The live-call runbook (start the system, ask a new question, reproduce a submitted hidden
+answer and trace) is [LIVE-JUDGING.md](LIVE-JUDGING.md).

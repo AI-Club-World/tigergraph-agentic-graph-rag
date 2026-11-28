@@ -1,476 +1,149 @@
-# tigergraph-agentic-graph-rag
+# TigerGraph Agentic GraphRAG
 
-Three pipelines — RAG, GraphRAG and Agentic GraphRAG — answer the same
-questions over the same corpus, side by side. The benchmark shows when a
-multi-step agentic investigation beats simpler retrieval, and when it is
-overkill once tokens, latency and complexity are counted.
+An agentic GraphRAG system for the Round-2 brief: it takes a natural-language question about a 3,530-document corpus (Olympic event articles, film and politician pages, and 39 dated source records of mixed reliability), plans its own steps, queries a **TigerGraph** graph through ten installed GSQL queries, and returns a cited answer with a status (`answered`, `partial` or `not_in_corpus`), a short explanation, token and latency accounting, and a complete trace of every step. The corpus is the only source of truth; when the evidence is missing, provisional or in conflict, the answer says so instead of guessing.
 
-The repo holds:
+Everything is reproducible with `./build.sh` and `./run.sh` (see [Round 2: build, run, submit](#round-2-build-run-submit)). The organisers' brief is in [`docs/round-2/PROBLEM-STATEMENT.md`](docs/round-2/PROBLEM-STATEMENT.md).
 
-- `backend/`: the FastAPI service, the three pipelines, ingestion, the GSQL
-  schema and query library, the deterministic scorer/dispatcher/aggregator, the
-  batch runner and the CLI.
-- `frontend/`: the React UI, with Search, Build, Dashboard and History screens
-  and a Settings panel.
-- [`embedding_server_2.ipynb`](embedding_server_2.ipynb): dual-GPU Kaggle notebook
-  serving the 5 catalog embedding models (GPU 0) and Ollama Gemma 4 12B (GPU 1)
-  over FastAPI and an ngrok tunnel.
+## Architecture
 
-## Documentation
+```mermaid
+flowchart LR
+    C["corpus.jsonl"] -->|"build.sh: r2-build (no LLM, no embeddings)"| B["Deterministic parser: events, medallists, entities and claims, source records with authority class, text chunks"]
+    B -->|"reset, install schema and GSQL queries, load"| G[("TigerGraph graph")]
+    G --> K["out/r2/graph_counts.json"]
+    Q["questions.jsonl"] -->|"run.sh: r2-run"| A["Agent loop: LLM with native tool calling, temperature 0, at most R2_MAX_STEPS tool calls"]
+    A -->|"tool call"| T["Ten GSQL tools: find_events, medals_by_nation, event_series, athlete_medals, repeat_winners, entity_facts, find_entities, source_records, text_search, read_document"]
+    T -->|"installed query"| G
+    G -->|"rows"| A
+    A -->|"finish: status, answer, explanation, citations"| D["Guards: citations limited to doc_ids the tools returned, not_in_corpus has a null answer"]
+    D --> R["answers.jsonl with full trace"]
+    A -.->|"every graph call"| L["out/r2/tg_query_log.jsonl"]
+    R --> S["r2-score (public set) and r2-metrics"]
+    S --> M["out/r2/metrics.json"]
+```
 
-Documents are split by hackathon round: [`docs/round-1/`](docs/round-1/) holds the system as built and measured for Round 1, and [`docs/round-2/`](docs/round-2/) holds the Round-2 extension (evolving, conflicting and uncertain facts).
+Round 2 adds the `ogr.r2` package, the `r2_*` GSQL queries and the two scripts. The Round-1 code (three-pipeline comparison, web UI) is still in the repository and shares only the graph schema, the loader and the LLM client.
 
-| Document | What it is |
-|---|---|
-| [`docs/round-1/APPLICATION-SPEC.md`](docs/round-1/APPLICATION-SPEC.md) | Functional and non-functional requirements (FR/NFR) |
-| [`docs/round-1/ARCHITECTURE-SPEC.md`](docs/round-1/ARCHITECTURE-SPEC.md) | Architecture diagram, the agents, routing, decision log, engineering guards, where the LLM is used, known limitations |
-| [`docs/round-1/TECHNICAL-SPEC.md`](docs/round-1/TECHNICAL-SPEC.md) | Stack, graph schema, query library, record contracts, evaluation |
-| [`docs/round-1/UI-SPEC.md`](docs/round-1/UI-SPEC.md) | Frontend contract: screens, states, data, formatting |
-| [`docs/round-1/EMBEDDING-SWITCHING.md`](docs/round-1/EMBEDDING-SWITCHING.md) | Selectable embedding models, per-model storage, the switch/re-embed jobs |
-| [`docs/round-1/WRITEUP.md`](docs/round-1/WRITEUP.md) | Submission write-up: what was built, measured results, limitations, next steps, demo script |
-| [`docs/round-1/SCORE-AUDIT.md`](docs/round-1/SCORE-AUDIT.md) | Rubric audit: baseline, root causes, owner decisions, before/after scores |
-| [`submission/`](submission/README.md) | Hidden-set raw outputs (answers, tokens, citations, agentic traces) and the public and hidden run reports |
-| [`docs/round-1/DEPLOY.md`](docs/round-1/DEPLOY.md) | Hosting the frontend on Netlify |
-| [`docs/round-2/PROBLEM-STATEMENT.md`](docs/round-2/PROBLEM-STATEMENT.md) | Round 2: the organisers' problem statement; brief, corpus and questions in [`docs/round-2/data/`](docs/round-2/data/README.md) |
-| [`docs/round-2/BRIEF-ANALYSIS.md`](docs/round-2/BRIEF-ANALYSIS.md) | Round 2: gap analysis of the real brief and data against what we have; decisions needed; six-day plan |
-| [`docs/round-2/APPLICATION-SPEC.md`](docs/round-2/APPLICATION-SPEC.md) | Round 2: judging criteria and evidence, requirements, targets, risks, readiness checklist |
-| [`docs/round-2/ARCHITECTURE-SPEC.md`](docs/round-2/ARCHITECTURE-SPEC.md) | Round 2: claims route through the agent, decision log |
-| [`docs/round-2/TECHNICAL-SPEC.md`](docs/round-2/TECHNICAL-SPEC.md) | Round 2: fact-layer schema, Q5S/Q6, claim loading, modules, configuration |
-| [`docs/round-2/ANALYSIS.md`](docs/round-2/ANALYSIS.md) | Round 2: where Round 1 assumed static, single, certain facts; schema strategy |
-| [`docs/round-2/DESIGN.md`](docs/round-2/DESIGN.md) | Round 2: fact model, temporal/conflict/uncertainty logic, adapters, harness |
-| [`docs/round-2/PLAN.md`](docs/round-2/PLAN.md) | Round 2: ordered plan with status |
-| [`docs/round-2/INTERVIEW-LOG.md`](docs/round-2/INTERVIEW-LOG.md) | Round 2: gate questions and the owner's decisions |
-| [`docs/round-2/RESULTS.md`](docs/round-2/RESULTS.md) | Round 2: what is measured, what is not, and the commands to measure it |
-| [`embedding_server_2.ipynb`](embedding_server_2.ipynb) | Kaggle dual-GPU embedding & LLM server notebook with ngrok / Cloudflare tunnel |
-| [`data/README.md`](data/README.md) | The corpus and question sets, and how dataset names are resolved |
-| [`ATTRIBUTION.md`](ATTRIBUTION.md) | Licences for the corpus, embedding models and software |
+## How each scoring criterion is met
 
-## Getting started
-
-Two pieces run here: the **backend** (FastAPI, the three pipelines and
-TigerGraph) and the **frontend** (the React UI). For real answers, run both at
-once in two terminals, pointed at each other. The frontend can also run alone
-on fixture data (mock mode). Mock mode is **off** by default. See
-[Mock mode](#mock-mode).
-
-On Windows, `run.bat` opens both dev servers in separate windows. It uses
-`backend/run-backend.bat`, which expects a virtual environment at
-`backend/.venv`, and `frontend/run-frontend.bat`.
-
-### Prerequisites
-
-| Needed | Version | Why |
+| Criterion (weight) | What the system does | Where to look |
 |---|---|---|
-| Python | 3.11+ | Backend |
-| Node.js | 20+ | Frontend (Vite, React) |
-| A TigerGraph workspace | Savanna (cloud) or Community Edition 4.2+ | Vectors *and* the graph both live there. There is no FAISS/Chroma/pgvector substitute |
-| An LLM endpoint | Gemini, Groq, NVIDIA NIM, Anthropic, OpenAI, or any OpenAI-compatible server (Ollama, llama.cpp, vLLM) | Intent parsing, answer generation, groundedness checks |
-| An embedding backend | Cloudflare Workers AI credentials, local `sentence-transformers`, or the Kaggle GPU host (`embedding_server_2.ipynb`) | Chunk and query embeddings |
-
-### Optional: Run the Embedding & LLM Server on Kaggle (`embedding_server_2.ipynb`)
-
-If you do not have local GPU hardware or Cloudflare Workers AI credentials, you can host the 5 catalog embedding models and Ollama on a free Kaggle GPU instance (2× T4) using [`embedding_server_2.ipynb`](embedding_server_2.ipynb):
-
-- **GPU 0 (~6 GB VRAM)**: Loads all 5 catalog embedding models (`bge-large-en-v1.5`, `qwen3-embedding-0.6b`, `embeddinggemma-300m`, `gte-large-en-v1.5`, `mxbai-embed-large-v1`) and serves them via FastAPI (`/models`, `/embed`, `/health`, `/embed/status`).
-- **GPU 1 (~8 GB VRAM)**: Runs Ollama serving Google's official `gemma4:12b` chat model (`/chat`, `/chat/status`).
-- **Tunnel**: Exposes the FastAPI server to the internet via ngrok Agent Endpoint (with automatic fallback to Cloudflare Quick Tunnel).
-
-#### Steps to launch on Kaggle:
-
-1. **Import Notebook**: On [Kaggle](https://www.kaggle.com/code), click **New Notebook** → **File** → **Import Notebook** → select [`embedding_server_2.ipynb`](embedding_server_2.ipynb).
-2. **Session Settings**:
-   - In the right sidebar under **Notebook options**, set **Accelerator** to **GPU T4 x2**.
-   - Make sure **Internet on** is toggled on.
-3. **Configure Secrets** (**Add-ons** → **Secrets** in the notebook menu):
-   - `HF_TOKEN`: Hugging Face user access token (required for `embeddinggemma-300m`; accept the model agreement on [Hugging Face](https://huggingface.co/google/embeddinggemma-300m) first).
-   - `NGROK_AUTHTOKEN`: Auth token from [ngrok dashboard](https://dashboard.ngrok.com/get-started/your-authtoken).
-   - *(Optional)* `NGROK_COMMAND` or `NGROK_URL`: Custom domain or agent command from your ngrok dashboard (if omitted, ngrok assigns a random URL; if ngrok fails, it falls back to Cloudflare Quick Tunnel).
-4. **Run Cells**: Execute Cells 1 through 6 sequentially.
-   - Once Cell 5 completes, it checks readiness and prints:
-     ```text
-     ============================================================
-     EXECUTION COMPLETE -- SERVER IS LIVE AND READY
-     ============================================================
-     Tunnel         : ngrok (your ngrok endpoint)
-     Public URL     : https://your-name.ngrok-free.app
-     ```
-   - Cell 6 continues running to keep the server alive and prevent kernel shutdown.
-5. **Point Backend to Kaggle**: Copy the `Public URL` into your local `.env`:
-   ```bash
-   EMBEDDING_HOST_URL=https://your-name.ngrok-free.app
-   ```
-   *(Optional)* If you also wish to use the Kaggle Ollama server as your chat LLM:
-   ```bash
-   LLM_PROVIDER=openai_compatible
-   LLM_MODEL=gemma4:12b
-   LLM_BASE_URL=https://your-name.ngrok-free.app/v1
-   LLM_API_KEY=ollama
-   ```
-   Verify health with `curl https://your-name.ngrok-free.app/health` or `python -m ogr.cli verify --pre-build`.
-
-### 1. Configure the backend
-
-From the repo root:
-
-```bash
-cp env.example .env
-```
-
-Settings are read in this order: the environment (`.env`) first, then
-`config/server_config.json` (committed, contains no secrets), then the code
-default. The main variables:
-
-| Variable(s) | What to put there |
-|---|---|
-| `TG_HOST` | Your workspace endpoint, the full `https://…` URL (Savanna: workspace page → **Connect**) |
-| `TG_TOKEN`, or `TG_USERNAME`/`TG_PASSWORD`, or `TG_SECRET`, or `TG_JWT_TOKEN` | Whichever credential style your workspace issues. See the comment above `_connect()` in `backend/src/ogr/graph/client.py` if you set more than one |
-| `TG_CLOUD` | `true` for Savanna. It changes how pyTigerGraph builds URLs and negotiates auth |
-| `TG_GRAPHNAME` | Defaults to `OlympicGraphRAG` |
-| `LLM_PROVIDER`, `LLM_MODEL`, `LLM_API_KEY`, `LLM_BASE_URL` | The startup LLM. `LLM_PROVIDER` is `anthropic`, `google`, `openai` or `openai_compatible`. For `openai_compatible` (Groq, Ollama, …), set `LLM_BASE_URL` too. Code default: `openai_compatible`, `qwen2.5:7b-instruct` at `http://localhost:11434/v1` (Ollama) |
-| `GEMINI_API_KEY`, `GROQ_API_KEY`, `NVIDIA_API_KEY` | Keys for the three providers you can pick at runtime in the Settings panel. Leave a provider's key empty and that provider is disabled in the panel. The chosen model applies to all three pipelines |
-| `EMBEDDING_MODEL` | The startup embedding model, by key (table below). Default `bge-large-en-v1.5`. After the first switch in Settings, the active model is stored in `out/embeddings.json` and overrides this value |
-| `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN` | Workers AI. They serve `bge-large-en-v1.5` embeddings and the Agentic pipeline's reranker (`@cf/baai/bge-reranker-base`). Without them, or when a call fails, both run the same models locally (`sentence-transformers`) |
-| `EMBEDDING_HOST_URL` | Optional self-hosted embedding service serving the catalog models: `POST {url}/embed` with `{"model": "<key>", "texts": [...]}` returns `{"embeddings": [...]}` (e.g. from `embedding_server_2.ipynb`). Tried first; on failure the next tier runs |
-| `EMBEDDING_CLOUDFLARE`, `EMBEDDING_REMOTE` | `false` skips the Cloudflare embedding tier (e.g. quota spent), or every remote tier. Both default to `true` |
-| `OGR_CORS_ORIGINS` | Browser origins allowed to call the API. Defaults to `http://localhost:5173,http://127.0.0.1:5173`, the Vite dev server |
-| `RUN_K`, `RUN_CHUNK_TOKENS`, `RUN_CHUNK_OVERLAP` | Retrieval and chunking (10 / 300 / 50). They are fixed before the first run and never tuned against results |
-| `RUN_MAX_STEPS`, `RUN_MAX_TOKENS_PER_QUERY`, `RUN_MAX_TOTAL_TOKENS` | Agentic loop limit (6), per-query token budget (20,000) and whole-run token ceiling (5,000,000; `0` turns it off) |
-| `RUN_POOL_SIZE`, `RUN_LATENCY_MODE`, `LLM_REQUESTS_PER_MINUTE` | Batch concurrency (2), `throughput` or `timing`, and the client-side rate limit (30 in `server_config.json`; `0` turns it off) |
-| `HEALTH_LLM_TIMEOUT_S` | How long `/health/llm` waits for its one-token completion (120 s) |
-
-The five selectable embedding models (`backend/src/ogr/common/embedding_models.py`).
-The graph stores embeddings for at most two of them at once.
-
-| `EMBEDDING_MODEL` key | Hugging Face id | Dim | Served by |
-|---|---|---|---|
-| `qwen3-embedding-0.6b` | `Qwen/Qwen3-Embedding-0.6B` | 1024 | local |
-| `embeddinggemma-300m` | `google/embeddinggemma-300m` | 768 | local |
-| `gte-large-en-v1.5` | `Alibaba-NLP/gte-large-en-v1.5` | 1024 | local |
-| `mxbai-embed-large-v1` | `mixedbread-ai/mxbai-embed-large-v1` | 1024 | local |
-| `bge-large-en-v1.5` (default) | `BAAI/bge-large-en-v1.5` | 1024 | Cloudflare when configured, else local |
-
-Every model is tried in the order: `EMBEDDING_HOST_URL`, then Cloudflare (for the
-model it hosts), then local. All tiers produce the same vectors for a model, so
-a build and its queries may use different tiers.
-
-`.env` is git-ignored. Never commit real values, and never put a secret in a
-`VITE_`-prefixed variable: those values are compiled into the browser bundle.
-
-### 2. Install, verify and build
-
-```bash
-pip install -e "backend[dev]"
-python -m ogr.cli verify --pre-build   # LLM, embedding and TigerGraph reachable; missing queries are a warning
-python -m ogr.cli build                # chunk + embed, install schema, load graph, install Q1–Q5
-```
-
-`verify` spends only a few tokens and changes nothing. Without `--pre-build`,
-missing GSQL queries (`q1_lookup` … `q5_hybrid_search`) count as a failure.
-
-`build` **resets the graph**. It reinstalls the schema, so every dataset that
-was loaded before is removed. It then loads `data/corpus/corpus.jsonl` (change
-this with `--corpus`) with the active embedding model. It waits for the vector
-index to report `Ready_for_query` (`--vector-timeout`, default 600 s). To add
-datasets alongside the ones already loaded, use the Build screen instead
-(`POST /build`).
-
-### 3. Start the API
-
-```bash
-python -m uvicorn ogr.api.main:app --app-dir backend/src --host 127.0.0.1 --port 8000
-```
-
-Check it: `curl http://127.0.0.1:8000/health` → `{"status":"ok"}`.
-
-### 4. Start the frontend
-
-```bash
-cd frontend
-npm install
-cp .env.example .env    # no key here: the application is open
-npm run dev
-```
-
-Open **http://localhost:5173**. The defaults already point at
-`http://127.0.0.1:8000` with mock mode off.
-
-### Reproduce everything
-
-With `.env` filled in, `make reproduce` runs these steps in order:
-
-1. `install`: `pip install -e backend[dev]` and `npm ci`.
-2. `check`: ruff, pytest, eslint, the frontend build and vitest.
-3. `verify`: runs `verify --pre-build`.
-4. `build`: rebuilds the graph.
-5. `benchmark` and `timing`: run `data/questions/eval_public.jsonl` in `throughput` and `timing` mode.
-6. `holdout`: runs `acceptance/holdout/eval_hidden.jsonl`.
-7. `results`: writes `out/<RUN_ID>-public-report.md` (the run report below) and
-   `out/<RUN_ID>-holdout-export.json` (the hidden-set submission).
-
-`make smoke` asks one question through all three pipelines against the live
-graph. It is the quickest check that the GSQL queries and the LLM work end to end.
-
-Every step shares one `RUN_ID`. Outputs go to `out/<RUN_ID>-public.jsonl`,
-`-public-timing.jsonl` and `-holdout.jsonl`, plus the two results files.
-
-## Access
-
-The application is open: there is no sign-in, API key or role, and every
-route can be called without credentials. Anyone who can reach the backend can
-build or reset the graph, upload datasets, switch embedding models, change the
-LLM and start benchmarks. Run it on a trusted network, or put a reverse proxy
-with its own authentication in front of it for a public deployment.
-
-Backend secrets (`TG_*`, `LLM_API_KEY`, provider keys, `CLOUDFLARE_API_TOKEN`)
-stay in the backend `.env`. They never go in the frontend: the frontend build
-refuses to run with a `VITE_API_KEY` set, because every `VITE_` value is
-compiled into the public bundle.
-
-# Backend
-
-## CLI (`python -m ogr.cli`)
-
-| Command | What it does |
-|---|---|
-| `verify [--pre-build]` | Checks the LLM, the embedding backend and TigerGraph, and whether Q1–Q5 are installed. Exit code 0 only when nothing fails |
-| `build [--corpus PATH] [--vector-timeout S]` | Full reset and load of one corpus, as described above |
-| `batch QUESTIONS.jsonl --out OUT.jsonl [--run-id ID] [--mode throughput\|timing] [--embedding-model KEY]` | Runs a question set through all three pipelines and appends one scored record per question (details below). Logs a `benchmark` entry to the History screen |
-| `ask "<question>" [--pipelines rag,graphrag,agentic_graphrag] [--embedding-model KEY] [--json] [--show-trace]` | Answers one question from the terminal. Default pipeline: `rag`. Aliases: `graph`, `agentic` |
-| `coverage [--corpus PATH] [--out out/ingest-coverage.md]` | Parses the corpus infoboxes and writes the ingest coverage report |
-| `report RUN.jsonl [--out REPORT.md]` | Markdown run report: EM/F1/completeness/grounding and token cost per pipeline; per question type the Agentic − RAG gap, token ratio and a worth-it verdict; necessity routing (direct vs loop, with a labelled token-savings estimate); agents, tools and stop reasons |
-| `export RUN.jsonl --out EXPORT.json` | Submission JSON: per question and pipeline the answer, explanation, tokens, latency, citations (with evidence snippets) and, for Agentic, the full trace |
-
-How `batch` behaves:
-
-- **Run id.** Defaults to a UTC timestamp. The mode defaults to `RUN_LATENCY_MODE`. `timing` runs with a pool size of 1, so its latencies are comparable.
-- **Where the app finds it.** The Dashboard and Eval table read `out/<run_id>.jsonl` on the machine running the API. Any other `--out` path prints a note and the run does not show there. `out/` is git-ignored: a run made on another machine or in a cloud session reaches the app only by copying that file into `out/` or through **Import** (the JSONL, or the `export` JSON).
-- **Resume.** Rerunning the same command against an existing `--out` file skips every question already recorded successfully. A question whose latest record has a pipeline error is retried, and the new record supersedes the old one.
-- **Stops and exit codes.** A rate-limit error stops the run: no new question starts. If any question was not recorded, or the `RUN_MAX_TOTAL_TOKENS` ceiling was reached, the command exits 1 with the reason. The ceiling counts tokens across resumes. Rerun to continue.
-
-Tests and lint: `cd backend && pytest -q` and `cd backend && ruff check src tests`.
-
-## HTTP API
-
-Routes from `backend/src/ogr/api/main.py`. None needs credentials (see
-Access).
-
-| Method and path | Purpose |
-|---|---|
-| `GET /health` | Liveness: `{"status":"ok"}` |
-| `GET /health/db`, `/health/llm`, `/health/embedding` | One dependency check each. Results are cached for 30 s, and hosts are redacted |
-| `GET /settings` | Effective LLM provider/model and embedding model (no secrets) |
-| `GET /settings/providers` | Gemini / NVIDIA NIM / Groq presets and whether each key is set |
-| `GET /settings/models?provider=` | That provider's live model list. NVIDIA is narrowed to free endpoints |
-| `PATCH /settings` | Change the provider/model at runtime. Also switches the embedding model when the target is already complete |
-| `GET /embeddings` | Each embedding model's state, the 2-model cap and the current job |
-| `GET /embeddings/plan?model=` | What switching to `model` would do |
-| `POST /embeddings/switch` | Switch the embedding model. `mode` is `replace` or `parallel`. At the cap, `evict` names the model to delete |
-| `POST /embeddings/resume` | Continue a failed re-embed job from its last batch |
-| `POST /embeddings/{model}/complete` | Embed the chunks a stored model is missing |
-| `POST /query` | `{query, embedding_model?}` → `202 {query_id}`. Returns `409 embedding_mismatch` when the model has no complete embeddings |
-| `GET /query/{id}/stream` | SSE: `trace`, `pipeline`, `done` |
-| `GET /query/{id}/result` | The merged `QueryLevelRecord`. Returns `409` while the query is still running |
-| `GET /corpora` | Datasets in `data/corpus/` with display names, and which are loaded. With no dataset recorded in `out/datasets.json` (a fresh install against a graph built elsewhere), `graph.live` carries TigerGraph's own vertex counts |
-| `POST /corpora/{name}` | Upload a JSONL dataset (the request body is the file). Options: `unique`, `overwrite`, `title`, `source_file` |
-| `PATCH /corpora/{name}` | Rename a dataset (`title`, `description`) |
-| `POST /build` | `{dataset, rebuild, reset}` → `202 {build_id}`. Returns `409` with `already_built`, `reset_required`, `build_running`, `embedding_job_running`, `batch_running` or `embedding_cap` |
-| `GET /build/current` | The latest build and its events, so a reloaded page can resume following it |
-| `GET /build/{id}/stream` | SSE: `build`, `done` |
-| `GET /datasets` | Question sets in `data/questions/` |
-| `POST /batch` | `{dataset, run_id?, latency_mode?, resume?}` → `202 {run_id, status}`. Records go to `out/{run_id}.jsonl` |
-| `GET /runs` | One summary per stored run, newest first |
-| `POST /runs/import` | Import a run export, a record list, a native JSONL file or an `ogr.cli export` file (imported unscored: it carries no gold). Returns `409` if the run id already exists |
-| `GET /batch/{run_id}/records` | A run's scored records |
-| `GET /history?kind=&limit=` | Every query, build, benchmark and embedding-job attempt (`out/history.jsonl`), newest first |
-
-State is kept in process memory (one uvicorn worker). A restart loses
-in-flight queries and builds. Runs, history, the dataset registry and the
-embedding store are files under `out/`.
-
-## Design notes
-
-How the pipelines differ, where the LLM is called, and the known limitations
-of the comparison are in `docs/round-1/ARCHITECTURE-SPEC.md`. Two facts that
-matter when reading results:
-
-- No LLM sits in the scoring path. EM and token F1 are computed
-  deterministically against the gold answers.
-- P1 (RAG) is deliberately unfiltered: one k=10 vector search with no
-  reranking or type filter. The Agentic pipeline can make several retrieval
-  attempts, so part of any lift over P1 comes from *more attempts*, not only
-  *smarter retrieval*.
-
-# Frontend
-
-| Command | What it does |
-|---|---|
-| `npm run dev` | Vite dev server on :5173 |
-| `npm run build` | Type-check (`tsc --noEmit`), then a production build into `frontend/dist` |
-| `npm run preview` | Serve the production build |
-| `npm run lint` | ESLint |
-| `npm test` | Vitest (jsdom) |
-
-## Screens
-
-| Route | Screen |
-|---|---|
-| `/` | **Search**. One question, three result columns that settle independently, the live agentic trace and the verdict strip. **Stop waiting** stops following a slow run. If the embedding model has no complete embeddings, a popup offers the models that do |
-| `/build` | **Build**. Pick, upload or rename a dataset (JSONL in `data/corpus/`) and build it into the shared graph next to datasets already loaded. Building a loaded dataset asks Rebuild or Cancel. Readiness is shown per pipeline, and a failure notice gives the reason |
-| `/dashboard` | **Dashboard**, with three tabs (`?tab=dashboard\|runs\|eval`). **Dashboard**: aggregates over one run, including a cost/latency/reliability table and the agents-invoked table. **Run benchmark**: start a run; history, import/export and comparison. **Eval table**: every question × three pipelines, with drill-down |
-| `/history` | **History**. Every query, build, benchmark and embedding-job attempt, with type/status filters and search |
-| `/benchmarks`, `/eval` | Redirect to the Run benchmark and Eval table tabs (keeping `?run=`) |
-
-The header shows health indicators for TigerGraph, the LLM and the embedding
-backend. Features whose service is down are blocked, with a contact link
-(`VITE_ADMIN_EMAIL`). The **Settings** panel (gear icon) sets:
-
-- the LLM provider (Gemini, NVIDIA NIM or Groq) and model, with a filter over
-  the provider's live model list and a custom model id field;
-- the embedding model, through a decision dialog (re-embed or keep parallel
-  indices; eviction at the 2-model cap). See
-  `docs/round-1/EMBEDDING-SWITCHING.md`.
-
-The panel closes itself 10 s after a successful Apply. Settings are hidden in
-mock mode.
-
-On the Dashboard tabs, `?run=` selects a run. Without it, a live backend opens
-its newest run.
-
-## Mock mode
-
-Mock mode is off unless `VITE_USE_MOCK_API=true`. Any other value, including
-empty, uses the live backend. In mock mode:
-
-- every screen replays fixtures from `src/fixtures/`, which are illustrative
-  and not measured;
-- a `mock data` chip shows in the header;
-- runs `latest` (20 scored questions) and `hidden` (8, no gold) are available;
-- the Settings panel, uploads and History need the live backend.
-
-`VITE_MOCK_LATENCY_SCALE=0` makes the replay instant.
-
-## Folder structure
-
-```
-frontend/
-  .env.example            every build-time variable
-  public/_redirects       SPA rewrite for folder deploys
-  src/
-    config.ts             the single config point (base URL, API key, mock switch, polling)
-    types.ts              record contracts: PipelineRecord, TraceStep, BatchRecord, RunSummary, …
-    format.ts             number/duration formatting, mean, median
-    main.tsx  App.tsx     router shell, header, redirects
-    SearchView.tsx        Search screen
-    TracePanel.tsx        agentic trace (also used in the eval drill-down)
-    BuildView.tsx         Build screen: dataset picker/upload/rename, per-pipeline progress
-    DashboardPage.tsx     Dashboard tabs
-    Dashboard.tsx         aggregate view over one run
-    BenchmarksView.tsx    Run benchmark tab: run, history, import/export, compare
-    EvalTable.tsx         per-question table with drill-down
-    HistoryView.tsx       History screen
-    SettingsPanel.tsx     provider/model settings
-    ServiceStatus.tsx  useServiceStatus.ts   health indicators, RequiresServices gate
-    useBatchRecords.ts    loads the ?run= run (newest when absent, live)
-    useTheme.ts           light/dark toggle (localStorage key ogr-theme)
-    components/           QueryInput, ResultColumn, VerdictStrip, CitationList, StatusBadge,
-                          RunPicker, Charts, colors, Icon, Notice, ErrorBoundary,
-                          EmbeddingSettings, EmbeddingMismatchDialog, useDialogFocus
-    services/
-      http.ts             fetch wrapper (ApiError) + EventSource helper
-      queryService.ts  buildService.ts  batchService.ts  benchmarkService.ts
-      datasetService.ts  historyService.ts  settingsService.ts
-      mock/               transport.ts (fixture replay), runs.ts (mock run history)
-    fixtures/             JSON shaped to the API contracts
-    test/setup.ts
-```
-
-Components never touch fixtures. They call `services/*Service.ts`, and each
-service branches on `config.useMockApi`.
-
-## Light and dark mode
-
-The header toggle defaults to the OS setting and remembers an explicit choice
-in `localStorage` (`ogr-theme`). `index.html` applies it before first paint.
-Colours are CSS custom properties defined per theme in `index.css`. Charts
-set them through `style`, because `var()` does not resolve in SVG attributes.
-
-# Troubleshooting
-
-| Symptom | Likely cause |
-|---|---|
-| Header shows a `mock data` chip | `VITE_USE_MOCK_API=true` in `frontend/.env`. Restart `npm run dev` after changing it: Vite reads `.env` only at startup |
-| The frontend build stops on `VITE_API_KEY is set` | Remove `VITE_API_KEY` from `frontend/.env*`: the application needs no key |
-| A fresh checkout against a graph built elsewhere | Handled: on startup (and before listing datasets, building, querying or benchmarking) the backend rebuilds `out/datasets.json` and `out/embeddings.json` from TigerGraph when this install has neither, provided every document in the graph comes from one file in `data/corpus/` (`ingest/adopt.py`). Otherwise the Build screen shows TigerGraph's own counts |
-| CORS error in the browser console | The frontend origin is not in `OGR_CORS_ORIGINS`. Add it and restart the backend |
-| `verify` fails on TigerGraph | `TG_HOST` must be the full `https://…` URL, the credentials must be valid, and `TG_CLOUD=true` is needed for Savanna |
-| `verify` fails on the LLM with `429`/quota | The key has no quota left. Pick another provider/model in Settings, use a local server (`LLM_BASE_URL=http://localhost:11434/v1`, no key needed), or run the Kaggle GPU server (`embedding_server_2.ipynb`) |
-| Answers are empty / "not mentioned" for every question | `graph/client.py` does not raise when TigerGraph is unreachable or a query is missing. It logs a warning and returns `[]`. Check the backend log and `verify` before debugging a pipeline, and run `build` if Q1–Q5 are missing |
-| A query opens "No matching embeddings" | The active embedding model has no complete embeddings for the loaded data. Pick an offered model, or finish the job in Settings (Resume / Complete) |
-| `EMBEDDING_HOST_URL` fails or times out | If using `embedding_server_2.ipynb` on Kaggle, ensure Cell 6 is still running and check that the tunnel URL has not expired or changed |
-| Build returns `reset_required` | The graph predates dataset tracking or per-model embedding storage. Confirm "Reset graph and build" (this removes every loaded dataset) |
-| Embedding switching is greyed out | A build, re-embed job or benchmark is running. It re-enables when that ends |
-| `/dashboard`, `/build` or `/history` 404 on refresh of a deployed build | The SPA rewrite is missing. Keep both `netlify.toml` and `frontend/public/_redirects` (see `docs/round-1/DEPLOY.md`) |
-| `npm ci` fails on Windows with "operation was rejected by your operating system" | A dev server or antivirus is holding `node_modules`. Stop the dev server first. `npm install` is more forgiving |
-
-# Attribution
-
-The corpus is derived from English Wikipedia (CC BY-SA 4.0). The embedding
-models and software carry their own licences. See [`ATTRIBUTION.md`](ATTRIBUTION.md).
+| Accuracy (40%) | The corpus is parsed once, deterministically, into a typed graph (events, medals per athlete, entities and claims, source records). Counting, ranking, series and list questions are answered by GSQL queries over that structure, not by reading text. The LLM plans which tools to call and writes the answer from their rows. Prompt rules are general (complete lists, authority over recency, provisional is not final). | `backend/src/ogr/r2/agent.py`, `tools.py`, `backend/src/ogr/graph/queries/r2_*.gsql` |
+| Honesty (10%) | Three statuses. `not_in_corpus` forces a `null` answer; an empty answer becomes `not_in_corpus`; an unknown status becomes `partial`. Citations are kept only if a tool returned that `doc_id` during the question. Absence of evidence is not treated as a negative fact. | `agent.py` (`_finalize`) |
+| Evidence (10%) | Every answer carries the `doc_id`s that support it, plus a trace step per tool call with the query name, parameters and row count. Every TigerGraph call is also a timestamped line in `out/r2/tg_query_log.jsonl`. | `trace.py`, `querylog.py`, `scripts/validate_submission.py` |
+| Repeatability (15%) | `build.sh` and `run.sh` at the root, locked dependencies in `backend/requirements.lock`, every key in `.env.example`, temperature 0, fixed tool order, a resumable run, and a git tag for the submitted code. A reproduced answer can be compared with the submitted one for any `qid`. | [`docs/round-2/LIVE-JUDGING.md`](docs/round-2/LIVE-JUDGING.md) |
+| Efficiency (10%) | Token counts come from the provider's usage fields for every LLM call (an estimate is marked in the trace when a provider reports none) and sum exactly to the answer totals (the validator checks it). Tool results are trimmed before they go back to the model (empty and repeated fields dropped, at most 60 rows, long text cut at 2,000 characters, 24k characters in total, truncation stated). Retrieval is graph queries, so no embedding calls are made. | `tools.py` (`compact_result`), `metrics.py` |
+| Live judging (15%) | One command to answer any new question on the live graph (`r2-run`, the `/round2` page or `POST /r2/ask`). | [`docs/round-2/LIVE-JUDGING.md`](docs/round-2/LIVE-JUDGING.md) |
+
+The numbers of the submitted runs (accuracy of the public set by our own scorer, tokens, latency, LLM calls and TigerGraph queries per question, cost) are in `submission/round-2/metrics.json`; this README repeats none of them.
 
 ## Round 2: build, run, submit
 
-**1. Setup.** Copy `.env.example` to `.env` and fill in TigerGraph and LLM credentials (`env.example` is an identical copy kept for Round 1), then install locked dependencies:
+**1. Setup.** Copy `.env.example` to `.env` and fill in the TigerGraph and LLM values, then install the locked dependencies (Python 3.11+):
 
 ```bash
+cp .env.example .env     # then edit: TG_HOST, TG_* credentials, LLM_*
 python3 -m pip install -r backend/requirements.lock && python3 -m pip install --no-deps -e backend
 ```
 
-**2. Build.** Load the Round-2 corpus (`3,530` docs) into TigerGraph, install the schema and `r2_*` GSQL queries, and write `out/r2/graph_counts.json`:
+**2. Build.** Load the corpus into TigerGraph. This **resets** the graph named by `TG_GRAPHNAME`, installs the schema and the `r2_*` queries and writes `out/r2/graph_counts.json`. The TigerGraph user needs rights to create a graph and install queries.
 
 ```bash
 ./build.sh docs/round-2/data/corpus.jsonl
-# equivalent CLI: python -m ogr.cli r2-build --corpus docs/round-2/data/corpus.jsonl --counts out/r2/graph_counts.json
 ```
 
-**3. Run & Submit.** Answer each question set, score the public set (`r2-score`), and recompute `out/r2/metrics.json` (`r2-metrics`):
+**3. Run.** Answer each question set. `run.sh` answers, self-scores the public set (`r2-score`) and updates `out/r2/metrics.json` (`r2-metrics`); the set is inferred from the questions file name.
 
 ```bash
-./run.sh docs/round-2/data/questions_public.jsonl answers_public.jsonl   # answer, self-score, update metrics.json ("public")
-./run.sh docs/round-2/data/questions_hidden.jsonl answers_hidden.jsonl   # answer, update metrics.json ("hidden"; accuracy stays null)
+./run.sh docs/round-2/data/questions_public.jsonl answers_public.jsonl
+./run.sh docs/round-2/data/questions_hidden.jsonl answers_hidden.jsonl
 ```
 
-`run.sh` infers the metrics set from the questions file name (`hidden` / `public`, or whether the file has gold answers) and resumes existing answer files (`FRESH=1` starts clean). Both scripts run from any directory and load `.env`.
+That is six commands from a clean checkout. `run.sh` resumes an existing answers file (`FRESH=1` starts clean). Both scripts run from any directory and load `.env`. The hidden file is read only to be answered.
+
+Individual steps (flags checked with `--help`):
 
 ```bash
-python -m ogr.cli r2-run --questions q.jsonl --out answers.jsonl                      # TigerGraph backend, resumable
-python -m ogr.cli r2-run --questions q.jsonl --out dev.jsonl --backend local --limit 5 # dev only (tigergraph: false, no query log)
-python -m ogr.cli r2-score --questions docs/round-2/data/questions_public.jsonl --answers answers_public.jsonl
-python -m ogr.cli r2-metrics --set public --answers answers_public.jsonl --questions docs/round-2/data/questions_public.jsonl
+python3 -m ogr.cli r2-build --corpus docs/round-2/data/corpus.jsonl --counts out/r2/graph_counts.json
+python3 -m ogr.cli r2-run --questions q.jsonl --out answers.jsonl [--qids A,B] [--limit N] [--query-log PATH]
+python3 -m ogr.cli r2-score --questions docs/round-2/data/questions_public.jsonl --answers answers_public.jsonl [--split dev|check]
+python3 -m ogr.cli r2-metrics --set public --answers answers_public.jsonl --questions docs/round-2/data/questions_public.jsonl
+python3 scripts/validate_submission.py --help      # checks answer files, metrics, query log and counts against the brief
 ```
 
-| Submission / Output File | What it is |
+`r2-run --backend local` runs the tools over an in-process copy of the corpus. It is for development and tests only: its steps carry `tigergraph: false` and it writes no query log.
+
+| Output | What it is |
 |---|---|
-| `answers_public.jsonl`, `answers_hidden.jsonl` | One JSON answer per question with a full trace (written as the code runs) |
-| `out/r2/metrics.json` | Both sets' metrics, recomputed from the answer files only (`metrics_notes.json` lists defaults) |
+| `answers_public.jsonl`, `answers_hidden.jsonl` | One JSON answer per question with its full trace (written as the code runs) |
+| `out/r2/metrics.json` | Metrics of both sets, recomputed from the answer files only (`metrics_notes.json` lists defaults used) |
 | `out/r2/tg_query_log.jsonl` | One line per TigerGraph call: `ts, run_id, qid, step, query, params, rows, ms, ok, error` |
 | `out/r2/graph_counts.json` | Vertex and edge counts by type after the build |
 | `out/r2/score_public.json` | Per-question public scores from our own fact-level scorer (`ogr.r2.score`) |
-| `docs/round-2/data/public_split.json` | Deterministic `dev` / `check` split of the public 50 (`python3 -m ogr.r2.split`) |
+| `docs/round-2/data/public_split.json` | Deterministic `dev` / `check` split of the public 50, by question style |
 
-Public accuracy is our own measurement (`ogr.r2.score`); hidden accuracy is `null`.
+The checklist of the seven required deliverables is in [`docs/round-2/SUBMISSION.md`](docs/round-2/SUBMISSION.md).
 
-**4. Demo (live judging).** Open the **"Round 2 agent"** page at `http://localhost:5173/round2` (or call `POST /r2/ask` with `{"question": "...", "backend": "tigergraph"}` and `GET /r2/status` to verify `"schema_installed": true`). See [`docs/round-2/LIVE-JUDGING.md`](docs/round-2/LIVE-JUDGING.md) for the 15-minute live-judging runbook.
+**Demo.** Start the API and the UI, then open the "Round 2 agent" page at `http://localhost:5173/round2` (or call `POST /r2/ask` with `{"question": "...", "backend": "tigergraph"}`; `GET /r2/status` reports `"schema_installed": true` when the queries are installed):
 
-### Round 2 architecture
+```bash
+python3 -m uvicorn ogr.api.main:app --app-dir backend/src --host 127.0.0.1 --port 8000
+cd frontend && npm ci && npm run dev
+```
 
-Tested offline with a scripted model over an in-process copy of the graph (`LocalR2Graph`); no live TigerGraph or LLM run is claimed here.
+## Round 2 architecture
 
-**Documents to graph data** (`ogr.r2.corpus_model`, `ogr.r2.build`; design in `docs/round-2/SOLUTION-DESIGN.md` section 2). `r2-build` parses the corpus deterministically (no LLM, no embeddings), resets the graph, installs the schema and the `r2_*` GSQL queries, and loads: documents and text chunks; Olympic events, Games, sports and venues from the infobox; athletes with `WON` edges (medal, NOC) from the medallist fields; the dated LA 2028 source records with an authority class (`official`, `operational`, `secondary`, `unreliable`) taken from the `Source:` line and `REPORTS_ON` links to the events they mention; and for every other infobox (films, office holders, people) one entity with one claim per field. Vertex and edge counts are written to `out/r2/graph_counts.json`.
+**Documents to graph data** (`ogr.r2.corpus_model`, `ogr.r2.build`; design in [`docs/round-2/SOLUTION-DESIGN.md`](docs/round-2/SOLUTION-DESIGN.md)). `r2-build` parses the corpus deterministically (no LLM, no embeddings), resets the graph, installs the schema and the `r2_*` GSQL queries, and loads: documents and text chunks; Olympic events, Games, sports and venues from the infobox; athletes with `WON` edges (medal, NOC) from the medallist fields; the dated LA 2028 source records with an authority class (`official`, `operational`, `secondary`, `unreliable`) taken from the `Source:` line and `REPORTS_ON` links to the events they mention; and, for every other infobox (films, office holders, people), one entity with one claim per field. Vertex and edge counts are written to `out/r2/graph_counts.json`.
 
-**Tools** (`ogr.r2.tools`). Ten read tools, each one installed GSQL query: `find_events`, `medals_by_nation`, `event_series`, `athlete_medals`, `repeat_winners`, `entity_facts`, `find_entities`, `source_records`, `text_search`, `read_document`; plus the local helper `rank_rows` (sorts an earlier result; recorded as a non-TigerGraph step) and `finish`. Results go back to the model as compact JSON (empty fields dropped, at most 60 rows, long text cut at 2,000 chars, 24k total, truncation stated).
+**Tools** (`ogr.r2.tools`). Ten read tools, each one installed GSQL query: `find_events`, `medals_by_nation`, `event_series`, `athlete_medals`, `repeat_winners`, `entity_facts`, `find_entities`, `source_records`, `text_search`, `read_document`. Two local helpers are recorded as non-TigerGraph steps: `rank_rows` (sorts an earlier result) and `finish`. Parameters and row shapes: [`docs/round-2/TECHNICAL-SPEC.md`](docs/round-2/TECHNICAL-SPEC.md) section 2.
 
-**How the agent decides** (`ogr.r2.agent`). A short general system prompt and the question go to the chat model with native tool calling at temperature 0. The model picks tools, sees the results, and calls `finish` with `status`, `answer` (text or JSON), `explanation` and `citations`. After `R2_MAX_STEPS` tool calls (default 8) a final `finish` is forced. Fixed guards then apply: citations are limited to `doc_id`s the tools actually returned; `not_in_corpus` always has a `null` answer; an empty answer becomes `not_in_corpus`; an unknown status becomes `partial`; a JSON-looking answer string is parsed. A question whose run fails (after bounded retries on rate limits) is not written to the answers file: the run continues with the others, `r2-run` exits 1 naming the failed questions, and rerunning the same command retries only those.
+**How the agent decides** (`ogr.r2.agent`). A short general system prompt and the question go to the chat model with native tool calling at temperature 0 (`R2_TOOL_MODE=text` switches to prompt-based JSON tool calls for models without it). The model picks tools, sees the results, and calls `finish` with `status`, `answer` (text or JSON), `explanation` and `citations`. There is no hand-written router. After `R2_MAX_STEPS` tool calls (default 8) a final `finish` is forced. Fixed guards then apply: citations are limited to `doc_id`s the tools actually returned; `not_in_corpus` always has a `null` answer; an empty answer becomes `not_in_corpus`; an unknown status becomes `partial`; a JSON-looking answer string is parsed. A question whose run fails (after bounded retries on rate limits) is not written to the answers file: the run continues, `r2-run` exits 1 naming the failed questions, and rerunning the same command retries only those.
 
 **Statuses.** `answered`: fully supported. `partial`: some requested parts are not in the corpus (the answer says which). `not_in_corpus`: nothing in the corpus answers it.
 
 **Traces and logs.** Every model call is a trace step with the provider's token counts (an estimate is marked in `note`); every graph call is a step with `query`, `params`, `rows`, `ms` and a line in `out/r2/tg_query_log.jsonl`. Answer totals are the sum of the model steps.
+
+## Repository map
+
+| Path | Contents |
+|---|---|
+| `build.sh`, `run.sh` | The one-command build and run |
+| `.env.example`, `backend/requirements.lock` | Every key and the exact dependency versions |
+| `backend/src/ogr/r2/` | The Round-2 system: corpus model, build, tools, agent, trace, query log, metrics, scorer, split |
+| `backend/src/ogr/graph/` | GSQL: `schema*.gsql`, `queries/r2_*.gsql` (Round 2), `queries/q*.gsql` (Round 1), and the TigerGraph client |
+| `backend/tests/` | Offline test suite (fake TigerGraph, scripted model); `tests/r2/` covers Round 2 |
+| `backend/scripts/r2_parity.py` | Runs each tool on TigerGraph and on the in-process copy and compares rows |
+| `scripts/validate_submission.py` | Checks the submission files against the brief |
+| `docs/round-2/` | Brief, build contract, specs, runbook, submission checklist, corpus and public questions (`data/`) |
+| `frontend/`, `backend/src/ogr/api/` | Web UI and API (the demo page, and the Round-1 comparison app) |
+| `docs/round-1/`, `data/`, `acceptance/` | Round-1 application, documents and question sets |
+| `docs/archive/`, `tools/kaggle/` | Earlier working notes; a Round-1 embedding-host helper |
+
+Tests and lint: `cd backend && ruff check src tests && python3 -m pytest -q -p no:cacheprovider`.
+
+## Limitations
+
+- Public accuracy is measured by our own fact-level scorer (`ogr.r2.score`), which approximates the organisers' key; the public set is split into `dev` (used for error analysis) and `check` (14 questions, looked at once). Hidden accuracy is not known to us.
+- The model runs at temperature 0, but providers are not bit-for-bit deterministic: wording, token counts and occasionally a status can differ between runs. Graph rows for the same query and parameters do not.
+- Source records are classified by authority and time deterministically, but the answering LLM weighs conflicting records at answer time; there is no LLM claim extraction at build.
+- The GSQL compares lower-cased text; the in-process copy compares normalised text, so accents and apostrophes can differ in rare cases (apostrophes are straightened before the query).
+- The build resets the graph and takes several minutes. The GSQL names the graph `OlympicGraphRAG`, so `TG_GRAPHNAME` must be that valid identifier, and the TigerGraph user needs schema-write and query-install rights.
+- The Round-1 three-pipeline comparison and the earlier claim-resolution layer (`reasoning/`, `harness/`, `datasets/`) remain in the repository and are tested, but are not on the Round-2 answering path.
+
+## Documentation
+
+| Document | What it is |
+|---|---|
+| [`docs/round-2/PROBLEM-STATEMENT.md`](docs/round-2/PROBLEM-STATEMENT.md) | The organisers' problem statement |
+| [`docs/round-2/data/README.md`](docs/round-2/data/README.md) | The organisers' data notes (corpus, questions) |
+| [`docs/round-2/SOLUTION-DESIGN.md`](docs/round-2/SOLUTION-DESIGN.md) | Build contract: graph, tools, agent, output |
+| [`docs/round-2/ARCHITECTURE-SPEC.md`](docs/round-2/ARCHITECTURE-SPEC.md), [`TECHNICAL-SPEC.md`](docs/round-2/TECHNICAL-SPEC.md) | Components, tool parameters, formats, configuration |
+| [`docs/round-2/LIVE-JUDGING.md`](docs/round-2/LIVE-JUDGING.md) | Runbook: start the system, ask a new question, reproduce a submitted answer |
+| [`docs/round-2/SUBMISSION.md`](docs/round-2/SUBMISSION.md) | The seven deliverables and the pre-submission checklist |
+| [`docs/round-1/README.md`](docs/round-1/README.md) | Round-1 web application: setup, CLI, API, frontend |
+| [`docs/archive/`](docs/archive/README.md) | Earlier working notes |
+| [`ATTRIBUTION.md`](ATTRIBUTION.md) | Licences for the corpus, models and software |
+
+## Attribution
+
+The corpus is derived from English Wikipedia (CC BY-SA 4.0), plus fictional LA 2028 documents supplied by the organisers. See [`ATTRIBUTION.md`](ATTRIBUTION.md).

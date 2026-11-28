@@ -1,5 +1,7 @@
 # Round 2 — Design: evolving, conflicting and uncertain facts
 
+> **Earlier design, not the submitted system.** This describes the claim-resolution layer built before the Round-2 brief was published. It is still in the code and tested, but the answering system is described in [SOLUTION-DESIGN.md](SOLUTION-DESIGN.md). Code comments cite section numbers of this file. The files it names (`ANALYSIS`, `PLAN`, `INTERVIEW-LOG`, `RESULTS`) are in [../archive/round-2-exploration/](../archive/README.md).
+
 Status: implemented offline on `round-2` (see "As built" below and
 `RESULTS.md`); not yet run live. Gated items are marked **[GATE Gn]**
 and listed in `INTERVIEW-LOG.md`. Assumptions about the unknown Round-2

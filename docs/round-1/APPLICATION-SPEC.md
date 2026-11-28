@@ -1,7 +1,7 @@
 # APPLICATION-SPEC.md
 Agentic GraphRAG Hackathon — Three-Pipeline Comparison System
 
-Status: **v0.5 — synchronised with the code on `round-2`, 2026-11-14.** Round 1, measured (§7). Round-2 requirements, targets, risks and readiness: [round-2/APPLICATION-SPEC.md](../round-2/APPLICATION-SPEC.md). | Standard basis: IEEE 29148 (requirements), EARS notation
+Status: **v0.5 — synchronised with the code on `round-2`, 2026-11-14.** Round 1, measured (§7). Round-2 requirements, targets, risks and readiness: [round-2/APPLICATION-SPEC.md](../archive/round-2-exploration/APPLICATION-SPEC.md). | Standard basis: IEEE 29148 (requirements), EARS notation
 
 FR-/NFR- IDs are stable: the code cites them. Architecture and decisions: [ARCHITECTURE-SPEC.md](ARCHITECTURE-SPEC.md). Contracts, schema and API: [TECHNICAL-SPEC.md](TECHNICAL-SPEC.md). Screens: [UI-SPEC.md](UI-SPEC.md). Embedding models: [EMBEDDING-SWITCHING.md](EMBEDDING-SWITCHING.md). Round 2: [round-2/](../round-2/). Running and deploying: [README.md](../../README.md), [DEPLOY.md](DEPLOY.md).
 
@@ -23,7 +23,7 @@ FR-/NFR- IDs are stable: the code cites them. Architecture and decisions: [ARCHI
 
 | Role | Concern |
 |---|---|
-| Judges | Investigation accuracy, evidence quality, agentic effectiveness, engineering quality, innovation, presentation (per rubric). Round-2 criteria and the evidence for each: [round-2/APPLICATION-SPEC.md](../round-2/APPLICATION-SPEC.md) §1 |
+| Judges | Investigation accuracy, evidence quality, agentic effectiveness, engineering quality, innovation, presentation (per rubric). Round-2 criteria and the evidence for each: [round-2/APPLICATION-SPEC.md](../archive/round-2-exploration/APPLICATION-SPEC.md) §1 |
 | Team (dev) | Debuggability of agent behaviour |
 | Operator | Choosing LLM provider/model and embedding model, loading datasets, running benchmarks without restarting the server |
 | Batch runner (non-human actor) | Same execution path, headless, over 100 known + 50 hidden questions |

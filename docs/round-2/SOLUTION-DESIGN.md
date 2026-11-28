@@ -1,9 +1,9 @@
 # Round 2 — Solution design (build contract)
 
-The binding contract for the Round-2 submission. Owner decisions D1–D7 of
-[BRIEF-ANALYSIS.md](../archive/round-2-exploration/BRIEF-ANALYSIS.md) §6 are accepted as recommended
-(2026-11-23). The brief and data: [PROBLEM-STATEMENT.md](PROBLEM-STATEMENT.md),
-[data/README.md](data/README.md).
+The build contract for the Round-2 submission. The brief and data:
+[PROBLEM-STATEMENT.md](PROBLEM-STATEMENT.md), [data/README.md](data/README.md).
+The as-built component and tool reference is in [ARCHITECTURE-SPEC.md](ARCHITECTURE-SPEC.md)
+and [TECHNICAL-SPEC.md](TECHNICAL-SPEC.md).
 
 ## 1. Shape
 
@@ -14,7 +14,7 @@ The binding contract for the Round-2 submission. Owner decisions D1–D7 of
 ```
 
 - New package `backend/src/ogr/r2/`. Round-1 code paths are not changed.
-- One system answers (D2: the three-pipeline comparison stays in the demo UI only).
+- One system answers (the Round-1 three-pipeline comparison stays in the demo UI only).
 - **TigerGraph on every answer:** every retrieval tool is one installed GSQL query.
 - **No embeddings in the Round-2 path:** text is read from `Document`/`Chunk`
   in the graph (by doc id, or by an installed keyword query). `build.sh`
@@ -103,6 +103,6 @@ LLM steps equal the answer totals; written as the code runs.
 
 ## 7. Dev discipline
 
-The public 50 are split by style into `dev` and `check` (D7); `check` is run
-only at the end. The hidden questions are not read by anyone working on the
-system; `run.sh` reads them only to answer them.
+The public 50 are split by style into `dev` and `check`; `check` is run only at
+the end. The hidden questions are not read during development; `run.sh` reads
+them only to answer them.
