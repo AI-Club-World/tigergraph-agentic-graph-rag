@@ -1,6 +1,6 @@
 # Round-1 web application: run guide
 
-> This is the guide for the Round-1 application (three-pipeline comparison UI, FastAPI backend). The Round-2 submission is described in the top-level [README](../../README.md); the Round-2 path does not need the frontend, embeddings or the Kaggle host.
+> This is the guide for the Round-1 application (three-pipeline comparison UI, FastAPI backend). The Round-2 submission is described in the top-level [README](../../../README.md); the Round-2 path does not need the frontend, embeddings or the Kaggle host.
 
 Three pipelines — RAG, GraphRAG and Agentic GraphRAG — answer the same
 questions over the same corpus, side by side. The benchmark shows when a
@@ -14,7 +14,7 @@ The repo holds:
   batch runner and the CLI.
 - `frontend/`: the React UI, with Search, Build, Dashboard and History screens
   and a Settings panel.
-- [`tools/kaggle/embedding_server_2.ipynb`](../../tools/kaggle/embedding_server_2.ipynb): dual-GPU Kaggle notebook
+- [`tools/kaggle/embedding_server_2.ipynb`](../../../tools/kaggle/embedding_server_2.ipynb): dual-GPU Kaggle notebook
   serving the 5 catalog embedding models (GPU 0) and Ollama Gemma 4 12B (GPU 1)
   over FastAPI and an ngrok tunnel.
 
@@ -32,8 +32,8 @@ Round-1 documents (this folder):
 | [`WRITEUP.md`](WRITEUP.md) | Submission write-up: what was built, measured results, limitations, next steps, demo script |
 | [`submission/`](submission/README.md) | Hidden-set raw outputs (answers, tokens, citations, agentic traces) and the public and hidden run reports |
 | [`DEPLOY.md`](DEPLOY.md) | Hosting the frontend on Netlify |
-| [`data/README.md`](../../data/README.md) | The corpus and question sets, and how dataset names are resolved |
-| [`ATTRIBUTION.md`](../../ATTRIBUTION.md) | Licences for the corpus, embedding models and software |
+| [`data/README.md`](../../../data/README.md) | The corpus and question sets, and how dataset names are resolved |
+| [`ATTRIBUTION.md`](../../../ATTRIBUTION.md) | Licences for the corpus, embedding models and software |
 
 ## Getting started
 
@@ -59,7 +59,7 @@ On Windows, `run.bat` opens both dev servers in separate windows. It uses
 
 ### Optional: Run the Embedding & LLM Server on Kaggle (`tools/kaggle/embedding_server_2.ipynb`)
 
-If you do not have local GPU hardware or Cloudflare Workers AI credentials, you can host the 5 catalog embedding models and Ollama on a free Kaggle GPU instance (2× T4) using [`tools/kaggle/embedding_server_2.ipynb`](../../tools/kaggle/embedding_server_2.ipynb):
+If you do not have local GPU hardware or Cloudflare Workers AI credentials, you can host the 5 catalog embedding models and Ollama on a free Kaggle GPU instance (2× T4) using [`tools/kaggle/embedding_server_2.ipynb`](../../../tools/kaggle/embedding_server_2.ipynb):
 
 - **GPU 0 (~6 GB VRAM)**: Loads all 5 catalog embedding models (`bge-large-en-v1.5`, `qwen3-embedding-0.6b`, `embeddinggemma-300m`, `gte-large-en-v1.5`, `mxbai-embed-large-v1`) and serves them via FastAPI (`/models`, `/embed`, `/health`, `/embed/status`).
 - **GPU 1 (~8 GB VRAM)**: Runs Ollama serving Google's official `gemma4:12b` chat model (`/chat`, `/chat/status`).
@@ -67,7 +67,7 @@ If you do not have local GPU hardware or Cloudflare Workers AI credentials, you 
 
 #### Steps to launch on Kaggle:
 
-1. **Import Notebook**: On [Kaggle](https://www.kaggle.com/code), click **New Notebook** → **File** → **Import Notebook** → select [`tools/kaggle/embedding_server_2.ipynb`](../../tools/kaggle/embedding_server_2.ipynb).
+1. **Import Notebook**: On [Kaggle](https://www.kaggle.com/code), click **New Notebook** → **File** → **Import Notebook** → select [`tools/kaggle/embedding_server_2.ipynb`](../../../tools/kaggle/embedding_server_2.ipynb).
 2. **Session Settings**:
    - In the right sidebar under **Notebook options**, set **Accelerator** to **GPU T4 x2**.
    - Make sure **Internet on** is toggled on.
@@ -193,7 +193,7 @@ With `.env` filled in, `make reproduce` runs these steps in order:
 3. `verify`: runs `verify --pre-build`.
 4. `build`: rebuilds the graph.
 5. `benchmark` and `timing`: run `data/questions/eval_public.jsonl` in `throughput` and `timing` mode.
-6. `holdout`: runs `acceptance/holdout/eval_hidden.jsonl`.
+6. `holdout`: runs `archive-round-1/acceptance/holdout/eval_hidden.jsonl`.
 7. `results`: writes `out/<RUN_ID>-public-report.md` (the run report below) and
    `out/<RUN_ID>-holdout-export.json` (the hidden-set submission).
 
@@ -405,4 +405,4 @@ set them through `style`, because `var()` does not resolve in SVG attributes.
 # Attribution
 
 The corpus is derived from English Wikipedia (CC BY-SA 4.0). The embedding
-models and software carry their own licences. See [`ATTRIBUTION.md`](../../ATTRIBUTION.md).
+models and software carry their own licences. See [`ATTRIBUTION.md`](../../../ATTRIBUTION.md).

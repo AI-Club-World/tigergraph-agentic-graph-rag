@@ -3,7 +3,7 @@ Agentic GraphRAG Hackathon — Three-Pipeline Comparison System
 
 Status: **v0.4 — describes the code on `application-integration` as of 2026-09-27.** Every statement below was checked against the code. | Standard basis: arc42, C4 model, ISO/IEC/IEEE 42010
 
-Related documents: [README.md](../../README.md) (running it), [APPLICATION-SPEC.md](APPLICATION-SPEC.md) (FR-/NFR- requirements), [TECHNICAL-SPEC.md](TECHNICAL-SPEC.md) (schema, queries, record contracts, API), [UI-SPEC.md](UI-SPEC.md) (screens), [DEPLOY.md](DEPLOY.md), [EMBEDDING-SWITCHING.md](EMBEDDING-SWITCHING.md) (embedding models and index switching).
+Related documents: [README.md](../../../README.md) (running it), [APPLICATION-SPEC.md](APPLICATION-SPEC.md) (FR-/NFR- requirements), [TECHNICAL-SPEC.md](TECHNICAL-SPEC.md) (schema, queries, record contracts, API), [UI-SPEC.md](UI-SPEC.md) (screens), [DEPLOY.md](DEPLOY.md), [EMBEDDING-SWITCHING.md](EMBEDDING-SWITCHING.md) (embedding models and index switching).
 
 ---
 
@@ -16,7 +16,7 @@ Related documents: [README.md](../../README.md) (running it), [APPLICATION-SPEC.
 | TigerGraph (Savanna, or Community Edition 4.2+) | The only graph **and** vector store. Five installed GSQL queries (Q1–Q5); one HNSW index per embedding model; `/restpp/vector/status` is polled before a pipeline is marked ready |
 | LLM provider | Intent parsing (function-calling or JSON-schema), the P3 groundedness check, answer generation. Chosen at startup (`LLM_PROVIDER`) or at runtime (presets `gemini`, `nvidia_nim`, `groq`) |
 | Embedding host | Cloudflare Workers AI for `bge-large-en-v1.5` (the default, CLS pooling) when credentials are set; otherwise local `sentence-transformers`. Also hosts the P3 reranker `@cf/baai/bge-reranker-base` |
-| Corpus and question sets | Olympic Wikipedia corpus (2,951 docs, `data/corpus/*.jsonl`, more datasets can be uploaded); 100 public questions (`data/questions/eval_public.jsonl`); 50 hidden (`acceptance/holdout/eval_hidden.jsonl`, opened only by the batch runner) |
+| Corpus and question sets | Olympic Wikipedia corpus (2,951 docs, `data/corpus/*.jsonl`, more datasets can be uploaded); 100 public questions (`data/questions/eval_public.jsonl`); 50 hidden (`archive-round-1/acceptance/holdout/eval_hidden.jsonl`, opened only by the batch runner) |
 
 ## 2. Containers (C4 Level 2)
 
@@ -297,7 +297,7 @@ One line per decision ID cited in the code. `DP-n` numbers were assigned per are
 | UI DP-1 | Record contract uses data field names (`qid`, `question`, `qtype`), `ground_truth: list[str]`, citations with `source_id` (scored) and `chunk_id` (shown), `chunks_returned` / `citations_count` | Followed |
 | UI DP-2 | Precision/recall/F1 over the returned document set for all pipelines; Completeness is an alias of Recall | Followed |
 | UI DP-3 | Batch output is append-only JSONL with a `run_config` header | Followed (`eval/store.py`) |
-| UI DP-4 | Hidden set in `acceptance/holdout/`, opened only by the batch runner | Followed; CI holdout grep |
+| UI DP-4 | Hidden set in `archive-round-1/acceptance/holdout/`, opened only by the batch runner | Followed; CI holdout grep |
 | UI DP-5 | `POST` returns `202 {id}`; SSE on `GET …/stream`; native `EventSource` | Followed |
 | UI DP-6 | One shared build; three columns show per-pipeline readiness via `BuildEvent.pipeline_affected` | Followed |
 | UI DP-7 | Build columns show time and counts; build LLM tokens are 0 and labelled, never faked | Followed in data (`BuildEvent.tokens` is always 0); the Build view shows the embedding model and tier instead of a token row |
@@ -334,7 +334,7 @@ One line per decision ID cited in the code. `DP-n` numbers were assigned per are
 |---|---|
 | backend | `pip install -e ".[dev]"`, `ruff check src tests`, `pytest -q` (Python 3.11) |
 | frontend | `npm ci`, `npm run lint`, `npm run build`, `npm test` (Node 20) |
-| guards: holdout grep | Fails if any file under `backend/src`, `backend/tests` or `frontend/src` other than `backend/src/ogr/eval/batch_runner.py` references `acceptance/holdout` |
+| guards: holdout grep | Fails if any file under `backend/src`, `backend/tests` or `frontend/src` other than `backend/src/ogr/eval/batch_runner.py` references `archive-round-1/acceptance/holdout` |
 | guards: no-test-modified | On pull requests: fails if the PR changes `backend/tests/` and `backend/src/` together unless a commit message contains `TEST-CHANGE: <reason>` |
 
 ### Failure modes and their guards
@@ -390,7 +390,7 @@ One line per decision ID cited in the code. `DP-n` numbers were assigned per are
 
 ## Known limitations
 
-- **The Round-2 claim layer is not the submitted Round-2 system.** Fact versioning, supersession, source reliability and confidence exist in the code (see [../round-2/DESIGN.md](../round-2/DESIGN.md)) but were built before the Round-2 brief; the submitted Round-2 system is described in [../round-2/ARCHITECTURE-SPEC.md](../round-2/ARCHITECTURE-SPEC.md).
+- **The Round-2 claim layer is not the submitted Round-2 system.** Fact versioning, supersession, source reliability and confidence exist in the code (see [../round-2/DESIGN.md](../../../docs/round-2/DESIGN.md)) but were built before the Round-2 brief; the submitted Round-2 system is described in [../round-2/ARCHITECTURE-SPEC.md](../../../docs/round-2/ARCHITECTURE-SPEC.md).
 - **Open access.** There is no sign-in (TECHNICAL-SPEC §4.5): anyone who can reach the API can build, reset and start benchmarks.
 - **GSQL is tested live by the benchmark runs, statically in CI.** The schema and Q1–Q5 are installed and run against a TigerGraph Savanna workspace by every build and benchmark; CI checks them only statically (`tests/graph/test_schema.py`).
 - **Traversal follows `PREV_EDITION` only.** Multi-hop and traversal agents use PREV_EDITION or HELD_AT; `NEXT_EDITION` exists in the schema and Q4 but no agent calls it (the dataset has no "next edition" questions).
@@ -400,4 +400,4 @@ One line per decision ID cited in the code. `DP-n` numbers were assigned per are
 - **Graph errors are silent.** `TigerGraphClient._run_query` returns `[]` on a connection failure or query error (logged), so a pipeline can finish with `status = done` and an empty or "no evidence" answer.
 - **In-memory API state.** Query and build state live in the process; a restart loses in-flight queries (a running re-embed job is marked failed and is resumable).
 
-Round 2 (fact layer, claims, conflict resolution): [../round-2/ARCHITECTURE-SPEC.md](../round-2/ARCHITECTURE-SPEC.md).
+Round 2 (fact layer, claims, conflict resolution): [../round-2/ARCHITECTURE-SPEC.md](../../../docs/round-2/ARCHITECTURE-SPEC.md).

@@ -75,7 +75,7 @@ All directed, endpoints pinned.
 ## 3. GSQL Query Library (exactly five)
 
 Round 2 adds two queries, Q5S and Q6, installed separately by
-`graph/schema.install_round2` ([../round-2/TECHNICAL-SPEC.md](../round-2/TECHNICAL-SPEC.md)). Q1–Q5 are unchanged.
+`graph/schema.install_round2` ([../round-2/TECHNICAL-SPEC.md](../../../docs/round-2/TECHNICAL-SPEC.md)). Q1–Q5 are unchanged.
 
 Source: `backend/src/ogr/graph/queries/*.gsql`, installed by `graph/schema.install_queries` (verified with `getInstalledQueries`). All `SYNTAX V2`.
 
@@ -413,7 +413,7 @@ Append-only JSONL, `{"run_config"}` header on line 1, one `BatchRecord` per line
 
 ### 9.4 Hidden set
 
-`acceptance/holdout/eval_hidden.jsonl` is run once by `make holdout`; CI's holdout grep (ARCHITECTURE-SPEC, Engineering guards) fails if any file under `backend/src`, `backend/tests` or `frontend/src` other than `eval/batch_runner.py` names `acceptance/holdout`. The hidden set has no gold answers, so its runs show `scores: null`.
+`archive-round-1/acceptance/holdout/eval_hidden.jsonl` is run once by `make holdout`; CI's holdout grep (ARCHITECTURE-SPEC, Engineering guards) fails if any file under `backend/src`, `backend/tests` or `frontend/src` other than `eval/batch_runner.py` names `archive-round-1/acceptance/holdout`. The hidden set has no gold answers, so its runs show `scores: null`.
 
 ## 10. Metrics Dashboard — Required Aggregations
 
@@ -459,7 +459,7 @@ Screen detail: `UI-SPEC.md`.
 | `build` | `ogr.cli build` (default corpus `data/corpus/corpus.jsonl`) |
 | `benchmark` | `batch data/questions/eval_public.jsonl --mode throughput --run-id $(RUN_ID)-public --out out/$(RUN_ID)-public.jsonl` |
 | `timing` | same set, `--mode timing`, `$(RUN_ID)-public-timing` |
-| `holdout` | `batch acceptance/holdout/eval_hidden.jsonl --mode throughput`, `$(RUN_ID)-holdout` |
+| `holdout` | `batch archive-round-1/acceptance/holdout/eval_hidden.jsonl --mode throughput`, `$(RUN_ID)-holdout` |
 | `results` | `ogr.cli report out/$(RUN_ID)-public.jsonl --out …-public-report.md`; `ogr.cli export out/$(RUN_ID)-holdout.jsonl --out …-holdout-export.json` |
 | `reproduce` | all of the above in order |
 | `smoke` | one `ask` through all three pipelines with `--show-trace` (not part of `reproduce`) |
@@ -597,7 +597,7 @@ There is no `OGR_HOST`/`OGR_PORT`; bind address and port are uvicorn arguments (
 - `GET /settings` reports `llm_provider_preset` by matching the provider name or the base URL host against the presets.
 
 Round 2 (fact layer, Q5S/Q6, claim loading, harness, configuration):
-[../round-2/TECHNICAL-SPEC.md](../round-2/TECHNICAL-SPEC.md). The optional
+[../round-2/TECHNICAL-SPEC.md](../../../docs/round-2/TECHNICAL-SPEC.md). The optional
 Round-2 record fields (`confidence`, `temporal_scope`, `conflicts`,
 `TraceStep.details`) and the `conflict_resolved` stop reason are listed in
 §6 above because every record carries them.

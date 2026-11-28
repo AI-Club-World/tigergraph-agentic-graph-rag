@@ -1,3 +1,5 @@
+# Round-1 reproduce pipeline, archived. Run from the repository root: make -f archive-round-1/Makefile <target>
+# (it is not used by the Round-2 system; Round 2 uses ../build.sh and ../run.sh).
 # REPRO-01 / NFR-4: clean clone -> full run with one command.
 # Needs a filled-in .env (copy .env.example): TigerGraph workspace + LLM endpoint.
 #   make reproduce   install, check, verify endpoints, build graph, run all benchmarks
@@ -38,7 +40,7 @@ timing:
 	$(OGR) batch data/questions/eval_public.jsonl --mode timing --run-id $(RUN_ID)-public-timing --out out/$(RUN_ID)-public-timing.jsonl
 
 holdout:
-	$(OGR) batch acceptance/holdout/eval_hidden.jsonl --mode throughput --run-id $(RUN_ID)-holdout --out out/$(RUN_ID)-holdout.jsonl
+	$(OGR) batch archive-round-1/acceptance/holdout/eval_hidden.jsonl --mode throughput --run-id $(RUN_ID)-holdout --out out/$(RUN_ID)-holdout.jsonl
 
 results:
 	$(OGR) report out/$(RUN_ID)-public.jsonl --out out/$(RUN_ID)-public-report.md
