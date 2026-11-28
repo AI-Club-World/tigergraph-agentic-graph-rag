@@ -1,5 +1,5 @@
 """Embedding switching: the 2-model cap, eviction/replace deletion scope,
-checkpointed resumable jobs (docs/round-1/EMBEDDING-SWITCHING.md)."""
+checkpointed resumable jobs (archive-round-1/docs/round-1/EMBEDDING-SWITCHING.md)."""
 
 from __future__ import annotations
 

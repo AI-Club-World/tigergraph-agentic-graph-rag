@@ -3,7 +3,7 @@
 Every call names the embedding model (`common/embedding_models.py`); the
 index a vector is written to and the index a query vector searches are both
 chosen from that same model key, so the two can never come from different
-models (docs/round-1/EMBEDDING-SWITCHING.md).
+models (archive-round-1/docs/round-1/EMBEDDING-SWITCHING.md).
 
 A model is served by the first host that works: Cloudflare Workers AI (only
 for a model Cloudflare hosts, and only with credentials) → local

@@ -3,7 +3,7 @@
 How the Round-2 answering system is built. Contract:
 [SOLUTION-DESIGN.md](SOLUTION-DESIGN.md); overview:
 [ARCHITECTURE-SPEC.md](ARCHITECTURE-SPEC.md). Round-1 stack and schema:
-[../round-1/TECHNICAL-SPEC.md](../round-1/TECHNICAL-SPEC.md).
+[../../archive-round-1/docs/round-1/TECHNICAL-SPEC.md](../../archive-round-1/docs/round-1/TECHNICAL-SPEC.md).
 
 ## 1. Code map (`backend/src/ogr/r2/`)
 
@@ -94,7 +94,7 @@ the build calling it. The graph types Entity and Claim (from
 `graph/schema_round2.gsql`) are shared. Earlier spec, unchanged except
 heading levels:
 
-Extends [../round-1/TECHNICAL-SPEC.md](../round-1/TECHNICAL-SPEC.md) (stack,
+Extends [../../archive-round-1/docs/round-1/TECHNICAL-SPEC.md](../../archive-round-1/docs/round-1/TECHNICAL-SPEC.md) (stack,
 Round-1 schema, Q1–Q5, record contracts, evaluation), which still applies.
 
 Design: [DESIGN.md](DESIGN.md); older notes: [../archive/](../archive/README.md).

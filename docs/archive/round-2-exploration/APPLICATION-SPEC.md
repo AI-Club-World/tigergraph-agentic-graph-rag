@@ -8,7 +8,7 @@ Build contract: [SOLUTION-DESIGN.md](../../round-2/SOLUTION-DESIGN.md). Owner de
 [INTERVIEW-LOG.md](INTERVIEW-LOG.md). Companion documents:
 [ARCHITECTURE-SPEC.md](../../round-2/ARCHITECTURE-SPEC.md), [TECHNICAL-SPEC.md](../../round-2/TECHNICAL-SPEC.md),
 [PLAN.md](PLAN.md), [RESULTS.md](RESULTS.md), [SUBMISSION.md](../../round-2/SUBMISSION.md).
-Round-1 requirements ([../round-1/APPLICATION-SPEC.md](../../round-1/APPLICATION-SPEC.md))
+Round-1 requirements ([../../archive-round-1/docs/round-1/APPLICATION-SPEC.md](../../../archive-round-1/docs/round-1/APPLICATION-SPEC.md))
 still apply to the Round-1 code, which Round 2 does not change.
 
 Status (2026-11-23): the system is built on branch `round-2` and tested offline.

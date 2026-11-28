@@ -145,7 +145,7 @@ def _print_trace(record) -> None:
 
 
 def _build(corpus: str, vector_timeout_s: float) -> int:
-    """The same stages as the API's POST /build, headless, for `make reproduce`.
+    """The same stages as the API's POST /build, headless, for `make -f archive-round-1/Makefile reproduce`.
     Ends with the vector readiness gate (TECHNICAL-SPEC §11): a benchmark must
     not start before the index reports Ready_for_query."""
     from ogr.common.embedding_models import resolve_model

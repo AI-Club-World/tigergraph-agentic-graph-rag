@@ -73,10 +73,10 @@ jobs:
       # holdout by name, which is fine. Opening it from code is not.
       - name: Holdout grep
         run: |
-          bad=$(grep -rl "acceptance/holdout" backend/src backend/tests frontend/src 2>/dev/null \
+          bad=$(grep -rl "archive-round-1/acceptance/holdout" backend/src backend/tests frontend/src 2>/dev/null \
                 | grep -v '^backend/src/ogr/eval/batch_runner\.py$' || true)
           if [ -n "$bad" ]; then
-            echo "::error::Only backend/src/ogr/eval/batch_runner.py may reference acceptance/holdout. Offenders:"
+            echo "::error::Only backend/src/ogr/eval/batch_runner.py may reference archive-round-1/acceptance/holdout. Offenders:"
             echo "$bad"
             exit 1
           fi

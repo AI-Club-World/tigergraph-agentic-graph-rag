@@ -15,7 +15,7 @@ layer types (Entity, Claim, Source, Dataset) via `install_round2`, and reuses
 Entity and Claim for infobox facts. The text below is the earlier spec,
 unchanged except for heading levels.
 
-Extends [../round-1/ARCHITECTURE-SPEC.md](../../round-1/ARCHITECTURE-SPEC.md):
+Extends [../../archive-round-1/docs/round-1/ARCHITECTURE-SPEC.md](../../../archive-round-1/docs/round-1/ARCHITECTURE-SPEC.md):
 the Round-1 containers, agents, routing and decision log are unchanged and
 still apply.
 

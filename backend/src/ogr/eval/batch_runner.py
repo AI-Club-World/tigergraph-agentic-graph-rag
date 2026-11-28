@@ -18,7 +18,7 @@ them at once. PLAT-08 defaults to 2 concurrent on cloud free tiers, because a
 429 storm mid-run is the likeliest cause of a partial run; `RunConfig.pool_size`
 is the operator's knob on the day.
 
-`acceptance/holdout/eval_hidden.jsonl` is not referenced anywhere in this
+`archive-round-1/acceptance/holdout/eval_hidden.jsonl` is not referenced anywhere in this
 module by name — the caller passes whatever `questions_path` it wants. Only
 a caller explicitly invoking this against the holdout path (a separate,
 one-time `--holdout` invocation; ARCHITECTURE-SPEC, Engineering guards)

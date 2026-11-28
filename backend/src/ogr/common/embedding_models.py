@@ -1,4 +1,4 @@
-"""The selectable embedding models (docs/round-1/EMBEDDING-SWITCHING.md).
+"""The selectable embedding models (archive-round-1/docs/round-1/EMBEDDING-SWITCHING.md).
 
 Each model owns one TigerGraph vertex type (`vertex_type`) holding one
 embedding per canonical `Chunk`, with its own HNSW index. A model is

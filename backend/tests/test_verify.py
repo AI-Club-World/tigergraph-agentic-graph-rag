@@ -1,5 +1,5 @@
 """`verify --pre-build`: a fresh workspace (queries not installed yet) passes,
-so `make reproduce` reaches the build that installs them."""
+so `make -f archive-round-1/Makefile reproduce` reaches the build that installs them."""
 
 from __future__ import annotations
 

@@ -87,13 +87,13 @@ first). The commands are in `RESULTS.md` §3.
 | 11 | offline fit and test done (`harness --offline`); live run not done |
 | 12 | offline suite passes; live run not done |
 
-Each step is followed by: offline suite (`make check`). From step 4 on,
+Each step is followed by: offline suite (`make -f archive-round-1/Makefile check`). From step 4 on,
 also the Round-1 live baseline (public-100, three pipelines) and the harness
 dev split, once credentials are available.
 
 | # | Step | Files / modules | Kind | Depends on |
 |---|---|---|---|---|
-| 0 | Re-run the Round-1 live baseline on `round-2` HEAD and record it as the regression reference | `make benchmark` → `out/r2-baseline-public.jsonl` | SAFE (needs credentials) | `.env` |
+| 0 | Re-run the Round-1 live baseline on `round-2` HEAD and record it as the regression reference | `make -f archive-round-1/Makefile benchmark` → `out/r2-baseline-public.jsonl` | SAFE (needs credentials) | `.env` |
 | 1 | Temporal-intent detector + tests (not yet wired into routing) | `pipelines/temporal.py`, `tests/pipelines/test_temporal.py`, anti-overfitting scan | SAFE | – |
 | 2 | Adapter interface + Olympic adapter producing claims from infobox fields (in memory; no graph write) | `datasets/base.py`, `datasets/olympic.py` | SAFE | – |
 | 3 | Injection harness: generator, question writer, splits; offline tests of its determinism and of the ground truth | `harness/generate.py`, `harness/templates.py`, `tests/harness/*` | SAFE | 2 |
@@ -105,7 +105,7 @@ dev split, once credentials are available.
 | 9 | Record/trace optional fields; frontend confidence badge, conflicts table, time-scope chip | `contracts.py`, `types.ts`, `ResultColumn.tsx`, `TracePanel.tsx` | SAFE (additive) | 8 |
 | 10 | Dry run: 10 harness questions × 3 pipelines; cost estimate | `ogr.cli batch --limit 10` | SAFE (needs credentials) | 3, 6–8 |
 | 11 | Fit weights, T and thresholds on dev; freeze; run test once; report | `harness/fit.py`, `out/r2-harness-*.jsonl`, `submission/round2-report.md` | SAFE | 10 |
-| 12 | Round-1 regression run after steps 8 and 9 | `make benchmark` | SAFE | 8, 9 |
+| 12 | Round-1 regression run after steps 8 and 9 | `make -f archive-round-1/Makefile benchmark` | SAFE | 8, 9 |
 | G2 | LLM-verbalised confidence in the shared answer contract | `contracts.py` (prompt) | **GATED G2**, re-baseline | 0 |
 | G3 | Optional `temporal` field in the intent tool call (ambiguous cases) | `intent.py` | **GATED G3**, re-baseline | 1 |
 | G4 | LLM claim extraction at ingest (one-time, cached) | `datasets/extract_llm.py` | **GATED G4** | 2 |

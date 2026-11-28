@@ -99,7 +99,7 @@ def load_graph(
 
     A Chunk vertex carries no vector: each embedded chunk's vector goes to
     `embedding_model`'s own Embedding_* vertex (primary id = chunk_id), with
-    a HAS_EMBEDDING edge from the chunk (docs/round-1/EMBEDDING-SWITCHING.md).
+    a HAS_EMBEDDING edge from the chunk (archive-round-1/docs/round-1/EMBEDDING-SWITCHING.md).
 
     Upserts are accumulated by type and sent with `upsertVertices`/
     `upsertEdges` rather than one REST call per object. The corpus is ~2.9k

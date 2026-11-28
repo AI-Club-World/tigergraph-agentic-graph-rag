@@ -116,7 +116,8 @@ cd frontend && npm ci && npm run dev
 | `scripts/validate_submission.py` | Checks the submission files against the brief |
 | `docs/round-2/` | Brief, build contract, specs, runbook, submission checklist, corpus and public questions (`data/`) |
 | `frontend/`, `backend/src/ogr/api/` | Web UI and API (the demo page, and the Round-1 comparison app) |
-| `docs/round-1/`, `data/`, `acceptance/` | Round-1 application, documents and question sets |
+| `data/`, `acceptance/paraphrase/` | Round-1 corpus and question sets, still read by the comparison view and its tests |
+| `archive-round-1/` | Round-1 documents, submission outputs, hidden-set file and Makefile; not used by the Round-2 system (see its README) |
 | `docs/archive/`, `tools/kaggle/` | Earlier working notes; a Round-1 embedding-host helper |
 
 Tests and lint: `cd backend && ruff check src tests && python3 -m pytest -q -p no:cacheprovider`.
@@ -140,7 +141,7 @@ Tests and lint: `cd backend && ruff check src tests && python3 -m pytest -q -p n
 | [`docs/round-2/ARCHITECTURE-SPEC.md`](docs/round-2/ARCHITECTURE-SPEC.md), [`TECHNICAL-SPEC.md`](docs/round-2/TECHNICAL-SPEC.md) | Components, tool parameters, formats, configuration |
 | [`docs/round-2/LIVE-JUDGING.md`](docs/round-2/LIVE-JUDGING.md) | Runbook: start the system, ask a new question, reproduce a submitted answer |
 | [`docs/round-2/SUBMISSION.md`](docs/round-2/SUBMISSION.md) | The seven deliverables and the pre-submission checklist |
-| [`docs/round-1/README.md`](docs/round-1/README.md) | Round-1 web application: setup, CLI, API, frontend |
+| [`archive-round-1/docs/round-1/README.md`](archive-round-1/docs/round-1/README.md) | Round-1 web application: setup, CLI, API, frontend |
 | [`docs/archive/`](docs/archive/README.md) | Earlier working notes |
 | [`ATTRIBUTION.md`](ATTRIBUTION.md) | Licences for the corpus, models and software |
 

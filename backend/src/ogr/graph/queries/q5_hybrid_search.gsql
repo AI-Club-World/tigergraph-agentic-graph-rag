@@ -1,7 +1,7 @@
 USE GRAPH OlympicGraphRAG
 
 // Q5: hybrid_search(query_vector, k, emb_type, candidate_set) — TECHNICAL-SPEC §3,
-// per-model embedding layout (docs/round-1/EMBEDDING-SWITCHING.md).
+// per-model embedding layout (archive-round-1/docs/round-1/EMBEDDING-SWITCHING.md).
 // The P1/P3 semantic-search path. `emb_type` names the Embedding_* vertex
 // type of the model the query vector was embedded with; the caller derives
 // both from one model key (graph/client.py hybrid_search), so a query vector

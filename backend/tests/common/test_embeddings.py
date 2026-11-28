@@ -1,4 +1,4 @@
-"""Per-model embedding (docs/round-1/EMBEDDING-SWITCHING.md)."""
+"""Per-model embedding (archive-round-1/docs/round-1/EMBEDDING-SWITCHING.md)."""
 
 from __future__ import annotations
 

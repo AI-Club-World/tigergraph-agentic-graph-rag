@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any
 
 _LOCK = threading.Lock()
-# Graphs built since per-model embedding types (docs/round-1/EMBEDDING-SWITCHING.md).
+# Graphs built since per-model embedding types (archive-round-1/docs/round-1/EMBEDDING-SWITCHING.md).
 # A graph without it keeps its vectors on Chunk itself and must be reset.
 LAYOUT = "per_model_embeddings"
 ID_KINDS = (("Document", "doc_ids"), ("OlympicEvent", "event_ids"), ("Chunk", "chunk_ids"))

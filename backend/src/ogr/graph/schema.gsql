@@ -8,7 +8,7 @@
 // so re-running this file against a workspace that already has
 // OlympicGraphRAG installed does not error. Run/Step vertices are cut.
 //
-// Embedding layout (docs/round-1/EMBEDDING-SWITCHING.md): a Chunk is stored
+// Embedding layout (archive-round-1/docs/round-1/EMBEDDING-SWITCHING.md): a Chunk is stored
 // once and carries no vector. Each selectable embedding model owns one
 // Embedding_* vertex type — primary id = the chunk_id it embeds, one HNSW
 // index on its `emb` — linked from its Chunk by HAS_EMBEDDING. The five

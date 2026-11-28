@@ -174,12 +174,12 @@ dry run comes first.
 
 | Step | Command | Produces |
 |---|---|---|
-| Round-1 baseline on `round-2` (before the fact layer) | `make benchmark` | public-100 EM/F1, tokens: the regression reference |
+| Round-1 baseline on `round-2` (before the fact layer) | `make -f archive-round-1/Makefile benchmark` | public-100 EM/F1, tokens: the regression reference |
 | Add the fact layer (gate G1, approved) | `python -m ogr.cli round2` | Round-2 types, Q5S/Q6, claims for every loaded dataset |
 | Load the harness corpus as its own dataset | Settings → Build with `out/harness/<name>.jsonl` (or `POST /build`) | Documents, chunks and claims of the harness |
 | Dry run, 10 questions × 3 pipelines | `OGR_ROUND2_WEIGHTS=out/harness/<name>-weights.json python -m ogr.cli batch out/harness/<name>-dryrun-questions.jsonl --out out/r2-dryrun.jsonl` | cost per question before any full run |
 | Harness test split × 3 pipelines | same, with `<name>-test-questions.jsonl` | Agentic vs RAG vs GraphRAG per subset, tokens per question, P3 calibration (`python -m ogr.cli report`) |
-| Round-1 regression after the fact layer | `make benchmark` again | must match the baseline within run-to-run variance |
+| Round-1 regression after the fact layer | `make -f archive-round-1/Makefile benchmark` again | must match the baseline within run-to-run variance |
 
 **Fairness, as built.** All three pipelines get the same documents. Each
 harness record states its source and publication date in its text, so RAG

@@ -1386,7 +1386,7 @@ table.matrix .section-row th { background: var(--bg-sunken); text-align: left; f
 }
 .dataset-name-form input { width: 100%; }
 
-/* Embedding switching (docs/round-1/EMBEDDING-SWITCHING.md) */
+/* Embedding switching (archive-round-1/docs/round-1/EMBEDDING-SWITCHING.md) */
 .embed-disabled {
   margin: 0;
   padding: 0.5rem 0.75rem;

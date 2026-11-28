@@ -2,7 +2,7 @@
 
 Describes the Round-2 answering system. Brief: [PROBLEM-STATEMENT.md](PROBLEM-STATEMENT.md).
 Contract: [SOLUTION-DESIGN.md](SOLUTION-DESIGN.md). Round-1 architecture
-([../round-1/ARCHITECTURE-SPEC.md](../round-1/ARCHITECTURE-SPEC.md)) is unchanged and
+([../../archive-round-1/docs/round-1/ARCHITECTURE-SPEC.md](../../archive-round-1/docs/round-1/ARCHITECTURE-SPEC.md)) is unchanged and
 shares only the graph, the loader and the LLM client.
 
 ## 1. Overview

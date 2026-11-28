@@ -37,7 +37,7 @@ a current Wikipedia article disagrees with `corpus.jsonl`, the corpus wins.
 latency and traces but no accuracy. `GET /datasets` lists it like any other
 question set, and it can be run from the Dashboard's Run benchmark tab or with
 `python -m ogr.cli batch`. An identical copy sits at
-`acceptance/holdout/eval_hidden.jsonl`, which `make reproduce` uses for its
+`archive-round-1/acceptance/holdout/eval_hidden.jsonl`, which `make -f archive-round-1/Makefile reproduce` uses for its
 one-time `holdout` step. A CI grep allows only
 `backend/src/ogr/eval/batch_runner.py` to name that path in source.
 

@@ -1,5 +1,5 @@
 /**
- * Embedding model switching (docs/round-1/EMBEDDING-SWITCHING.md): the five
+ * Embedding model switching (archive-round-1/docs/round-1/EMBEDDING-SWITCHING.md): the five
  * models with their state for the corpus, the re-embed job, and the informed
  * decision dialog. Every refusal shown here is also enforced by the server.
  */

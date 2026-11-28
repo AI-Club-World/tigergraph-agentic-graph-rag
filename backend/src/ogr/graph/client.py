@@ -316,7 +316,7 @@ class TigerGraphClient:
             chunks.sort(key=lambda c: c["score"], reverse=True)
         return chunks
 
-    # ── Per-model embedding storage (docs/round-1/EMBEDDING-SWITCHING.md) ──
+    # ── Per-model embedding storage (archive-round-1/docs/round-1/EMBEDDING-SWITCHING.md) ──
 
     def _require_conn(self) -> Any:
         self._ensure_connection()
