@@ -57,7 +57,7 @@ CREATE OR REPLACE QUERY r2_find_events(
     ACCUM e.@games += g.games_id, e.@year += g.year, e.@season += g.season;
   Decor4 = SELECT e FROM Events:e -(HELD_AT>)- Venue:v ACCUM e.@venue += v.venue_name;
   Decor5 = SELECT e FROM Events:e -(reverse_WON>:w)- Athlete:a
-    ACCUM e.@meds += w.medal + "\t" + a.name + "\t" + w.noc + "\t" + to_string(w.place) + "\n";
+    ACCUM e.@meds += w.medal + "\t" + w.athlete_name + "\t" + w.noc + "\t" + to_string(w.place) + "\n";
 
   Rows = SELECT e FROM Events:e
     ACCUM @@rows += EventRow(

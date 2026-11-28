@@ -13,7 +13,8 @@
 //                infobox gives for that place, and `place` (1..3) so two medals
 //                of one kind in one event stay two; `event_key` is the normalized
 //                event part of the page title, the same for every edition of an
-//                event (infobox event names drift: "Men's +100kg").
+//                event (infobox event names drift: "Men's +100kg"); `athlete_name` is the
+//                name as that event's infobox writes it (Athlete.name keeps one form).
 //   SourceRecord one per LA 2028 source record: source name, authority class
 //                (official/operational/secondary/unreliable), publication time
 //                (ISO 8601 with offset, and the original string) and text.
@@ -36,7 +37,7 @@ CREATE SCHEMA_CHANGE JOB add_r2_answer_types FOR GRAPH OlympicGraphRAG {
   ) WITH PRIMARY_ID_AS_ATTRIBUTE="true";
 
   ADD DIRECTED EDGE WON (
-    FROM Athlete, TO OlympicEvent, medal STRING, noc STRING, place INT, event_key STRING
+    FROM Athlete, TO OlympicEvent, medal STRING, noc STRING, place INT, event_key STRING, athlete_name STRING
   ) WITH REVERSE_EDGE="reverse_WON";
   ADD DIRECTED EDGE REPORTS_ON (
     FROM SourceRecord, TO OlympicEvent, score DOUBLE

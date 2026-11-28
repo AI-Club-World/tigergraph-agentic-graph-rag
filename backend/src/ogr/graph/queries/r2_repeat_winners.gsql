@@ -14,7 +14,7 @@ CREATE OR REPLACE QUERY r2_repeat_winners(
 ) FOR GRAPH OlympicGraphRAG SYNTAX V2 {
 
   TYPEDEF TUPLE<
-    STRING athlete, STRING event_name, STRING event_key, STRING sport, STRING medal, INT year,
+    STRING athlete, STRING athlete_id, STRING event_name, STRING event_key, STRING sport, STRING medal, INT year,
     STRING doc_id
   > WinRow;
   ListAccum<WinRow> @@rows;
@@ -48,7 +48,7 @@ CREATE OR REPLACE QUERY r2_repeat_winners(
       IF @@years.get(
            a.athlete_id + "|" + lower(e.@sport) + "|" + w.event_key + "|" + w.medal
          ).size() >= 2 THEN
-        @@rows += WinRow(a.name, e.event_name, w.event_key, e.@sport, w.medal, e.@year, e.@doc)
+        @@rows += WinRow(w.athlete_name, a.athlete_id, e.event_name, w.event_key, e.@sport, w.medal, e.@year, e.@doc)
       END;
 
   PRINT @@rows AS results;

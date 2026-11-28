@@ -258,15 +258,15 @@ class TigerGraphR2:
                 "event_id": r.get("event_id") or "",
                 "title": r.get("title") or "", "doc_id": r.get("doc_id") or "",
                 "event_name": r.get("event_name") or "", "nations": _int(r.get("nations")),
-                "competitors": _int(r.get("competitors")), "exact": bool(r.get("exact")),
+                "competitors": _int(r.get("competitors")), "rank": _int(r.get("rank")),
                 "gold": _medal_lists(r.get("medallists"))["gold"],
             }
 
         def one_per_edition(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             best: dict[tuple[int, str], dict[str, Any]] = {}
-            for r in sorted(rows, key=lambda r: (r["year"], not r["exact"], r["title"])):
+            for r in sorted(rows, key=lambda r: (r["year"], -r["rank"], r["title"])):
                 best.setdefault((r["year"], r["season"]), r)
-            return [{k: v for k, v in r.items() if k != "exact"} for _, r in sorted(best.items())]
+            return [{k: v for k, v in r.items() if k != "rank"} for _, r in sorted(best.items())]
 
         return self._call("event_series", params, row, one_per_edition)
 
@@ -288,14 +288,14 @@ class TigerGraphR2:
         params = {"sport": sport, "medal": medal.lower(), "season": season}
 
         def flat(r: dict[str, Any]) -> dict[str, Any]:
-            keys = ("athlete", "event_name", "event_key", "sport", "medal", "doc_id")
+            keys = ("athlete", "athlete_id", "event_name", "event_key", "sport", "medal", "doc_id")
             return {k: r.get(k) or "" for k in keys} | {
                 "year": _year(r.get("year"))}
 
         def group(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             groups: dict[tuple, dict[str, Any]] = {}
             for r in sorted(rows, key=lambda r: r["year"]):
-                key = (r["athlete"], r["sport"].lower(), r["event_key"], r["medal"])
+                key = (r["athlete_id"], r["sport"].lower(), r["event_key"], r["medal"])
                 g = groups.setdefault(key, {
                     "athlete": r["athlete"], "event_name": r["event_name"], "sport": r["sport"],
                     "medal": r["medal"], "years": [], "doc_ids": [],
@@ -304,6 +304,7 @@ class TigerGraphR2:
                     g["years"].append(r["year"])
                     g["doc_ids"].append(r["doc_id"])
                     g["event_name"] = r["event_name"]  # rows run oldest first: the latest name wins
+                    g["athlete"] = r["athlete"]
             return sorted((g for g in groups.values() if len(g["years"]) >= 2),
                           key=lambda g: (g["athlete"], g["sport"], g["event_name"], g["medal"]))
 

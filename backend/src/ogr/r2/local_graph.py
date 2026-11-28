@@ -131,16 +131,20 @@ class LocalR2Graph:
         def body() -> list[dict[str, Any]]:
             needle = normalize_answer(event_contains)
             by_edition: dict[tuple[int, str], Event] = {}
+
+            def rank(e: Event) -> int:  # 2 name equals, 1 title ends with, 0 looser match
+                return 2 if e.event_norm == needle else 1 if e.title_norm.endswith(f" {needle}") else 0
+
             for e in sorted(self._select(sport, 0, season, event_contains), key=self._event_key):
-                exact = e.event_norm == needle or e.title_norm.endswith(f" {needle}")
                 key = (e.year, e.season)
                 held = by_edition.get(key)
-                if held is None or (exact and not (held.event_norm == needle)):
+                if held is None or rank(e) > rank(held):
                     by_edition[key] = e
             return [{
                 "year": e.year, "season": e.season, "event_id": e.event_id, "title": e.title,
                 "doc_id": e.doc_id, "event_name": e.event_name, "nations": e.nations,
-                "competitors": e.competitors, "gold": medallist_rows(e.medallists)["gold"],
+                "competitors": e.competitors, "gold": medallist_rows(sorted(
+                    e.medallists, key=lambda m: (m.medal, m.place, m.name)))["gold"],
             } for _, e in sorted(by_edition.items())]
 
         return self._run("event_series", params, body)

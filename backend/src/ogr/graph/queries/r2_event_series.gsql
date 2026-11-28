@@ -3,8 +3,8 @@ USE GRAPH OlympicGraphRAG
 // r2_event_series(event_contains, sport, season): every edition of an event,
 // one row each, for trends across Games (SOLUTION-DESIGN §3). Matches like
 // find_events (event name or title at a word boundary) with no year filter.
-// `exact` marks an event whose name equals event_contains, so the wrapper keeps
-// one row per edition when a looser match also fires ("men's 100 metres" also
+// `rank` is 2 when the event name equals event_contains, 1 when the page title
+// ends with it, else 0; the wrapper keeps the best-ranked row per edition when a looser match also fires ("men's 100 metres" also
 // finds "men's 100 metres hurdles"). The max/min of the series are computed by
 // the caller (graph_backend.series_extremes), not here.
 
@@ -14,7 +14,7 @@ CREATE OR REPLACE QUERY r2_event_series(
 
   TYPEDEF TUPLE<
     INT year, STRING season, STRING event_id, STRING title, STRING doc_id, STRING event_name,
-    INT nations, INT competitors, BOOL exact, STRING medallists
+    INT nations, INT competitors, INT rank, STRING medallists
   > SeriesRow;
   ListAccum<SeriesRow> @@rows;
   // Per-event values gathered once, so a row is built in a single pass below.
@@ -51,12 +51,13 @@ CREATE OR REPLACE QUERY r2_event_series(
     ACCUM e.@games += g.games_id, e.@year += g.year, e.@season += g.season;
   Decor4 = SELECT e FROM Events:e -(reverse_WON>:w)- Athlete:a
     WHERE w.medal == "gold"
-    ACCUM e.@meds += w.medal + "\t" + a.name + "\t" + w.noc + "\t" + to_string(w.place) + "\n";
+    ACCUM e.@meds += w.medal + "\t" + w.athlete_name + "\t" + w.noc + "\t" + to_string(w.place) + "\n";
 
   Rows = SELECT e FROM Events:e
     ACCUM @@rows += SeriesRow(
       e.@year, e.@season, e.event_id, e.@title, e.@doc, e.event_name, e.nations, e.competitors,
-      lower(e.event_name) == lower(event_contains), e.@meds
+      CASE WHEN lower(e.event_name) == lower(event_contains) THEN 2
+           WHEN lower(e.@title) LIKE "% " + lower(event_contains) THEN 1 ELSE 0 END, e.@meds
     );
 
   PRINT @@rows AS results;

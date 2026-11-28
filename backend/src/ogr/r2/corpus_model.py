@@ -145,6 +145,7 @@ class WonEdge:
     noc: str
     place: int
     event_key: str = ""
+    athlete_name: str = ""
 
 
 @dataclass
@@ -428,7 +429,7 @@ def build_model(corpus_path: str | Path) -> CorpusModel:
             for m in event.medallists:
                 model.athletes.setdefault(m.athlete_id, Athlete(m.athlete_id, m.name))
                 model.won.append(
-                    WonEdge(m.athlete_id, event.event_id, m.medal, m.noc, m.place, event.event_key))
+                    WonEdge(m.athlete_id, event.event_id, m.medal, m.noc, m.place, event.event_key, m.name))
         elif doc.infobox_type:
             entity = Entity(f"ent:{doc.doc_id}", doc.doc_id, doc.title, doc.infobox_type)
             model.entities.append(entity)

@@ -140,7 +140,8 @@ def load_r2_layer(client: Any, model: CorpusModel) -> tuple[dict[str, int], dict
 
     won = [
         (w.athlete_id, w.event_id,
-         {"medal": w.medal, "noc": w.noc, "place": w.place, "event_key": w.event_key})
+         {"medal": w.medal, "noc": w.noc, "place": w.place, "event_key": w.event_key,
+          "athlete_name": w.athlete_name})
         for w in model.won
     ]
     reports = [(link.record_id, link.event_id, {"score": link.score}) for link in model.links]

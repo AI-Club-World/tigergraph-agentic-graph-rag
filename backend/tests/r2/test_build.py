@@ -111,10 +111,12 @@ def test_won_edges_carry_medal_noc_place_and_event_key(built):
     won = conn.edges["WON"]
     assert len(won) == report.loaded_edges["WON"]
     attrs = won[("lee mu", "judo-2020-Summer-men-s-73-kg")]
-    assert attrs == {"medal": "bronze", "noc": "JPN", "place": 1, "event_key": "mens 73 kg"}
+    assert attrs == {"medal": "bronze", "noc": "JPN", "place": 1, "event_key": "mens 73 kg",
+                     "athlete_name": "Lee Mu"}
     assert won[("max nu", "judo-2020-Summer-men-s-73-kg")]["place"] == 2
     assert won[("eva echo", "judo-2020-Summer-mixed-team")] == {
-        "medal": "gold", "noc": "FRA", "place": 1, "event_key": "mixed team"}
+        "medal": "gold", "noc": "FRA", "place": 1, "event_key": "mixed team",
+        "athlete_name": "Eva Echo"}
 
 
 def test_reports_on_edges_point_at_events_that_exist(built):
