@@ -194,3 +194,21 @@ def test_event_series_carries_extremes(mini):
 def test_json_string_answers_are_parsed_when_valid(mini, answer):
     rec = answer_question("q", "?", mini, FakeModel([msg(finish(answer=answer))]), CONFIG)
     assert rec.answer == (json.loads(answer) if answer == "[1, 2]" else answer)
+
+
+def test_compact_drops_fields_that_repeat_another_field():
+    from ogr.r2.tools import compact_result
+
+    row = {"event_id": "x", "title": "Sport at the Games - E", "event_name": "E", "games": "2024-Summer",
+           "year": 2024, "athlete_id": "a b", "athlete": "A B", "doc_id": "Q1"}
+    text, shown = compact_result([row], "r1")
+    assert shown[0] == {"event_name": "E", "year": 2024, "athlete": "A B", "doc_id": "Q1"}
+    entity = {"title": "Some Film", "doc_id": "Q2"}  # no event_name: the title is the identity
+    assert compact_result([entity], "r2")[1][0]["title"] == "Some Film"
+
+
+def test_truncation_note_points_to_rank_rows_over_all_rows():
+    from ogr.r2.tools import compact_result
+
+    text, _ = compact_result([{"n": i, "doc_id": f"D{i}"} for i in range(5)], "r7", max_rows=2)
+    assert "rank_rows on r7" in text and "all 5 rows" in text

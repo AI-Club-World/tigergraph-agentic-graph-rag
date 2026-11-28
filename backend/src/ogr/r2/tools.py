@@ -35,7 +35,9 @@ _STR = {"type": "string"}
 _SEASON = {"type": "string", "enum": ["Summer", "Winter", ""],
            "description": "Summer, Winter or empty for both"}
 _YEAR = {"type": "integer", "description": "Games year, 0 for any"}
-_MEDAL = {"type": "string", "enum": ["gold", "silver", "bronze", ""]}
+_MEDAL = {"type": "string", "enum": ["gold", "silver", "bronze", ""],
+          "description": "gold, silver or bronze; empty counts ANY medal. 'Won' an event means gold: use "
+                         "gold unless the question asks about medals or the podium in general"}
 
 _SPECS: list[dict[str, Any]] = [
     {"name": "find_events",
@@ -45,7 +47,7 @@ _SPECS: list[dict[str, Any]] = [
      "parameters": _obj({"sport": _STR, "year": _YEAR, "season": _SEASON, "event_contains": _STR})},
     {"name": "medals_by_nation",
      "description": "Medal counts per nation (NOC), highest first, with the events behind each count. "
-                    "Use to compare nations or find who won most or fewest.",
+                    "Use to compare nations or find who won most or fewest; name nations by their NOC code.",
      "parameters": _obj({"sport": _STR, "year": _YEAR, "season": _SEASON, "medal": _MEDAL})},
     {"name": "event_series",
      "description": "One row per edition of an event across Games (year, nations, competitors, gold "
@@ -74,17 +76,19 @@ _SPECS: list[dict[str, Any]] = [
                     "Use when sources may disagree or change over time; compare authority and time.",
      "parameters": _obj({"event_contains": _STR, "year": _YEAR})},
     {"name": "text_search",
-     "description": "Chunks of article text containing ALL the given terms (case-insensitive). Use for "
-                    "reasons, background and facts stated only in prose.",
+     "description": "Chunks of article text containing ALL the given terms (case-insensitive); every extra "
+                    "term narrows the result, so use one to three distinctive terms and retry with fewer "
+                    "when nothing comes back. Use for reasons, background and facts stated only in prose.",
      "parameters": _obj({"terms": {"type": "array", "items": _STR}, "limit": {"type": "integer"}},
                         ["terms"])},
     {"name": "read_document",
      "description": "Read one document's text in order by doc_id, to check details a row does not show.",
      "parameters": _obj({"doc_id": _STR, "max_chars": {"type": "integer"}}, ["doc_id"])},
     {"name": "rank_rows",
-     "description": "Sort rows of an earlier tool result locally by a field (dotted path; a list counts as "
-                    "its length) and keep the top n. Use for most/fewest or ordering instead of doing it "
-                    "by eye.",
+     "description": "Sort ALL rows of an earlier tool result locally (even those not shown) by a field "
+                    "(dotted path; a list counts as its length) and keep the top n. Use for most/fewest or "
+                    "ordering instead of doing it by eye. Rows lacking the field are reported, not ranked: "
+                    "their value is unknown, not zero.",
      "parameters": _obj({"result_id": _STR, "field": _STR,
                          "order": {"type": "string", "enum": ["asc", "desc"]},
                          "top_n": {"type": "integer"}}, ["result_id", "field"])},
@@ -137,8 +141,15 @@ class ToolContext:
 
 # --- compact output ------------------------------------------------------------
 
+# Fields that repeat another field of the same row (or are internal ids); the model never needs them.
+_REDUNDANT = (("event_id", None), ("athlete_id", "athlete"), ("title", "event_name"), ("games", "year"),
+              ("event", "event_name"))
+
+
 def _clean(value: Any, state: dict[str, bool]) -> Any:
     if isinstance(value, dict):
+        value = {k: v for k, v in value.items()
+                 if not any(k == drop and (by is None or by in value) for drop, by in _REDUNDANT)}
         out = {k: _clean(v, state) for k, v in value.items()}
         return {k: v for k, v in out.items() if v not in (None, "", [], {}, 0, False)}
     if isinstance(value, list):
@@ -165,7 +176,8 @@ def compact_result(rows: list[dict[str, Any]], result_id: str, extra: dict[str, 
             head.update(extra)
         notes = []
         if len(shown) < total:
-            notes.append(f"showing the first {len(shown)} of {total} rows; narrow the query or use rank_rows")
+            notes.append(f"showing the first {len(shown)} of {total} rows; narrow the query, or use "
+                         f"rank_rows on {result_id}, which sees all {total} rows")
         if state["text"]:
             notes.append(f"long text fields cut at {TEXT_CAP} characters; use read_document for the rest")
         if notes:

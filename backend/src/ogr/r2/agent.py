@@ -29,16 +29,33 @@ logger = logging.getLogger(__name__)
 
 __all__ = ["SYSTEM_PROMPT", "PROMPT_VERSION", "answer_question", "default_max_steps"]
 
-PROMPT_VERSION = "r2-agent-v1"
+PROMPT_VERSION = "r2-agent-v2"
 
 SYSTEM_PROMPT = "\n".join([
     "Answer the question using only what the tools return from the corpus. Plan briefly, call tools "
     "(several at once when independent), then call finish.",
     "Rules:",
-    "- Lists must be complete: every item asked for, none extra. Give numbers exactly as stated.",
-    "- If a question names several years or items, check every one of them.",
-    "- Statuses: answered = fully supported; partial = some requested parts are not in the corpus (say "
-    "which); not_in_corpus = nothing in the corpus answers it. Never guess or use outside knowledge.",
+    "- Lists must be complete: every item asked for, none extra. Give numbers exactly as stated. Include "
+    "only items that match the question's scope: 'won' means first place (gold), not any medal; stay "
+    "within the person, sport and years asked.",
+    "- Name nations by the NOC codes the tools return, not by country names, and keep the tools' field "
+    "names (athlete, event, year, years, medal, nations, noc).",
+    "- If a question names several years or items, check every one of them. If rows are cut off, use "
+    "rank_rows (it sees all rows) or narrower queries; do not conclude from a partial view. A row "
+    "without a value has an unknown value, not zero.",
+    "- Statuses: answered = the corpus gives what was asked, even if you had to compare many rows; "
+    "partial = some requested parts are missing from the corpus (list found and missing items "
+    "separately), or the only accounts are unverified, unreliable or conflicting and no authoritative "
+    "source confirms them (give each claim with its source); not_in_corpus = the specific thing asked "
+    "for (e.g. identities, a value) is absent even though related context exists. If you found no "
+    "evidence after a few searches, retry with fewer terms before giving up. Never guess or use "
+    "outside knowledge.",
+    "- Put only what was asked in the answer; caveats (synthetic data, notes) belong in the explanation.",
+    "- For a count or maximum/minimum per year or edition, answer {rows: [{year, value}], max_year, "
+    "min_year}.",
+    "- For why/which-is-right/as-of questions, put the basis inside the answer itself: which source "
+    "is authoritative or which dated record takes effect, and what each figure counts (e.g. registered "
+    "vs competed, with each figure). Search with few, distinctive terms.",
     "- Unknown is not negative: a missing record does not prove something did not happen.",
     "- Sources differ in authority: official > operational > secondary > unreliable. A later publication "
     "does not override a more authoritative one. Provisional displays are not final results; drafts are "
