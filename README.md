@@ -419,7 +419,7 @@ models and software carry their own licences. See [`ATTRIBUTION.md`](ATTRIBUTION
 
 ## Round 2: build, run, submit
 
-Setup: `cp .env.example .env` and fill in the keys (`.env.example` is the canonical list; `env.example` is the older Round 1 copy), then `python3 -m pip install -r backend/requirements.lock && python3 -m pip install --no-deps -e backend`.
+Setup: set the variables in `.env.example` in your environment, or `cp .env.example .env` and fill in the keys (`env.example` is an identical copy kept for the Round 1 workflow), then `python3 -m pip install -r backend/requirements.lock && python3 -m pip install --no-deps -e backend`.
 
 ```bash
 ./build.sh corpus.jsonl                                      # build the graph, writes out/r2/graph_counts.json
